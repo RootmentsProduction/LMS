@@ -42,7 +42,7 @@ const UserTrainingProgressData = () => {
                     <h3>Training Details</h3>
                     <hr className="border-b-0 border-black" />
                 </div>
-                <div className="flex text-black mx-20 text-xl justify-between">
+                <div className="flex text-black mx-20 text-lg justify-between">
 
 
                     <div className=" flex gap-8 ">

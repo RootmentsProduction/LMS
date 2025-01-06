@@ -22,7 +22,9 @@ const ModuleData = () => {
                 }
 
                 const data = await response.json();
-                setData(data); // Update state with fetched data
+                setData(data);
+                console.log(data);
+                // Update state with fetched data
             } catch (error) {
                 console.error("Failed to fetch modules:", error.message);
             }
