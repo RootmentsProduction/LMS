@@ -19,7 +19,7 @@ import setupSwagger from './swagger.js';
 // import { sendWhatsAppMessage } from './lib/WhatsAppMessage.js';
 const app = express();
 setupSwagger(app);
-const port = process.env.PORT || 7000;
+const port =  7000;
 
 
 
