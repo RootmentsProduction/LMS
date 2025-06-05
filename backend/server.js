@@ -32,7 +32,7 @@ app.use(cookieParser());
 app.use(express.urlencoded({ extended: true }));
 app.use(
   cors({
-    origin: ['https://unicode-mu.vercel.app', 'https://lms.rootments.live', 'http://localhost:3000', 'https://lms-dev-jishnu.vercel.app', 'https://lms-3w6k.vercel.app', 'https://lmsrootments.vercel.app'],
+    origin: ['https://unicode-mu.vercel.app', 'https://lms.rootments.live', 'http://localhost:3000', 'https://lms-dev-jishnu.vercel.app', 'https://lms-3w6k.vercel.app', 'https://lmsrootments.vercel.app','https://lms-testenv-q8co.vercel.app'],
     credentials: true,
   })
 );

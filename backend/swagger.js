@@ -10,7 +10,7 @@ const options = {
         },
         servers: [
             {
-                url: "https://lms-1-lavs.onrender.com/", // Change this to your actual API URL
+                url: "https://lms-testenv.onrender.com/", // Change this to your actual API URL
                 description: "Live Development Server",
             },
             {
