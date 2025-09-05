@@ -94,38 +94,76 @@ const AssignAssessmentData = () => {
     useEffect(() => {
         const fetchUsers = async () => {
             try {
-                const endpoint =
-                    selectedOption === "user"
-                        ? "api/usercreate/getAllUser"
-                        : selectedOption === "branch"
-                            ? "api/usercreate/getBranch"
-                            : "api/usercreate/getAll/designation";
+                let options = [];
 
-                const response = await fetch(`${baseUrl.baseUrl}${endpoint}`, {
-                    method: "GET",
-                    headers: {
-                        "Content-Type": "application/json",
-                        'Authorization': `Bearer ${token}`,
-                    },
-                    credentials: "include",
-                });
-                console.log(response);
+                if (selectedOption === "user") {
+                    // Get internal users
+                    const response = await fetch(`${baseUrl.baseUrl}api/usercreate/getAllUser`, {
+                        method: "GET",
+                        headers: {
+                            "Content-Type": "application/json",
+                            'Authorization': `Bearer ${token}`,
+                        },
+                        credentials: "include",
+                    });
 
+                    if (response.ok) {
+                        const data = await response.json();
+                        options = data.data.map((item) => ({
+                            value: item._id,
+                            label: item.username,
+                        }));
+                    }
+                } else if (selectedOption === "branch") {
+                    // Get branches
+                    const response = await fetch(`${baseUrl.baseUrl}api/usercreate/getBranch`, {
+                        method: "GET",
+                        headers: {
+                            "Content-Type": "application/json",
+                            'Authorization': `Bearer ${token}`,
+                        },
+                        credentials: "include",
+                    });
 
-                if (!response.ok) throw new Error(`Error: ${response.statusText}`);
-                const data = await response.json();
+                    if (response.ok) {
+                        const data = await response.json();
+                        options = data.data.map((item) => ({
+                            value: item.locCode,
+                            label: item.workingBranch,
+                        }));
+                    }
+                } else if (selectedOption === "designation") {
+                    // Get designations from external API
+                    const response = await fetch(`${baseUrl.baseUrl}api/employee_range`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        credentials: "include",
+                        body: JSON.stringify({ startEmpId: "EMP1", endEmpId: "EMP9999" }),
+                    });
 
-                const options = data.data.map((item) => ({
-                    value: selectedOption === "branch" ? item.locCode : item._id || item.designation,
-                    label: selectedOption === "branch" ? item.workingBranch : item.username || item.designation,
-                }));
+                    if (response.ok) {
+                        const data = await response.json();
+                        const uniqueDesignations = [...new Set(
+                            (data?.data || [])
+                                .map(emp => emp.role_name)
+                                .filter(Boolean)
+                        )].sort();
+
+                        options = uniqueDesignations.map((designation) => ({
+                            value: designation,
+                            label: designation,
+                        }));
+                    }
+                }
+
                 setUsers(options);
             } catch (error) {
                 console.error("Failed to fetch users:", error.message);
+                setUsers([]);
             }
         };
         fetchUsers();
-    }, [selectedOption]);
+    }, [selectedOption, token]);
 
     return (
         <div className="w-full h-full bg-white text-[#016E5B]">

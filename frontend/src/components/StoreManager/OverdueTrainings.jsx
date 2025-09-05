@@ -7,7 +7,15 @@ const OverdueTrainings = () => {
 
     useEffect(() => {
         const fetchData = async () => {
+            if (!token) {
+                console.error('No token found for OverdueTrainings');
+                return;
+            }
+
             try {
+                console.log('Fetching overdue training data from:', `${baseUrl.baseUrl}api/admin/get/storemanagerduedata`);
+                console.log('Using token:', token ? 'Token exists' : 'No token');
+                
                 const response = await fetch(
                     `${baseUrl.baseUrl}api/admin/get/storemanagerduedata`,
                     {
@@ -20,16 +28,26 @@ const OverdueTrainings = () => {
                     }
                 );
 
+                console.log('Overdue training data response status:', response.status);
+
                 if (!response.ok) {
-                    throw new Error("Failed to fetch overdue training data");
+                    const errorText = await response.text();
+                    console.error('Overdue training data error:', response.status, errorText);
+                    
+                    if (response.status === 401) {
+                        console.error('Authentication failed for overdue training data');
+                        return;
+                    }
+                    
+                    throw new Error(`HTTP ${response.status}: ${errorText}`);
                 }
 
                 const result = await response.json();
-                setData(result.topOverdueUsers);
-                console.log(result.topOverdueUsers);
-
+                console.log('Overdue training data response:', result);
+                setData(result.topOverdueUsers || []);
             } catch (error) {
                 console.error("Error fetching overdue training data:", error);
+                setData([]); // Set empty array on error
             }
         };
 

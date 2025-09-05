@@ -29,7 +29,7 @@ const UserTrainingProgress = lazy(() => import('./pages/Training/UserTrainingPro
 const CreateAssessment = lazy(() => import('./pages/Assessments/CreateAssessment/CreateAssessment'));
 const AssessmentsAssign = lazy(() => import('./pages/Assessments/AssessmentsAssign/AssessmentsAssign'));
 const AssignAssessment = lazy(() => import('./pages/Assessments/AssignAssessment/AssignAssessment'));
-const Test = lazy(() => import('./components/test/Test'));
+// Test component removed - no longer needed
 const Notifications = lazy(() => import('./pages/Notification/Notifications.jsx'))
 const AddBranch = lazy(() => import('./pages/Branch/AddBranch.jsx'))
 const AssessmentOverDuedata = lazy(() => import('./pages/OverDue/AssessmentOverDuedata.jsx'))
@@ -37,6 +37,8 @@ const TraningOverDuedata = lazy(() => import('./pages/OverDue/TraningOverDuedata
 const EmployeeDetaile = lazy(() => import('./pages/Employee/EmployeeDetaile/EmployeeDetaile.jsx'))
 const BranchDetails = lazy(() => import('./pages/Branch/BranchDetails/BranchDetails.jsx'))
 const Profile = lazy(() => import('./pages/profile/Profile.jsx'))
+const LoginAnalytics = lazy(() => import('./pages/Setting/LoginAnalytics.jsx'))
+// APITest component removed - no longer needed
 
 import { setUser } from './features/auth/authSlice.js';
 
@@ -61,25 +63,36 @@ function App() {
     } else {
       const verifyToken = async () => {
         try {
+          console.log('Verifying token:', token ? 'Token exists' : 'No token');
+          
           const response = await fetch(`${baseUrl.baseUrl}api/admin/admin/verifyToken`, {
             method: 'POST',
             headers: {
               'Authorization': `Bearer ${token}`,
             },
           });
+          
+          console.log('Token verification response status:', response.status);
+          
           if (!response.ok) {
+            console.error('Token verification failed:', response.status);
             navigate('/login');
+            return;
           }
-          console.log("hi");
 
           const request = await response.json()
-          setUser(request.user)
-          console.log(request.user);
+          console.log('Token verification response:', request);
 
-          dispatch(setUser({
-            userId: request.user.userId,
-            role: request.user.role,
-          }));
+          if (request.user) {
+            dispatch(setUser({
+              userId: request.user.userId,
+              role: request.user.role,
+            }));
+          } else {
+            console.error('No user data in token verification response');
+            localStorage.removeItem('token');
+            navigate('/login');
+          }
 
         } catch (error) {
           console.error('Error verifying token:', error);
@@ -131,7 +144,7 @@ function App() {
           <Route path="/create/assessment" element={<ProtectedRoute><CreateAssessment /></ProtectedRoute>} />
           <Route path="/assessment/assign/:id" element={<ProtectedRoute><AssessmentsAssign /></ProtectedRoute>} />
           <Route path="/assign/assessment" element={<ProtectedRoute><AssignAssessment /></ProtectedRoute>} />
-          <Route path="/test" element={<ProtectedRoute><Test /></ProtectedRoute>} />
+          {/* Test route removed - no longer needed */}
           <Route path="/admin/Notification" element={<ProtectedRoute>< Notifications /></ProtectedRoute>} />
 
           <Route path="/admin/overdue/assessment" element={<ProtectedRoute>< AssessmentOverDuedata /></ProtectedRoute>} />
@@ -140,6 +153,8 @@ function App() {
 
           <Route path="/branch/detailed/:id" element={<ProtectedRoute>< BranchDetails /></ProtectedRoute>} />
           <Route path="/admin/profile" element={<ProtectedRoute>< Profile /></ProtectedRoute>} />
+          <Route path="/admin/login-analytics" element={<ProtectedRoute>< LoginAnalytics /></ProtectedRoute>} />
+          {/* APITest route removed - no longer needed */}
 
         </Routes>
       </Suspense>

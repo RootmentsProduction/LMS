@@ -80,15 +80,16 @@ export const createUser = async (req, res) => {
 
     const deadlineDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // Default 30-day deadline
 
-    // Assign each mandatory training to the user and create progress entries
+    // For mandatory trainings, only create progress records, don't add to user.training array
+    // This prevents mandatory trainings from appearing in both "assigned" and "mandatory" sections
     const trainingAssignments = mandatoryTraining.map(async (training) => {
-      // Assign training to the user
-      newUser.training.push({
-        trainingId: training._id,
-        deadline: deadlineDate,
-        pass: false,
-        status: 'Pending',
-      });
+      // DON'T add mandatory training to user.training array
+      // newUser.training.push({
+      //   trainingId: training._id,
+      //   deadline: deadlineDate,
+      //   pass: false,
+      //   status: 'Pending',
+      // });
 
       // Create TrainingProgress for the user
       const trainingProgress = new TrainingProgress({
@@ -116,8 +117,9 @@ export const createUser = async (req, res) => {
     await newUser.save();
 
     res.status(201).json({
-      message: 'User created successfully, and mandatory training assigned.',
+      message: 'User created successfully, and mandatory training progress created.',
       user: newUser,
+      note: 'Mandatory trainings are handled separately from assigned trainings'
     });
   } catch (error) {
     console.error('Error creating user:', error);
@@ -162,18 +164,62 @@ export const loginUser = async (req, res) => {
       { expiresIn: '30d' }
     );
 
-    // Send response
-    res.status(200).json({
-      message: 'Login successful',
-      token,
-      user: {
+    // Track user login
+    try {
+      const { detectDeviceInfo, getLocationFromIP } = await import('../utils/deviceDetection.js');
+      const userAgent = req.headers['user-agent'] || 'Unknown';
+      const ipAddress = req.ip || req.connection.remoteAddress || req.headers['x-forwarded-for'] || 'Unknown';
+      
+      // Detect device information
+      const deviceInfo = detectDeviceInfo(userAgent, ipAddress);
+      const location = await getLocationFromIP(ipAddress);
+      
+      // Import UserLoginSession model
+      const UserLoginSession = (await import('../model/UserLoginSession.js')).default;
+      
+      // Create login session
+      const loginSession = new UserLoginSession({
+        userId: user._id,
         username: user.username,
         email: user.email,
-        empID: user.empID,
-        location: user.location,
-        workingBranch: user.workingBranch,
-      },
-    });
+        ...deviceInfo,
+        location,
+        ipAddress
+      });
+      
+      await loginSession.save();
+      
+      // Store session ID in response for logout tracking
+      const sessionId = loginSession._id;
+      
+      // Send response
+      res.status(200).json({
+        message: 'Login successful',
+        token,
+        sessionId, // Include session ID for logout tracking
+        user: {
+          username: user.username,
+          email: user.email,
+          empID: user.empID,
+          location: user.location,
+          workingBranch: user.workingBranch,
+        },
+      });
+    } catch (trackingError) {
+      console.error('Error tracking login:', trackingError);
+      // Still send successful response even if tracking fails
+      res.status(200).json({
+        message: 'Login successful',
+        token,
+        user: {
+          username: user.username,
+          email: user.email,
+          empID: user.empID,
+          location: user.location,
+          workingBranch: user.workingBranch,
+        },
+      });
+    }
   } catch (error) {
     console.error('Login error:', error);
     res.status(500).json({ message: 'Internal server error' });
@@ -355,11 +401,11 @@ export const GetBranch = async (req, res) => {
 
 
 export const GetuserTraining = async (req, res) => {
-  const { email } = req.query; // Extract email from query
+  const { empID } = req.query; // Extract empID from query instead of email
 
   try {
-    // Find user based on email and populate training and modules separately
-    const user = await User.findOne({ email })
+    // Find user based on empID and populate training and modules separately
+    const user = await User.findOne({ empID })
       .populate({
         path: 'training.trainingId', // Populate the training details
 
@@ -374,13 +420,27 @@ export const GetuserTraining = async (req, res) => {
     const trainingProgress = await TrainingProgress.find({ userId: user._id });
 
     // Process each training to calculate completion percentages
-    const trainingDetails = user.training.map(training => {
+    // Filter out mandatory trainings - only return assigned trainings
+    const trainingDetails = user.training
+      .filter(training => {
+        // Check if this is a mandatory training
+        const trainingType = training.trainingId.Trainingtype;
+        const isMandatory = trainingType === 'Mandatory' || trainingType === 'mandatory';
+        
+        if (isMandatory) {
+          console.log(`Skipping mandatory training "${training.trainingId.trainingName}" from GetuserTraining API`);
+          return false; // Skip mandatory trainings
+        }
+        
+        return true; // Include assigned trainings
+      })
+      .map(training => {
       const progress = trainingProgress.find(p => p.trainingId.toString() === training.trainingId._id.toString());
 
       if (!progress) {
         return {
           trainingId: training.trainingId._id,
-          name: training.trainingId.name,
+          name: training.trainingId.trainingName || 'Unknown Training',
           completionPercentage: 0
         };
       }
@@ -407,7 +467,7 @@ export const GetuserTraining = async (req, res) => {
 
       return {
         trainingId: training.trainingId._id,
-        name: training.trainingId.name,
+        name: training.trainingId.trainingName || 'Unknown Training',
         completionPercentage: overallCompletionPercentage.toFixed(2)
       };
     });
@@ -437,33 +497,98 @@ export const GetuserTrainingprocess = async (req, res) => {
   const { userId, trainingId } = req.query; // Extract request body
 
   try {
+    // First get the training progress
     const traingproess = await TrainingProgress.find({
       userId,
       trainingId
-    }).populate({
-      path: 'trainingId', // Populate trainingId first
-      populate: {
-        path: 'modules', // Populate modules inside trainingId
-        populate: {
-          path: 'videos', // Populate videos inside modules
-        },
-      },
-    })
+    }).populate('trainingId') // Only populate the training, not the nested modules
       .exec();
 
     if (!traingproess || traingproess.length === 0) {
       return res.status(404).json({ message: "No data" });
     }
 
-    // Calculate the percentage of completion
     const trainingData = traingproess[0];
+    
+    // Get the actual module data with videos from Module collection
+    const moduleIds = trainingData.trainingId.modules;
+    const actualModules = await Module.find({ _id: { $in: moduleIds } });
+    
+    console.log('📚 Found modules:', actualModules.length);
+    console.log('🎥 Sample video data:', actualModules[0]?.videos[0]);
+    
+    // Merge progress data with actual module data
+    const enrichedModules = trainingData.modules.map(progressModule => {
+      const actualModule = actualModules.find(m => m._id.toString() === progressModule.moduleId.toString());
+      
+      console.log('🔍 Processing module:', {
+        progressModuleId: progressModule.moduleId.toString(),
+        actualModuleFound: !!actualModule,
+        actualModuleName: actualModule?.moduleName,
+        actualModuleVideos: actualModule?.videos?.length || 0,
+        progressVideos: progressModule.videos?.length || 0
+      });
+      
+      if (actualModule) {
+        console.log('🎥 Actual module videos:', actualModule.videos.map(v => ({
+          id: v._id.toString(),
+          title: v.title,
+          videoUri: v.videoUri
+        })));
+        
+        console.log('📊 Progress module videos:', progressModule.videos.map(v => ({
+          videoId: v.videoId.toString()
+        })));
+        
+        // Map progress videos with actual video data
+        const enrichedVideos = actualModule.videos.map(actualVideo => {
+          const progressVideo = progressModule.videos.find(pv => pv.videoId.toString() === actualVideo._id.toString());
+          
+          console.log('🔗 Video mapping:', {
+            actualVideoId: actualVideo._id.toString(),
+            actualVideoTitle: actualVideo.title,
+            actualVideoUri: actualVideo.videoUri,
+            progressVideoFound: !!progressVideo,
+            progressVideoId: progressVideo?.videoId?.toString()
+          });
+          
+          return {
+            videoId: actualVideo._id,
+            title: actualVideo.title,
+            videoUri: actualVideo.videoUri, // This is the actual YouTube URL!
+            videoTitle: actualVideo.title, // Add both title fields
+            questions: actualVideo.questions,
+            pass: progressVideo ? progressVideo.pass : false,
+            watchTime: progressVideo ? progressVideo.watchTime : 0,
+            totalDuration: progressVideo ? progressVideo.totalDuration : 0,
+            watchPercentage: progressVideo ? progressVideo.watchPercentage : 0,
+            lastWatchedAt: progressVideo ? progressVideo.lastWatchedAt : null
+          };
+        });
+        
+        console.log('✅ Enriched videos for module:', actualModule.moduleName, enrichedVideos.length);
+        console.log('🎥 Sample enriched video:', enrichedVideos[0]);
+        
+        return {
+          moduleId: actualModule._id,
+          moduleName: actualModule.moduleName,
+          description: actualModule.description,
+          pass: progressModule.pass,
+          videos: enrichedVideos
+        };
+      }
+      
+      console.log('⚠️ No actual module found for progress module:', progressModule.moduleId.toString());
+      return progressModule;
+    });
+
+    // Calculate completion percentages
     let totalModules = 0;
     let completedModules = 0;
     let totalVideos = 0;
     let completedVideos = 0;
 
-    // Iterate through the modules and videos to calculate the percentage
-    trainingData.modules.forEach(module => {
+    enrichedModules.forEach(module => {
       totalModules++;
       if (module.pass) {
         completedModules++;
@@ -484,59 +609,109 @@ export const GetuserTrainingprocess = async (req, res) => {
     // Calculate overall percentage (average of module and video completion)
     const overallCompletionPercentage = (moduleCompletionPercentage + videoCompletionPercentage) / 2;
 
-    // Return user data with populated training, modules, and percentage of completion
+    // Return enriched data with actual video URLs
+    const enrichedTrainingData = {
+      ...trainingData.toObject(),
+      modules: enrichedModules
+    };
+
+    console.log('✅ Returning enriched training data with', totalVideos, 'videos');
+
     res.status(200).json({
       message: "Data found",
-      data: trainingData,
-      completionPercentage: overallCompletionPercentage.toFixed(2) // Rounded to 2 decimal places
+      data: enrichedTrainingData,
+      completionPercentage: overallCompletionPercentage.toFixed(2)
     });
 
   } catch (error) {
-    console.error('Error finding user:', error.message);
+    console.error('Error in GetuserTrainingprocess:', error);
     res.status(500).json({ message: "Server error while finding user" });
   }
 };
 
 
 export const UpdateuserTrainingprocess = async (req, res) => {
-  const { userId, trainingId, moduleId, videoId } = req.query;
-
-  // Validate input parameters
-  if (!userId || !trainingId || !moduleId || !videoId) {
-    return res.status(400).json({ message: "Missing required query parameters" });
-  }
-
   try {
+    // Handle both query and body parameters for flexibility
+    const { userId, trainingId, moduleId, videoId, watchTime, totalDuration } = {
+      ...req.query,
+      ...req.body
+    };
+
+    // Validate input parameters
+    if (!userId || !trainingId || !moduleId || !videoId) {
+      return res.status(400).json({ 
+        success: false,
+        message: "Missing required parameters: userId, trainingId, moduleId, videoId" 
+      });
+    }
+
+    // Validate ObjectId format
+    if (!userId.match(/^[0-9a-fA-F]{24}$/) || 
+        !trainingId.match(/^[0-9a-fA-F]{24}$/) || 
+        !moduleId.match(/^[0-9a-fA-F]{24}$/) || 
+        !videoId.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(400).json({ 
+        success: false,
+        message: "Invalid ObjectId format for one or more parameters" 
+      });
+    }
+
     // Find the training progress
-    const trainingProgress = await TrainingProgress.findOne({ userId, trainingId });
+    const trainingProgress = await TrainingProgress.findOne({ 
+      userId, 
+      trainingId 
+    });
 
     if (!trainingProgress) {
-      return res.status(404).json({ message: "Training progress not found" });
+      return res.status(404).json({ 
+        success: false,
+        message: "Training progress not found for this user and training" 
+      });
     }
 
     // Find the module in the training progress
-    const module = trainingProgress.modules.find(mod => mod.moduleId.toString() === moduleId);
+    const module = trainingProgress.modules.find(mod => 
+      mod.moduleId.toString() === moduleId
+    );
 
     if (!module) {
-      return res.status(404).json({ message: "Module not found" });
+      return res.status(404).json({ 
+        success: false,
+        message: "Module not found in this training progress" 
+      });
     }
 
     // Find the video in the module
-    const video = module.videos.find(v => v.videoId.toString() === videoId);
+    const video = module.videos.find(v => 
+      v.videoId.toString() === videoId
+    );
 
     if (!video) {
-      return res.status(404).json({ message: "Video not found" });
+      return res.status(404).json({ 
+        success: false,
+        message: "Video not found in this module" 
+      });
     }
 
-    // Update video status
+    // Update video status if not already passed
     if (!video.pass) {
-      video.pass = true; // Mark video as passed
+      video.pass = true;
+      video.completedAt = new Date(); // Add completion timestamp
+      
+      // Store watch time data if provided
+      if (watchTime && totalDuration) {
+        video.watchTime = watchTime;
+        video.totalDuration = totalDuration;
+        video.watchPercentage = Math.round((watchTime / totalDuration) * 100);
+      }
     }
 
     // Update module status if all videos are passed
     const allVideosPassed = module.videos.every(v => v.pass === true);
     if (allVideosPassed && !module.pass) {
       module.pass = true;
+      module.completedAt = new Date(); // Add completion timestamp
     }
 
     // Update training status
@@ -544,139 +719,86 @@ export const UpdateuserTrainingprocess = async (req, res) => {
 
     if (allModulesPassed) {
       trainingProgress.pass = true;
-      trainingProgress.status = 'Completed'; // Mark training as completed
+      trainingProgress.status = 'Completed';
+      trainingProgress.completedAt = new Date(); // Add completion timestamp
     } else {
-      trainingProgress.status = 'In Progress'; // Mark training as in progress
+      trainingProgress.status = 'In Progress';
     }
 
     // Save updated training progress
     await trainingProgress.save();
 
-    // ===== Update User Collection =====
+    // Update User Collection
     const user = await User.findById(userId);
 
     if (!user) {
-      return res.status(404).json({ message: "User not found" });
+      return res.status(404).json({ 
+        success: false,
+        message: "User not found" 
+      });
     }
 
     // Update user training status
-    const userTraining = user.training.find(train => train.trainingId.toString() === trainingId);
+    const userTraining = user.training.find(train => 
+      train.trainingId.toString() === trainingId
+    );
+    
     if (userTraining) {
-      userTraining.status = trainingProgress.status; // Sync user status with training status
-      userTraining.pass = trainingProgress.pass; // Sync pass status
+      userTraining.status = trainingProgress.status;
+      userTraining.pass = trainingProgress.pass;
+      if (trainingProgress.completedAt) {
+        userTraining.completedAt = trainingProgress.completedAt;
+      }
     }
 
     // Save updated user status
     await user.save();
 
+    // Calculate completion percentages for response
+    const totalModules = trainingProgress.modules.length;
+    const completedModules = trainingProgress.modules.filter(mod => mod.pass).length;
+    const totalVideos = trainingProgress.modules.reduce((sum, mod) => sum + mod.videos.length, 0);
+    const completedVideos = trainingProgress.modules.reduce((sum, mod) => 
+      sum + mod.videos.filter(v => v.pass).length, 0
+    );
+
+    const moduleCompletionPercentage = totalModules > 0 ? (completedModules / totalModules) * 100 : 0;
+    const videoCompletionPercentage = totalVideos > 0 ? (completedVideos / totalVideos) * 100 : 0;
+    const overallCompletionPercentage = (moduleCompletionPercentage + videoCompletionPercentage) / 2;
+
     // Send success response
     res.status(200).json({
-      message: "Training progress and user status updated successfully",
-      data: { trainingProgress, user },
+      success: true,
+      message: "Training progress updated successfully",
+      data: {
+        trainingProgress: {
+          id: trainingProgress._id,
+          status: trainingProgress.status,
+          pass: trainingProgress.pass,
+          completedAt: trainingProgress.completedAt
+        },
+        user: {
+          id: user._id,
+          username: user.username,
+          trainingStatus: userTraining ? userTraining.status : 'Not Found'
+        },
+        progress: {
+          moduleCompletion: moduleCompletionPercentage.toFixed(2) + '%',
+          videoCompletion: videoCompletionPercentage.toFixed(2) + '%',
+          overallCompletion: overallCompletionPercentage.toFixed(2) + '%'
+        }
+      }
     });
 
   } catch (error) {
-    console.error('Error updating training progress and user status:', error.stack);
-    res.status(500).json({ message: "Server error while updating progress and user status" });
+    console.error('Error updating training progress:', error.stack);
+    res.status(500).json({ 
+      success: false,
+      message: "Server error while updating training progress",
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+    });
   }
 };
-
-
-
-// export const UpdateuserTrainingprocess = async (req, res) => {
-//   // Extract parameters from query string
-//   const { userId, trainingId, moduleId, videoId } = req.query;
-
-//   // Validate required parameters
-//   if (!userId || !trainingId || !moduleId || !videoId) {
-//     return res.status(400).json({ message: "Missing required query parameters" });
-//   }
-
-//   try {
-//     // 🔍 Find the user's training progress record
-//     const trainingProgress = await TrainingProgress.findOne({ userId, trainingId });
-//     if (!trainingProgress) {
-//       return res.status(404).json({ message: "Training progress not found" });
-//     }
-
-//     // 🔍 Locate the correct module in training progress
-//     const module = trainingProgress.modules.find(mod => mod.moduleId.toString() === moduleId);
-//     if (!module) {
-//       return res.status(404).json({ message: "Module not found" });
-//     }
-
-//     // 🔍 Find the specific video in that module
-//     const video = module.videos.find(v => v.videoId.toString() === videoId);
-//     if (!video) {
-//       return res.status(404).json({ message: "Video not found" });
-//     }
-
-//     // ✅ Mark this video as completed if not already
-//     if (!video.pass) {
-//       video.pass = true;
-//     }
-
-//     // ✅ If all videos in this module are passed, mark the module as passed
-//     const allVideosPassed = module.videos.every(v => v.pass === true);
-//     if (allVideosPassed && !module.pass) {
-//       module.pass = true;
-//     }
-
-//     // ✅ Check if all modules are passed, mark training as completed
-//     const allModulesPassed = trainingProgress.modules.every(mod => mod.pass === true);
-//     if (allModulesPassed) {
-//       trainingProgress.pass = true;
-//       trainingProgress.status = 'Completed';
-//     } else {
-//       trainingProgress.status = 'In Progress';
-//     }
-
-//     // 💾 Save the updated training progress
-//     await trainingProgress.save();
-
-//     // 🔍 Get user details for syncing status
-//     const user = await User.findById(userId);
-//     if (!user) {
-//       return res.status(404).json({ message: "User not found" });
-//     }
-
-//     // 🔁 Sync training status into the User’s `training[]` array
-//     const userTraining = user.training.find(train => train.trainingId.toString() === trainingId);
-//     if (userTraining) {
-//       userTraining.status = trainingProgress.status;
-//       userTraining.pass = trainingProgress.pass;
-//     }
-
-//     // 💾 Save updated user object
-//     await user.save();
-
-//     // ✅ If training is completed, send a confirmation email
-//     if (trainingProgress.status === 'Completed') {
-//       const emp = await Employee.findOne({ userId });          // employee details
-//       const training = await Training.findById(trainingId);    // training title
-
-//       if (emp && training) {
-//         await sendCompletionEmail({
-//           name: user.name,
-//           empId: emp.empId,
-//           trainingName: training.title,
-//           branch: emp.branchName,
-//           email: user.email
-//         });
-//       }
-//     }
-
-//     // 📤 Respond with success
-//     res.status(200).json({
-//       message: "Training progress and user status updated successfully",
-//       data: { trainingProgress, user },
-//     });
-
-//   } catch (error) {
-//     console.error('Error updating training progress and user status:', error.stack);
-//     res.status(500).json({ message: "Server error while updating progress and user status" });
-//   }
-// };
 
 
 
@@ -727,7 +849,7 @@ export const GetuserTrainingprocessmodule = async (req, res) => {
     const videoCompletionPercentage = totalVideos > 0
       ? (completedVideos / totalVideos) * 100
       : 0;
-    const moduledata = await Module.findById(selectedModule.moduleId)
+    const moduledata = await Module.findById(selectedModule.moduleId);
 
     // Return response with module data and percentage completion
     res.status(200).json({
@@ -740,5 +862,174 @@ export const GetuserTrainingprocessmodule = async (req, res) => {
   } catch (error) {
     console.error('Error finding module:', error.message);
     res.status(500).json({ message: "Server error while finding module" });
+  }
+};
+
+// Unified training API that returns both assigned and mandatory trainings for a specific user
+export const GetUserAllTrainings = async (req, res) => {
+  const { empID } = req.query;
+
+  try {
+    console.log('🔍 Getting all trainings for user:', empID);
+
+    // 1. Find user based on empID
+    const user = await User.findOne({ empID })
+      .populate({
+        path: 'training.trainingId',
+      });
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // 2. Fetch all training progress using user ID
+    const trainingProgress = await TrainingProgress.find({ userId: user._id });
+
+    // 3. Get user's role/designation for mandatory training filtering
+    const userRole = user.designation || user.role || 'generalist';
+    console.log('🔍 User role for mandatory training filtering:', userRole);
+
+    // 4. Process assigned trainings (non-mandatory)
+    const assignedTrainings = user.training
+      .filter(training => {
+        const trainingType = training.trainingId.Trainingtype;
+        const isMandatory = trainingType === 'Mandatory' || trainingType === 'mandatory';
+        
+        if (isMandatory) {
+          console.log(`Skipping mandatory training "${training.trainingId.trainingName}" from assigned trainings`);
+          return false;
+        }
+        
+        return true;
+      })
+      .map(training => {
+        const progress = trainingProgress.find(p => p.trainingId.toString() === training.trainingId._id.toString());
+
+        if (!progress) {
+          return {
+            trainingId: training.trainingId._id,
+            name: training.trainingId.trainingName || 'Unknown Training',
+            completionPercentage: 0,
+            type: 'assigned'
+          };
+        }
+
+        let totalModules = 0;
+        let completedModules = 0;
+        let totalVideos = 0;
+        let completedVideos = 0;
+
+        progress.modules.forEach(module => {
+          totalModules++;
+          if (module.pass) completedModules++;
+
+          module.videos.forEach(video => {
+            totalVideos++;
+            if (video.pass) completedVideos++;
+          });
+        });
+
+        const moduleCompletionPercentage = totalModules > 0 ? (completedModules / totalModules) * 100 : 0;
+        const videoCompletionPercentage = totalVideos > 0 ? (completedVideos / totalVideos) * 100 : 0;
+        const overallCompletionPercentage = (moduleCompletionPercentage + videoCompletionPercentage) / 2;
+
+        return {
+          trainingId: training.trainingId._id,
+          name: training.trainingId.trainingName || 'Unknown Training',
+          completionPercentage: overallCompletionPercentage.toFixed(2),
+          type: 'assigned',
+          totalModules,
+          completedModules,
+          totalVideos,
+          completedVideos
+        };
+      });
+
+    // 5. Get mandatory trainings that are assigned to user's role
+    // Only include trainings specifically assigned to the user's role, not "All" or "No Role"
+    const mandatoryTrainings = await Training.find({ 
+      Trainingtype: 'Mandatory',
+      Assignedfor: { $in: [userRole] } // Only include trainings assigned to user's specific role
+    });
+
+    console.log('🔍 User role:', userRole);
+    console.log('🔍 Found mandatory trainings for role:', userRole, mandatoryTrainings.length);
+    console.log('🔍 Mandatory training names:', mandatoryTrainings.map(t => t.trainingName));
+
+    // 6. Process mandatory trainings with user-specific progress
+    const processedMandatoryTrainings = await Promise.all(
+      mandatoryTrainings.map(async (training) => {
+        // Check if user has progress for this mandatory training
+        const userProgress = trainingProgress.find(p => p.trainingId.toString() === training._id.toString());
+        
+        let totalModules = 0;
+        let completedModules = 0;
+        let totalVideos = 0;
+        let completedVideos = 0;
+        let completionPercentage = 0;
+
+        if (userProgress) {
+          // User has progress - calculate from their progress
+          userProgress.modules.forEach(module => {
+            totalModules++;
+            if (module.pass) completedModules++;
+
+            module.videos.forEach(video => {
+              totalVideos++;
+              if (video.pass) completedVideos++;
+            });
+          });
+
+          const moduleCompletionPercentage = totalModules > 0 ? (completedModules / totalModules) * 100 : 0;
+          const videoCompletionPercentage = totalVideos > 0 ? (completedVideos / totalVideos) * 100 : 0;
+          completionPercentage = (moduleCompletionPercentage + videoCompletionPercentage) / 2;
+        } else {
+          // User has no progress - set to 0
+          totalModules = training.modules.length;
+          totalVideos = 0; // Will be calculated when modules are populated
+        }
+
+        return {
+          trainingId: training._id,
+          name: training.trainingName,
+          completionPercentage: completionPercentage.toFixed(2),
+          type: 'mandatory',
+          totalModules,
+          completedModules,
+          totalVideos,
+          completedVideos,
+          assignedFor: training.Assignedfor,
+          hasUserProgress: !!userProgress
+        };
+      })
+    );
+
+    // 7. Calculate overall completion percentage
+    const allTrainings = [...assignedTrainings, ...processedMandatoryTrainings];
+    const totalCompletionPercentage = allTrainings.reduce((sum, training) => sum + parseFloat(training.completionPercentage), 0);
+    const userOverallCompletionPercentage = allTrainings.length > 0 ? (totalCompletionPercentage / allTrainings.length).toFixed(2) : 0;
+
+    // 8. Return unified response
+    res.status(200).json({
+      message: "All trainings data found",
+      data: {
+        user: {
+          _id: user._id,
+          empID: user.empID,
+          name: user.name,
+          designation: user.designation,
+          role: user.role
+        },
+        assignedTrainings,
+        mandatoryTrainings: processedMandatoryTrainings,
+        allTrainings: allTrainings,
+        userOverallCompletionPercentage,
+        userRole
+      }
+    });
+
+  } catch (error) {
+    console.error('Error in GetUserAllTrainings:', error);
+    res.status(500).json({ message: "Server error while fetching trainings" });
   }
 };

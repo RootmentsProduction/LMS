@@ -115,6 +115,71 @@ const TrainingData = () => {
                     </div>
                 </div>
 
+                {/* Delete All Trainings Section */}
+                <div className="mt-6 ml-10 p-4 bg-red-50 border border-red-200 rounded-lg">
+                    <h3 className="text-lg font-semibold text-red-800 mb-3">⚠️ Danger Zone</h3>
+                    <p className="text-sm text-red-700 mb-4">
+                        This action will permanently delete ALL trainings and cannot be undone.
+                    </p>
+                    <div className="flex items-center gap-3">
+                        <input
+                            type="checkbox"
+                            id="deleteAllCheckbox"
+                            className="w-4 h-4 text-red-600 bg-gray-100 border-gray-300 rounded focus:ring-red-500 focus:ring-2"
+                        />
+                        <label htmlFor="deleteAllCheckbox" className="text-sm text-red-700 font-medium">
+                            I understand this will delete ALL trainings
+                        </label>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={async () => {
+                            const deleteAllCheckbox = document.getElementById('deleteAllCheckbox');
+                            if (deleteAllCheckbox && deleteAllCheckbox.checked) {
+                                if (confirm('Are you absolutely sure you want to delete ALL trainings? This action cannot be undone!')) {
+                                    try {
+                                        if (filteredData.length === 0) {
+                                            alert('No trainings found to delete.');
+                                            return;
+                                        }
+                                        
+                                        // Delete all trainings
+                                        const deletePromises = filteredData.map(training =>
+                                            fetch(`${baseUrl.baseUrl}api/user/delete/training/${training._id}`, {
+                                                method: 'DELETE',
+                                                headers: {
+                                                    'Content-Type': 'application/json',
+                                                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                                                }
+                                            })
+                                        );
+                                        
+                                        const results = await Promise.all(deletePromises);
+                                        const failedDeletes = results.filter(result => !result.ok);
+                                        
+                                        if (failedDeletes.length > 0) {
+                                            alert(`Failed to delete ${failedDeletes.length} training(s). Please try again.`);
+                                        } else {
+                                            alert(`Successfully deleted ${filteredData.length} training(s)`);
+                                            // Reset the checkbox and refresh data
+                                            deleteAllCheckbox.checked = false;
+                                            window.location.reload(); // Refresh to show updated data
+                                        }
+                                    } catch (error) {
+                                        console.error('Error deleting all trainings:', error);
+                                        alert('An error occurred while deleting all trainings. Please try again.');
+                                    }
+                                }
+                            } else {
+                                alert('Please check the confirmation checkbox to delete all trainings.');
+                            }
+                        }}
+                        className="mt-3 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:opacity-50 flex items-center gap-2"
+                    >
+                        🗑️ Delete All Trainings
+                    </button>
+                </div>
+
                 <div className="mt-10 ml-10 flex flex-wrap gap-3">
                     {loading && (
                         <>

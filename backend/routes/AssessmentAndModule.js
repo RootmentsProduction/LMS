@@ -1,9 +1,11 @@
 import express from 'express';
-import { assignModuleToUser, assignAssessmentToUser, ReassignTraining, deleteTrainingController, GetAssessment } from '../controllers/AssessmentAndModule.js';
-import { GetuserTraining, GetuserTrainingprocess, GetuserTrainingprocessmodule, UpdateuserTrainingprocess } from '../controllers/CreateUser.js';
-import { AssessmentAssign, TrainingDetails } from '../controllers/AssessmentReassign.js';
+import { assignModuleToUser, assignAssessmentToUser, ReassignTraining, deleteTrainingController, GetAssessment, getVideoAssessment, submitVideoAssessment } from '../controllers/AssessmentAndModule.js';
+import { GetuserTraining, GetuserTrainingprocess, GetuserTrainingprocessmodule, UpdateuserTrainingprocess, GetUserAllTrainings } from '../controllers/CreateUser.js';
+import { AssessmentAssign, TrainingDetails, GetTrainingDetailsSimple } from '../controllers/AssessmentReassign.js';
 import { GetAssessmentDetails } from '../controllers/moduleController.js';
+import { UserAssessmentGet } from '../controllers/FutterAssessment.js';
 import { MiddilWare } from '../lib/middilWare.js';
+import User from '../model/User.js';
 
 const router = express.Router();
 
@@ -12,6 +14,7 @@ const router = express.Router();
  * @swagger
  * /api/user/assign-module:
  *   post:
+ *     tags: [Modules]
  *     summary: Assign a module to a user
  *     description: Assigns a training or learning module to a specific user with an optional deadline.
  *     requestBody:
@@ -62,6 +65,7 @@ router.post('/assign-module', assignModuleToUser);
  * @swagger
  * /api/user/assign-assessment:
  *   post:
+ *     tags: [Assessments]
  *     summary: Assign an assessment to a user
  *     description: Assigns an assessment to a specific user with an optional deadline.
  *     requestBody:
@@ -113,15 +117,16 @@ router.post('/assign-assessment', assignAssessmentToUser);
  * @swagger
  * /api/user/getAll/training:
  *   get:
+ *     tags: [Training]
  *     summary: Retrieve all user training
  *     description: Fetches a list of all trainings assigned to a user, including their progress and overall completion percentage.
  *     parameters:
  *       - in: query
- *         name: email
+ *         name: empID
  *         schema:
  *           type: string
  *         required: true
- *         description: Email of the user to fetch training progress for.
+ *         description: Employee ID of the user to fetch training progress for.
  *     responses:
  *       200:
  *         description: Successfully retrieved training data.
@@ -165,7 +170,61 @@ router.post('/assign-assessment', assignAssessmentToUser);
  *         description: Internal server error.
  */
 
-router.get('/getAll/training', GetuserTraining);
+/**
+ * @swagger
+ * /api/user/getAll/trainings:
+ *   get:
+ *     tags: [Training]
+ *     summary: Retrieve all user trainings (assigned and mandatory)
+ *     description: Fetches a unified list of all trainings assigned to a user, including both assigned and mandatory trainings with their progress.
+ *     parameters:
+ *       - in: query
+ *         name: empID
+ *         schema:
+ *           type: string
+ *         required: true
+ *         description: Employee ID of the user to fetch all trainings for.
+ *     responses:
+ *       200:
+ *         description: Successfully retrieved all training data.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: All trainings data found
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     user:
+ *                       type: object
+ *                       description: User data including ID and role.
+ *                     assignedTrainings:
+ *                       type: array
+ *                       description: List of assigned trainings with completion status.
+ *                     mandatoryTrainings:
+ *                       type: array
+ *                       description: List of mandatory trainings assigned to user's role.
+ *                     allTrainings:
+ *                       type: array
+ *                       description: Combined list of all trainings.
+ *                     userOverallCompletionPercentage:
+ *                       type: string
+ *                       example: "75.50"
+ *                     userRole:
+ *                       type: string
+ *                       example: "Manager"
+ *       400:
+ *         description: Bad request, invalid parameters.
+ *       404:
+ *         description: User not found.
+ *       500:
+ *         description: Internal server error.
+ */
+
+router.get('/getAll/trainings', GetUserAllTrainings);
 
 
 
@@ -339,7 +398,7 @@ router.get('/getAll/trainingprocess/module', GetuserTrainingprocessmodule);
  *         description: Internal server error.
  */
 
-router.get('/update/trainingprocess', UpdateuserTrainingprocess);
+router.patch('/update/trainingprocess', UpdateuserTrainingprocess);
 
 
 
@@ -352,6 +411,7 @@ router.get('/update/trainingprocess', UpdateuserTrainingprocess);
  * @swagger
  * /api/user/reassign/training:
  *   post:
+ *     tags: [Training]
  *     summary: Reassign training to users
  *     description: Reassigns a training program to one or more users by removing existing progress and reinitializing the training state.
  *     requestBody:
@@ -562,6 +622,9 @@ router.get('/get/AllAssessment', GetAssessment);
 
 router.get('/get/Training/details/:id', TrainingDetails);
 
+// Simple training details for frontend
+router.get('/get/Training/details/simple/:id', GetTrainingDetailsSimple);
+
 
 
 
@@ -675,5 +738,295 @@ router.post('/post/createAssessment', MiddilWare, AssessmentAssign);
  *         description: Internal server error.
  */
 router.get('/get/assessment/details/:id', GetAssessmentDetails);
+
+
+
+/**
+ * @swagger
+ * /api/user/getAll/assessment:
+ *   get:
+ *     summary: Retrieve all assessments with user progress
+ *     description: Returns all assessments in the system, along with statistics on how many users were assigned and how many passed each assessment.
+ *     responses:
+ *       200:
+ *         description: Successfully retrieved all assessments with statistics.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Assessments retrieved successfully.
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       assessmentId:
+ *                         type: string
+ *                         example: "60f8a6b5f83e4c42f87e7d90"
+ *                       assessmentName:
+ *                         type: string
+ *                         example: "JavaScript Basics"
+ *                       assessment:
+ *                         type: integer
+ *                         example: 10
+ *                       assessmentdeadline:
+ *                         type: string
+ *                         format: date
+ *                         example: "2025-06-01"
+ *                       assessmentduration:
+ *                         type: integer
+ *                         example: 30
+ *                       totalAssigned:
+ *                         type: integer
+ *                         example: 5
+ *                       totalPassed:
+ *                         type: integer
+ *                         example: 3
+ *                       completionPercentage:
+ *                         type: string
+ *                         example: "60.00"
+ *       400:
+ *         description: Bad request, invalid query parameters.
+ *       500:
+ *         description: Internal server error.
+ */
+router.get('/getAll/assessment', UserAssessmentGet);
+
+
+
+/**
+ * @swagger
+ * /api/user/get/user/details:
+ *   get:
+ *     summary: Get user details by empID
+ *     description: Retrieves user details (username, email, empID, workingBranch, designation) based on the provided employee ID.
+ *     parameters:
+ *       - in: query
+ *         name: empID
+ *         schema:
+ *           type: string
+ *         required: true
+ *         description: The employee ID of the user to retrieve.
+ *     responses:
+ *       200:
+ *         description: User details retrieved successfully.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: User details found
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     username:
+ *                       type: string
+ *                       example: "John Doe"
+ *                     email:
+ *                       type: string
+ *                       example: "john.doe@example.com"
+ *                     empID:
+ *                       type: string
+ *                       example: "EMP001"
+ *                     workingBranch:
+ *                       type: string
+ *                       example: "Kottayam Branch"
+ *                     designation:
+ *                       type: string
+ *                       example: "Sales Executive"
+ *       404:
+ *         description: User not found.
+ *       500:
+ *         description: Internal server error.
+ */
+router.get('/get/user/details', async (req, res) => {
+    try {
+        const empID = req.query.empID;
+        if (!empID) {
+            return res.status(400).json({ message: 'Employee ID is required' });
+        }
+
+        const user = await User.findOne({ empID: empID });
+
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+                 res.status(200).json({
+             message: 'User details found',
+             data: {
+                 _id: user._id,
+                 username: user.username,
+                 email: user.email,
+                 empID: user.empID,
+                 workingBranch: user.workingBranch,
+                 designation: user.designation
+             }
+         });
+    } catch (error) {
+        console.error('Error fetching user details:', error);
+        res.status(500).json({ message: 'Internal server error' });
+    }
+});
+
+/**
+ * @swagger
+ * /api/user/get/video-assessment/{videoId}:
+ *   get:
+ *     summary: Get video assessment questions
+ *     description: Retrieves assessment questions for a specific video without revealing correct answers.
+ *     parameters:
+ *       - in: path
+ *         name: videoId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The video ID to get assessment questions for
+ *     responses:
+ *       200:
+ *         description: Video assessment questions retrieved successfully.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Video assessment questions retrieved successfully"
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     videoId:
+ *                       type: string
+ *                       description: The video ID
+ *                     videoTitle:
+ *                       type: string
+ *                       description: The video title
+ *                     questions:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           _id:
+ *                             type: string
+ *                             description: Question ID
+ *                           questionText:
+ *                             type: string
+ *                             description: The question text
+ *                           options:
+ *                             type: array
+ *                             items:
+ *                               type: string
+ *                             description: Multiple choice options
+ *       400:
+ *         description: Video ID is required.
+ *       404:
+ *         description: Video not found.
+ *       500:
+ *         description: Internal server error.
+ */
+router.get('/get/video-assessment/:videoId', getVideoAssessment);
+
+/**
+ * @swagger
+ * /api/user/submit/video-assessment/{videoId}:
+ *   post:
+ *     summary: Submit video assessment answers
+ *     description: Submits answers for a video assessment and calculates the score.
+ *     parameters:
+ *       - in: path
+ *         name: videoId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The video ID to submit assessment answers for
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               answers:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     questionId:
+ *                       type: string
+ *                       description: The question ID
+ *                     selectedAnswer:
+ *                       type: string
+ *                       description: The user's selected answer
+ *               userId:
+ *                 type: string
+ *                 description: The user ID (optional, for progress tracking)
+ *               trainingId:
+ *                 type: string
+ *                 description: The training ID (optional, for progress tracking)
+ *               moduleId:
+ *                 type: string
+ *                 description: The module ID (optional, for progress tracking)
+ *     responses:
+ *       200:
+ *         description: Video assessment submitted successfully.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Video assessment submitted successfully"
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     videoId:
+ *                       type: string
+ *                       description: The video ID
+ *                     score:
+ *                       type: number
+ *                       description: The assessment score (0-100)
+ *                     passed:
+ *                       type: boolean
+ *                       description: Whether the user passed the assessment
+ *                     totalQuestions:
+ *                       type: number
+ *                       description: Total number of questions
+ *                     correctAnswers:
+ *                       type: number
+ *                       description: Number of correct answers
+ *                     results:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           questionId:
+ *                             type: string
+ *                           selectedAnswer:
+ *                             type: string
+ *                           correctAnswer:
+ *                             type: string
+ *                           correct:
+ *                             type: boolean
+ *       400:
+ *         description: Video ID and answers array are required.
+ *       404:
+ *         description: Video not found.
+ *       500:
+ *         description: Internal server error.
+ */
+router.post('/submit/video-assessment/:videoId', submitVideoAssessment);
 
 export default router;

@@ -8,6 +8,7 @@ const router = express.Router();
  * @swagger
  * /api/user/assessment/user/get/assessment:
  *   get:
+ *     tags: [Assessments]
  *     summary: Retrieve user assessments
  *     description: Fetches all assessments assigned to or created for the user.
  *     parameters:
@@ -46,6 +47,7 @@ router.get('/user/get/assessment', UserAssessmentGet);
  * @swagger
  * /api/user/assessment/user/get/assessment/quesions:
  *   get:
+ *     tags: [Assessments]
  *     summary: Get questions for a user assessment
  *     description: Retrieves questions associated with a particular assessment for the user.
  *     parameters:

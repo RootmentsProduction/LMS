@@ -28,6 +28,7 @@ const HomeDatastore = ({ user }) => {
     const token = localStorage.getItem('token');
     const [data, setData] = useState([]);
     const [loading, setLoading] = useState(true); // Loading state
+    const [employeeCount, setEmployeeCount] = useState(0);
 
     useEffect(() => {
         const fetchData = async () => {
@@ -53,7 +54,33 @@ const HomeDatastore = ({ user }) => {
             }
         };
 
+        const fetchEmployeeCount = async () => {
+            try {
+                const response = await fetch(baseUrl.baseUrl + 'api/employee_range', {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    credentials: "include",
+                    body: JSON.stringify({ startEmpId: "EMP1", endEmpId: "EMP9999" }),
+                });
+                
+                if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText}`);
+                const json = await response.json();
+                
+                if (json?.data && Array.isArray(json.data)) {
+                    setEmployeeCount(json.data.length);
+                    console.log('Employee count fetched:', json.data.length);
+                }
+            } catch (error) {
+                console.error('Failed to fetch employee count:', error.message);
+                // Fallback to data from progress API
+                setEmployeeCount(data?.userCount || 0);
+            }
+        };
+
         fetchData();
+        fetchEmployeeCount();
     }, [data, token]);
 
 
@@ -69,13 +96,15 @@ const HomeDatastore = ({ user }) => {
                 </div>
                 <div className="md:ml-[100px] mt-[100px] ">
                     <div className="ml-12 text-black">
-                        <div className="flex items-center gap-1 mt-5 font-semibold ">
-                            <p>Hello, </p>
-                            <h5>
-                                <div className="text-xl text-[#016E5B]">
-                                    {!loading && (user.role)}
+                        <div className="flex items-center gap-3 mt-5 mb-4">
+                            <div className="flex items-center gap-2">
+                                <p className="text-lg font-medium text-gray-700">Hello,</p>
+                                <div className="bg-gradient-to-r from-[#016E5B] to-[#01997A] text-white px-4 py-2 rounded-full shadow-lg">
+                                    <span className="text-lg font-bold capitalize">
+                                        {!loading && user.role?.replace('_', ' ')}
+                                    </span>
                                 </div>
-                            </h5>
+                            </div>
                         </div>
                         <p className="text-sm md:text-lg">Your dashboard is ready, Let’s create a productive learning environment!</p>
                     </div>
@@ -103,7 +132,7 @@ const HomeDatastore = ({ user }) => {
                                         <div className="flex flex-col absolute top-5 left-2 w-10">
                                             <p className="text-sm">Total employee</p>
                                             <h2 className="md:text-2xl sm:text-lg font-bold text-[#016E5B]">
-                                                {data?.userCount}
+                                                {employeeCount || data?.userCount || 0}
                                             </h2>
                                         </div>
                                     </div>

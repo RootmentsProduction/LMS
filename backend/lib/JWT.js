@@ -15,3 +15,5 @@ const verifyJWT = (req, res, next) => {
 };
 
 // Example protected route
+
+export { verifyJWT };

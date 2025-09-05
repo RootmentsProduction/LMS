@@ -9,6 +9,7 @@ import { MiddilWare } from '../lib/middilWare.js';
  * @swagger
  * /api/modules:
  *   post:
+ *     tags: [Modules]
  *     summary: Create a new module
  *     description: Creates a new training module in the system.
  *     requestBody:
@@ -54,6 +55,7 @@ router.post('/modules', createModule);
  * @swagger
  * /api/assessments:
  *   post:
+ *     tags: [Assessments]
  *     summary: Create a new assessment
  *     description: Creates a new assessment in the system.
  *     requestBody:
@@ -95,6 +97,7 @@ router.post('/assessments', MiddilWare, createAssessment);
  * @swagger
  * /api/modules/{id}:
  *   get:
+ *     tags: [Modules]
  *     summary: Get modules
  *     description: Retrieves one or all modules. If an `id` is provided, returns a single module; otherwise, returns all modules.
  *     parameters:
@@ -141,6 +144,7 @@ router.get('/assessments/:id?', getAssessments);
  * @swagger
  * /api/trainings:
  *   post:
+ *     tags: [Training]
  *     summary: Create a new training
  *     description: Creates a new training session, linking modules or assessments if necessary.
  *     requestBody:
@@ -176,6 +180,7 @@ router.post('/trainings', MiddilWare, createTraining);
  * @swagger
  * /api/trainings/{id}:
  *   get:
+ *     tags: [Training]
  *     summary: Get training by ID or list all
  *     description: Retrieves a specific training if an `id` is provided; otherwise, returns all trainings.
  *     parameters:

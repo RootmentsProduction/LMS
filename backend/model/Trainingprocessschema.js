@@ -5,6 +5,7 @@ const TrainingProgressSchema = new mongoose.Schema({
         ref: 'User',
         required: true,
     },
+     trainingName: { type: String, required: true },
     trainingId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Training',
@@ -43,6 +44,22 @@ const TrainingProgressSchema = new mongoose.Schema({
                     pass: {
                         type: Boolean,
                         default: false,
+                    },
+                    watchTime: {
+                        type: Number,
+                        default: 0, // Time watched in seconds
+                    },
+                    totalDuration: {
+                        type: Number,
+                        default: 0, // Total video duration in seconds
+                    },
+                    watchPercentage: {
+                        type: Number,
+                        default: 0, // Percentage of video watched (0-100)
+                    },
+                    lastWatchedAt: {
+                        type: Date,
+                        default: Date.now,
                     },
                 },
             ],

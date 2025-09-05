@@ -11,6 +11,9 @@ const ReassignData = () => {
     const [training, setTraining] = useState(null);
     const [assignedTo, setAssignedTo] = useState([]); // Multi-select values
     const [users, setUsers] = useState([]);
+    const [allUsers, setAllUsers] = useState([]); // Store all users for filtering
+    const [selectedRole, setSelectedRole] = useState(""); // Role filter
+    const [availableRoles, setAvailableRoles] = useState([]); // Available roles
     const token = localStorage.getItem('token');
 
     useEffect(() => {
@@ -33,14 +36,12 @@ const ReassignData = () => {
         };
         const fetchUsers = async () => {
             try {
-                const endpoint = "api/usercreate/getAllUser"
-
-                const response = await fetch(`${baseUrl.baseUrl}${endpoint}`, {
-                    method: "GET",
-                    headers: { "Content-Type": "application/json" ,
-                        'Authorization': `Bearer ${token}`, 
-                    },
+                // Fetch from external employee API
+                const response = await fetch(`${baseUrl.baseUrl}api/employee_range`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
                     credentials: "include",
+                    body: JSON.stringify({ startEmpId: "EMP1", endEmpId: "EMP9999" }),
                 });
 
                 if (!response.ok) {
@@ -48,17 +49,25 @@ const ReassignData = () => {
                 }
 
                 const data = await response.json();
-                console.log(data);
+                console.log('External employee data:', data);
 
-                // Map users to options required by react-select
-
-                const options = data.data.map((user) => ({
-                    value: user._id,
-                    label: "EmpId : " + user.empID + " " + " Name :  " + user.username,
+                // Map external employee data to options required by react-select
+                const options = (data?.data || []).map((employee) => ({
+                    value: employee.emp_code, // Use emp_code as the value
+                    label: `EmpId: ${employee.emp_code || 'N/A'} | Name: ${employee.name || 'N/A'} | Role: ${employee.role_name || 'N/A'}`,
+                    role: employee.role_name, // Add role for filtering
+                    empID: employee.emp_code,
+                    username: employee.name,
+                    branch: employee.store_name,
+                    email: employee.email
                 }));
+                
+                setAllUsers(options);
                 setUsers(options);
-
-
+                
+                // Extract unique roles for filtering
+                const roles = [...new Set((data?.data || []).map(emp => emp.role_name).filter(Boolean))];
+                setAvailableRoles(roles);
 
             } catch (error) {
                 console.error("Failed to fetch users:", error.message);
@@ -70,6 +79,26 @@ const ReassignData = () => {
 
 
     }, [id]);
+
+    // Filter users by role
+    const handleRoleFilter = (role) => {
+        setSelectedRole(role);
+        if (role === "") {
+            setUsers(allUsers);
+        } else {
+            const filteredUsers = allUsers.filter(user => user.role === role);
+            setUsers(filteredUsers);
+        }
+        // Clear selected users when filter changes
+        setAssignedTo([]);
+    };
+
+    // Quick select all users of a specific role
+    const handleSelectAllByRole = (role) => {
+        const roleUsers = allUsers.filter(user => user.role === role);
+        setAssignedTo(roleUsers);
+    };
+
     const HandleSubmit = async (e) => {
         e.preventDefault()
         console.log(assignedTo, id);
@@ -125,20 +154,63 @@ const ReassignData = () => {
                     </div>
                     <div className="mt-5 flex justify-start items-center">
                         <form action="" onSubmit={HandleSubmit} className="flex flex-col gap-5">
+                            {/* Role Filter Section */}
+                            <div className="w-96">
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                    Filter by Role:
+                                </label>
+                                <select 
+                                    value={selectedRole} 
+                                    onChange={(e) => handleRoleFilter(e.target.value)}
+                                    className="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#016E5B]"
+                                >
+                                    <option value="">All Roles</option>
+                                    {availableRoles.map((role, index) => (
+                                        <option key={index} value={role}>{role}</option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            {/* Quick Select Buttons */}
+                            {selectedRole && (
+                                <div className="w-96">
+                                    <button 
+                                        type="button"
+                                        onClick={() => handleSelectAllByRole(selectedRole)}
+                                        className="px-4 py-2 bg-[#016E5B] text-white rounded-md hover:bg-[#014C3F] text-sm"
+                                    >
+                                        Select All {selectedRole}s
+                                    </button>
+                                </div>
+                            )}
+
                             <div className="mt-5 flex justify-start items-center">
                                 <div className="w-96">
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                        Select Users:
+                                    </label>
                                     <Select
-                                        placeholder="select or search"
+                                        placeholder="Select or search users"
                                         options={users}
                                         isMulti
                                         value={assignedTo}
                                         onChange={setAssignedTo} // Updates state
-                                        className="w-full "
+                                        className="w-full"
+                                        isSearchable={true}
+                                        maxMenuHeight={200}
                                     />
                                 </div>
                             </div>
+                            
+                            {/* Selected Users Count */}
+                            {assignedTo.length > 0 && (
+                                <div className="text-sm text-gray-600">
+                                    Selected: {assignedTo.length} user{assignedTo.length !== 1 ? 's' : ''}
+                                </div>
+                            )}
+
                             <button type="submit" className="btn text-white btn-accent">
-                                Reassign
+                                Reassign Training ({assignedTo.length} users)
                             </button>
                         </form>
                     </div>

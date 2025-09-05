@@ -7,6 +7,41 @@ import TrainingProgress from "../model/Trainingprocessschema.js";
 import { Training } from "../model/Traning.js";
 import User from "../model/User.js";
 
+// Helper function to convert YouTube URLs to embed format
+const convertToEmbedUrl = (url) => {
+    if (!url) return '';
+    
+    
+    // Handle different YouTube URL formats
+    let videoId = '';
+    
+    // Regular YouTube URL: https://www.youtube.com/watch?v=VIDEO_ID
+    if (url.includes('youtube.com/watch?v=')) {
+        videoId = url.split('v=')[1];
+    }
+    // YouTube short URL: https://youtu.be/VIDEO_ID
+    else if (url.includes('youtu.be/')) {
+        videoId = url.split('youtu.be/')[1];
+    }
+    // YouTube embed URL: https://www.youtube.com/embed/VIDEO_ID
+    else if (url.includes('youtube.com/embed/')) {
+        videoId = url.split('embed/')[1];
+    }
+    
+    // Remove any additional parameters
+    if (videoId && videoId.includes('&')) {
+        videoId = videoId.split('&')[0];
+    }
+    
+    // Return embed URL if we found a video ID
+    if (videoId) {
+        return `https://www.youtube.com/embed/${videoId}`;
+    }
+    
+    // Return original URL if it's not a YouTube URL
+    return url;
+};
+
 export const AssignToUserAssessment = async (req, res) => {
     try {
         const { id } = req.params;
@@ -713,6 +748,97 @@ export const CreateNotification = async (req, res) => {
         return res.status(500).json({
             message: "Internal server error.",
             error: error.message,
+        });
+    }
+};
+
+export const GetTrainingDetailsSimple = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { userId } = req.query; // Get userId from query parameters
+        console.log('🔍 Getting training details for ID:', id, 'User ID:', userId);
+
+        // Fetch the training details with modules and videos
+        const training = await Training.findById(id).populate({
+            path: 'modules',
+            populate: {
+                path: 'videos'
+            }
+        });
+
+        if (!training) {
+            console.log('❌ Training not found for ID:', id);
+            return res.status(404).json({ 
+                success: false,
+                message: "Training not found" 
+            });
+        }
+
+        console.log('✅ Training found:', training.name);
+        console.log('📊 Modules count:', training.modules?.length || 0);
+
+        // Get user's training progress if userId is provided
+        let userProgress = null;
+        if (userId) {
+            userProgress = await TrainingProgress.findOne({ 
+                userId: userId, 
+                trainingId: id 
+            });
+            console.log('🔍 User progress found:', !!userProgress);
+        }
+
+        // Transform the data to match frontend expectations
+        const transformedTraining = {
+            _id: training._id,
+            name: training.trainingName, // Use correct field name
+            description: training.description,
+            type: training.Trainingtype || 'assigned',
+            modules: training.modules?.map(module => {
+                // Find module progress
+                const moduleProgress = userProgress?.modules?.find(mp => 
+                    mp.moduleId.toString() === module._id.toString()
+                );
+                
+                return {
+                    _id: module._id,
+                    name: module.moduleName, // Use correct field name
+                    description: module.description,
+                    order: module.order,
+                    completed: moduleProgress?.pass || false,
+                    videos: module.videos?.map(video => {
+                        // Find video progress
+                        const videoProgress = moduleProgress?.videos?.find(vp => 
+                            vp.videoId.toString() === video._id.toString()
+                        );
+                        
+                        return {
+                            _id: video._id,
+                            title: video.title,
+                            description: video.description || '',
+                            videoUrl: convertToEmbedUrl(video.videoUri), // Convert to embed URL
+                            originalUrl: video.videoUri, // Keep original URL for reference
+                            duration: video.duration || 0,
+                            completed: videoProgress?.pass || false
+                        };
+                    }) || []
+                };
+            }) || []
+        };
+
+        console.log('✅ Returning training details with', transformedTraining.modules.length, 'modules');
+
+        return res.status(200).json({
+            success: true,
+            message: "Training details retrieved successfully",
+            data: transformedTraining
+        });
+
+    } catch (error) {
+        console.error('❌ Error getting training details:', error);
+        return res.status(500).json({ 
+            success: false,
+            message: "Internal server error",
+            error: error.message 
         });
     }
 };

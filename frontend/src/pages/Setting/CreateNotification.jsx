@@ -37,50 +37,79 @@ const CreateCustomNotification = () => {
 
     const fetchUsers = async () => {
       try {
-        const endpoint =
-          selectedOption === "user"
-            ? "api/usercreate/getAllUser"
-            : selectedOption === "branch"
-              ? "api/usercreate/getBranch"
-              : "api/usercreate/getAll/designation";
+        let options = [];
 
-        const response = await fetch(`${baseUrl.baseUrl}${endpoint}`, {
-          method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`
-          },
-          credentials: "include",
-        });
+        if (selectedOption === "user") {
+          // Get internal users
+          const response = await fetch(`${baseUrl.baseUrl}api/usercreate/getAllUser`, {
+            method: "GET",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`
+            },
+            credentials: "include",
+          });
 
-        if (!response.ok) throw new Error(`Error: ${response.statusText}`);
-        const data = await response.json();
+          if (response.ok) {
+            const data = await response.json();
+            options = data.data.map((item) => ({
+              value: item._id,
+              label: item.username,
+            }));
+          }
+        } else if (selectedOption === "branch") {
+          // Get branches
+          const response = await fetch(`${baseUrl.baseUrl}api/usercreate/getBranch`, {
+            method: "GET",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`
+            },
+            credentials: "include",
+          });
 
-        const options = data.data.map((item) => ({
-          value:
-            selectedOption === "branch"
-              ? item.locCode
-              : selectedOption === "user"
-                ? item._id
-                : item.designation, // For "designation" case
-          label:
-            selectedOption === "branch"
-              ? item.workingBranch
-              : selectedOption === "user"
-                ? item.username
-                : item.designation, // For "designation" case
-        }));
+          if (response.ok) {
+            const data = await response.json();
+            options = data.data.map((item) => ({
+              value: item.locCode,
+              label: item.workingBranch,
+            }));
+          }
+        } else if (selectedOption === "designation") {
+          // Get designations from external API
+          const response = await fetch(`${baseUrl.baseUrl}api/employee_range`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ startEmpId: "EMP1", endEmpId: "EMP9999" }),
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            const uniqueDesignations = [...new Set(
+              (data?.data || [])
+                .map(emp => emp.role_name)
+                .filter(Boolean)
+            )].sort();
+
+            options = uniqueDesignations.map((designation) => ({
+              value: designation,
+              label: designation,
+            }));
+          }
+        }
 
         setUsers(options);
       } catch (error) {
         console.error("Failed to fetch users:", error.message);
+        setUsers([]);
       }
     };
 
     fetchUsers();
     setAssignedTo([]); // Clear assigned users when selectedOption changes
     setForm((prev) => ({ ...prev, recipient: [], role: selectedOption }));
-  }, [selectedOption]);
+  }, [selectedOption, token]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();

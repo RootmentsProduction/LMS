@@ -50,15 +50,33 @@ const CreateModuleData = () => {
 
     // Save Video and Questions
     const saveCurrentVideo = () => {
+        // Validate current video before saving
+        if (!currentVideo.title || !currentVideo.title.trim()) {
+            toast.error("Please enter a video title.");
+            return;
+        }
+        if (!currentVideo.videoUri || !currentVideo.videoUri.trim()) {
+            toast.error("Please enter a video URL.");
+            return;
+        }
+
         const updatedVideos = videos ? [...videos] : [];
-        updatedVideos.push(currentVideo);
+        updatedVideos.push({
+            ...currentVideo,
+            title: currentVideo.title.trim(),
+            videoUri: currentVideo.videoUri.trim(),
+            questions: currentVideo.questions || []
+        });
         setVideos(updatedVideos);
 
+        // Reset current video form
         setCurrentVideo({
             title: "",
             videoUri: "",
             questions: [{ questionText: "", options: ["", "", "", ""], correctAnswer: "" }],
         });
+
+        toast.success("Video saved successfully!");
     };
 
     // Submit Module
@@ -68,12 +86,41 @@ const CreateModuleData = () => {
             return;
         }
 
+        // Validate module title and description
+        if (!moduleTitle.trim()) {
+            toast.error("Please enter a module title.");
+            return;
+        }
+
+        if (!moduleDescription.trim()) {
+            toast.error("Please enter a module description.");
+            return;
+        }
+
+        // Validate each video has required fields
+        for (let i = 0; i < videos.length; i++) {
+            const video = videos[i];
+            if (!video.title || !video.title.trim()) {
+                toast.error(`Video ${i + 1} is missing a title.`);
+                return;
+            }
+            if (!video.videoUri || !video.videoUri.trim()) {
+                toast.error(`Video ${i + 1} is missing a video URL.`);
+                return;
+            }
+        }
+
         const newModule = {
-            moduleName: moduleTitle,
-            description: moduleDescription,
-            videos,
+            moduleName: moduleTitle.trim(),
+            description: moduleDescription.trim(),
+            videos: videos.map(video => ({
+                ...video,
+                title: video.title.trim(),
+                videoUri: video.videoUri.trim(),
+                questions: video.questions || []
+            }))
         };
-        console.log(newModule);
+        console.log('Submitting module:', newModule);
 
         try {
             const response = await fetch(`${baseUrl.baseUrl}api/modules`, {
@@ -83,10 +130,18 @@ const CreateModuleData = () => {
                 body: JSON.stringify(newModule),
             });
 
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error('Server error:', response.status, errorText);
+                toast.error(`Failed to create module: ${response.status} ${response.statusText}`);
+                return;
+            }
+
             const data = await response.json();
             toast.success(data.message);
         } catch (error) {
-            throw new Error(error);
+            console.error('Network error:', error);
+            toast.error(`Network error: ${error.message}`);
         }
     };
 
@@ -194,8 +249,25 @@ const CreateModuleData = () => {
                     Save video and questions
                 </button>
 
+                {/* Show saved videos count */}
+                {videos && videos.length > 0 && (
+                    <div className="text-center mt-4 mb-4">
+                        <p className="text-green-600 font-semibold">
+                            ✅ {videos.length} video{videos.length !== 1 ? 's' : ''} saved
+                        </p>
+                    </div>
+                )}
+
                 <div className="flex justify-center">
-                    <button onClick={handleSaveModule} className="p-3 w-56 bg-[#016E5B] text-white rounded-lg">
+                    <button 
+                        onClick={handleSaveModule} 
+                        className={`p-3 w-56 rounded-lg ${
+                            videos && videos.length > 0 
+                                ? 'bg-[#016E5B] text-white' 
+                                : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                        }`}
+                        disabled={!videos || videos.length === 0}
+                    >
                         Submit Module
                     </button>
                 </div>

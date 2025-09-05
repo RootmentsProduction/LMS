@@ -104,6 +104,15 @@ const SettingData = () => {
                                 </button>
 
                             </li>
+
+                            <li>
+                                <a
+                                    href="/admin/login-analytics"
+                                    className="text-gray-600 hover:text-black flex items-center"
+                                >
+                                    🔍 Login Analytics
+                                </a>
+                            </li>
                         </ul>
                     </div>
 

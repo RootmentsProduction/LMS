@@ -13,7 +13,15 @@ const TrainingProgress = () => {
 
     useEffect(() => {
         const fetchData = async () => {
+            if (!token) {
+                console.error('No token found for TrainingProgress');
+                return;
+            }
+
             try {
+                console.log('Fetching store manager data from:', `${baseUrl.baseUrl}api/admin/get/storemanagerData`);
+                console.log('Using token:', token ? 'Token exists' : 'No token');
+                
                 const response = await fetch(`${baseUrl.baseUrl}api/admin/get/storemanagerData`, {
                     method: 'GET',
                     headers: {
@@ -23,14 +31,32 @@ const TrainingProgress = () => {
                     credentials: 'include',
                 });
 
+                console.log('Store manager data response status:', response.status);
+
                 if (!response.ok) {
-                    throw new Error('Failed to fetch training progress data');
+                    const errorText = await response.text();
+                    console.error('Store manager data error:', response.status, errorText);
+                    
+                    if (response.status === 401) {
+                        console.error('Authentication failed for store manager data');
+                        return;
+                    }
+                    
+                    throw new Error(`HTTP ${response.status}: ${errorText}`);
                 }
 
                 const result = await response.json();
+                console.log('Store manager data response:', result);
                 setData(result);
             } catch (error) {
                 console.error('Error fetching training progress data:', error);
+                // Set default data structure on error
+                setData({
+                    completedTrainings: { count: 0, data: [] },
+                    pendingTrainings: { count: 0, data: [] },
+                    dueTrainings: { count: 0, data: [] },
+                    userconut: { count: 0 }
+                });
             }
         };
 

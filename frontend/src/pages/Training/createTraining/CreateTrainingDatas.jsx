@@ -45,18 +45,12 @@ const CreateTrainingDatas = () => {
 
         const fetchUsers = async () => {
             try {
-                const endpoint = selectedOption === "user"
-                    ? "api/usercreate/getAllUser"
-                    : selectedOption === "branch"
-                        ? "api/usercreate/getBranch"
-                        : "api/usercreate/getAll/designation";
-                const response = await fetch(`${baseUrl.baseUrl}${endpoint}`, {
-                    method: "GET",
-                    headers: {
-                        "Content-Type": "application/json",
-                        'Authorization': `Bearer ${token}`,
-                    },
+                // Always fetch from external employee API
+                const response = await fetch(`${baseUrl.baseUrl}api/employee_range`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
                     credentials: "include",
+                    body: JSON.stringify({ startEmpId: "EMP1", endEmpId: "EMP9999" }),
                 });
 
                 if (!response.ok) {
@@ -64,32 +58,35 @@ const CreateTrainingDatas = () => {
                 }
 
                 const data = await response.json();
-                console.log(data);
-                console.log(selectedOption);
+                console.log('External employee data:', data);
+                console.log('Selected option:', selectedOption);
 
-                // Map users to options required by react-select
+                const employeeData = data?.data || [];
+
+                // Map users to options based on selected option
                 if (selectedOption === 'branch') {
-                    const options = data.data.map((user) => ({
-                        value: user.locCode,
-                        label: user.workingBranch,
+                    // Get unique branches from employee data
+                    const uniqueBranches = [...new Set(employeeData.map(emp => emp.store_name).filter(Boolean))];
+                    const options = uniqueBranches.map((branch) => ({
+                        value: branch,
+                        label: branch,
                     }));
                     setUsers(options);
                 }
-                if (selectedOption === 'user') {
-                    const options = data.data.map((user) => ({
-                        value: user._id,
-                        label: "EmpId : " + user.empID + "  " + " Name : " + user.username,
+                else if (selectedOption === 'user') {
+                    // Get individual users from employee data
+                    const options = employeeData.map((employee) => ({
+                        value: employee.emp_code,
+                        label: `EmpId: ${employee.emp_code || 'N/A'} | Name: ${employee.name || 'N/A'} | Role: ${employee.role_name || 'N/A'}`,
                     }));
                     setUsers(options);
                 }
-                if (selectedOption === 'designation') {
-                    const options = data.data.map((user) => ({
-                        value: user.designation
-
-                        ,
-                        label: user.designation
-
-                        ,
+                else if (selectedOption === 'designation') {
+                    // Get unique designations/roles from employee data
+                    const uniqueRoles = [...new Set(employeeData.map(emp => emp.role_name).filter(Boolean))];
+                    const options = uniqueRoles.map((role) => ({
+                        value: role,
+                        label: role,
                     }));
                     setUsers(options);
                 }
@@ -106,6 +103,24 @@ const CreateTrainingDatas = () => {
     const handleSubmit = async (e) => {
         e.preventDefault();
 
+        // Validate form data before submission
+        if (!trainingName.trim()) {
+            toast.error("Training name is required");
+            return;
+        }
+        if (selectedModules.length === 0) {
+            toast.error("Please select at least one module");
+            return;
+        }
+        if (!days || days <= 0) {
+            toast.error("Please enter a valid number of days");
+            return;
+        }
+        if (assignedTo.length === 0) {
+            toast.error("Please select at least one user/role/branch to assign the training to");
+            return;
+        }
+
         const trainingData = {
             trainingName,
             workingBranch: assignedTo.map((item) => item.value), // Extract values
@@ -115,7 +130,11 @@ const CreateTrainingDatas = () => {
         };
 
         try {
-            console.log(trainingData); // Log final data for submission
+            console.log("=== TRAINING CREATION DEBUG ===");
+            console.log("Training Data being sent:", trainingData);
+            console.log("AssignedTo array:", assignedTo);
+            console.log("WorkingBranch values:", trainingData.workingBranch);
+            console.log("Modules selected:", trainingData.modules);
             toast("Form Submitted Successfully!");
             // POST request (uncomment to use)
             const response = await fetch(`${baseUrl.baseUrl}api/trainings`, {
@@ -126,8 +145,23 @@ const CreateTrainingDatas = () => {
                 },
                 body: JSON.stringify(trainingData),
             });
+            
             const data = await response.json();
-            toast.success(data.message);
+            
+            if (!response.ok) {
+                console.error("Server error:", data);
+                toast.error(data.message || "Failed to create training");
+                return;
+            }
+            
+            console.log("Training created successfully:", data);
+            toast.success(data.message || "Training created successfully!");
+            
+            // Clear form after successful creation
+            setTrainingName("");
+            setSelectedModules([]);
+            setAssignedTo([]);
+            setDays("");
         } catch (error) {
             console.error("Failed to submit training:", error.message);
             toast.error("Error submitting training.");

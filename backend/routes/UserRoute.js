@@ -10,6 +10,7 @@ const router = express.Router();
  * @swagger
  * /api/usercreate/create-user:
  *   post:
+ *     tags: [User Management]
  *     summary: Create a new user
  *     description: Registers a new user in the system.
  *     requestBody:
@@ -59,6 +60,7 @@ router.post('/create-user', createUser);
  * @swagger
  * /api/usercreate/user-login:
  *   post:
+ *     tags: [User Management]
  *     summary: User login
  *     description: Authenticates a user with a username/email and password.
  *     requestBody:
@@ -101,6 +103,7 @@ router.post('/user-login', loginUser);
  * @swagger
  * /api/usercreate/getAllUser:
  *   get:
+ *     tags: [User Management]
  *     summary: Retrieve all users
  *     description: Fetches a list of all registered users.
  *     security:

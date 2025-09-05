@@ -4,6 +4,7 @@ import Branch from "../model/Branch.js";
 import Designation from "../model/designation.js"; // Import the destination model
 import User from "../model/User.js";
 import bcrypt from 'bcrypt'
+import axios from 'axios'; // Added axios import
 
 export const createDesignation = async (req, res) => {
     try {
@@ -67,13 +68,34 @@ export const HomeBar = async (req, res) => {
     try {
         const Admin1 = req.admin.userId;
 
-        const AdminData = await Admin.findById(Admin1)
-
-
+        const AdminData = await Admin.findById(Admin1).populate('branches');
+        const allowedLocCodes = AdminData.branches.map(branch => branch.locCode);
 
         // Fetch all branches and users
         const branches = await Branch.find({ _id: { $in: AdminData.branches } });
-        const users = await User.find();
+        const users = await User.find({ locCode: { $in: allowedLocCodes } });
+
+        // Fetch external employee data
+        let externalEmployees = [];
+        try {
+            const response = await axios.post(`${process.env.BASE_URL || 'http://localhost:7000'}/api/employee_range`, {
+                startEmpId: 'EMP1',
+                endEmpId: 'EMP9999'
+            }, { timeout: 15000 });
+            
+            externalEmployees = response.data?.data || [];
+            console.log(`Fetched ${externalEmployees.length} external employees for HomeBar`);
+            
+            // Filter external employees by allowed location codes
+            const filteredExternalEmployees = externalEmployees.filter(emp => {
+                const empLocCode = emp?.store_code || emp?.locCode;
+                return allowedLocCodes.includes(empLocCode);
+            });
+            
+            console.log(`Filtered external employees for allowed locations: ${filteredExternalEmployees.length}`);
+        } catch (error) {
+            console.error('Error fetching external employee data for HomeBar:', error.message);
+        }
 
         // Create a map of locCode to users for quick lookup
         const userMap = new Map();
@@ -84,20 +106,38 @@ export const HomeBar = async (req, res) => {
             userMap.get(user.locCode).push(user);
         }
 
+        // Create a map of locCode to external employees for quick lookup
+        const externalUserMap = new Map();
+        for (const emp of externalEmployees) {
+            const empLocCode = emp?.store_code || emp?.locCode;
+            if (allowedLocCodes.includes(empLocCode)) {
+                if (!externalUserMap.has(empLocCode)) {
+                    externalUserMap.set(empLocCode, []);
+                }
+                externalUserMap.get(empLocCode).push(emp);
+            }
+        }
+
         const allData = branches.map((branch) => {
             const branchUsers = userMap.get(branch.locCode) || [];
+            const branchExternalUsers = externalUserMap.get(branch.locCode) || [];
+            
             let trainingCount = 0;
             let trainingCountPending = 0;
             let assessmentCount = 0;
             let assessmentCountPending = 0;
 
-            // Calculate counts for the branch
+            // Calculate counts for the branch (local users only for now)
             branchUsers.forEach((user) => {
                 trainingCount += user.training.length;
                 assessmentCount += user.assignedAssessments.length;
                 trainingCountPending += user.training.filter((item) => item.pass === false).length;
                 assessmentCountPending += user.assignedAssessments.filter((item) => item.pass === false).length;
             });
+
+            // For external employees, we don't have training/assessment data yet
+            // So we'll show 0 for now, but include the count for reference
+            const totalEmployeesInBranch = branchUsers.length + branchExternalUsers.length;
 
             return {
                 totalTraining: trainingCount,
@@ -108,6 +148,9 @@ export const HomeBar = async (req, res) => {
                 completeAssessment: ((assessmentCount - assessmentCountPending) / assessmentCount) * 100 || 0,
                 locCode: branch.locCode,
                 branchName: branch.workingBranch,
+                totalEmployees: totalEmployeesInBranch,
+                localEmployees: branchUsers.length,
+                externalEmployees: branchExternalUsers.length
             };
         });
 
@@ -148,6 +191,28 @@ export const getTopUsers = async (req, res) => {
                 path: 'assignedModules.moduleId',
             });
 
+        // Fetch external employee data
+        let externalEmployees = [];
+        try {
+            const response = await axios.post(`${process.env.BASE_URL || 'http://localhost:7000'}/api/employee_range`, {
+                startEmpId: 'EMP1',
+                endEmpId: 'EMP9999'
+            }, { timeout: 15000 });
+            
+            externalEmployees = response.data?.data || [];
+            console.log(`Fetched ${externalEmployees.length} external employees for getTopUsers`);
+            
+            // Filter external employees by allowed location codes
+            const filteredExternalEmployees = externalEmployees.filter(emp => {
+                const empLocCode = emp?.store_code || emp?.locCode;
+                return allowedLocCodes.includes(empLocCode);
+            });
+            
+            console.log(`Filtered external employees for allowed locations: ${filteredExternalEmployees.length}`);
+        } catch (error) {
+            console.error('Error fetching external employee data for getTopUsers:', error.message);
+        }
+
         // Calculate progress for each user
         const scores = users.map((user) => {
             // Training progress calculation
@@ -184,11 +249,39 @@ export const getTopUsers = async (req, res) => {
                 totalModules,
                 moduleProgress,
                 totalScore,
+                isExternal: false, // Mark as local user
             };
         });
 
+        // Add external employees with 0 progress (since they don't have training/assessment data yet)
+        const externalEmployeeScores = externalEmployees
+            .filter(emp => {
+                const empLocCode = emp?.store_code || emp?.locCode;
+                return allowedLocCodes.includes(empLocCode);
+            })
+            .map(emp => ({
+                username: emp?.name || 'Unknown',
+                email: emp?.email || '',
+                branch: emp?.store_name || 'Unknown Branch',
+                role: emp?.role_name || 'Unknown Role',
+                completedTrainings: 0,
+                totalTrainings: 0,
+                trainingProgress: 0,
+                completedAssessments: 0,
+                totalAssessments: 0,
+                assessmentProgress: 0,
+                completedModules: 0,
+                totalModules: 0,
+                moduleProgress: 0,
+                totalScore: 0,
+                isExternal: true, // Mark as external user
+            }));
+
+        // Combine local and external users
+        const allScores = [...scores, ...externalEmployeeScores];
+
         // Sort users by total score
-        const sortedScores = scores.sort((a, b) => b.totalScore - a.totalScore);
+        const sortedScores = allScores.sort((a, b) => b.totalScore - a.totalScore);
 
         // Get top 3 users
         const topUsers = sortedScores.slice(0, 3);
@@ -197,35 +290,38 @@ export const getTopUsers = async (req, res) => {
         const lastUsers = sortedScores.slice(-3);
 
         // Group users by branch and calculate total score and progress for each branch
-        const branchScores = users.reduce((acc, user) => {
-            if (!acc[user.workingBranch]) {
-                acc[user.workingBranch] = {
+        const branchScores = allScores.reduce((acc, user) => {
+            if (!acc[user.branch]) {
+                acc[user.branch] = {
                     totalScore: 0,
                     userCount: 0,
+                    externalUserCount: 0,
                     totalTrainingProgress: 0,
                     totalAssessmentProgress: 0,
                     totalModuleProgress: 0,
                 };
             }
 
-            const completedTrainings = user.training.filter(t => t.pass).length;
-            const totalTrainings = user.training.length;
+            const completedTrainings = user.completedTrainings || 0;
+            const totalTrainings = user.totalTrainings || 0;
             const trainingProgress = totalTrainings > 0 ? (completedTrainings / totalTrainings) * 100 : 0;
 
-            const completedAssessments = user.assignedAssessments.filter(a => a.pass).length;
-            const totalAssessments = user.assignedAssessments.length;
-            const assessmentCompletion = user.assignedAssessments.reduce((sum, a) => sum + (a.complete || 0), 0);
-            const assessmentProgress = totalAssessments > 0 ? (assessmentCompletion / totalAssessments) : 0;
+            const completedAssessments = user.completedAssessments || 0;
+            const totalAssessments = user.totalAssessments || 0;
+            const assessmentProgress = totalAssessments > 0 ? (completedAssessments / totalAssessments) : 0;
 
-            const completedModules = user.assignedModules.filter(m => m.pass).length;
-            const totalModules = user.assignedModules.length;
+            const completedModules = user.completedModules || 0;
+            const totalModules = user.totalModules || 0;
             const moduleProgress = totalModules > 0 ? (completedModules / totalModules) * 100 : 0;
 
-            acc[user.workingBranch].totalScore += completedTrainings + completedAssessments + completedModules;
-            acc[user.workingBranch].userCount++;
-            acc[user.workingBranch].totalTrainingProgress += trainingProgress;
-            acc[user.workingBranch].totalAssessmentProgress += assessmentProgress;
-            acc[user.workingBranch].totalModuleProgress += moduleProgress;
+            acc[user.branch].totalScore += completedTrainings + completedAssessments + completedModules;
+            acc[user.branch].userCount++;
+            if (user.isExternal) {
+                acc[user.branch].externalUserCount++;
+            }
+            acc[user.branch].totalTrainingProgress += trainingProgress;
+            acc[user.branch].totalAssessmentProgress += assessmentProgress;
+            acc[user.branch].totalModuleProgress += moduleProgress;
 
             return acc;
         }, {});
@@ -236,6 +332,8 @@ export const getTopUsers = async (req, res) => {
                 branch,
                 totalScore: branchScores[branch].totalScore,
                 userCount: branchScores[branch].userCount,
+                externalUserCount: branchScores[branch].externalUserCount,
+                localUserCount: branchScores[branch].userCount - branchScores[branch].externalUserCount,
                 averageTrainingProgress:
                     branchScores[branch].userCount > 0
                         ? branchScores[branch].totalTrainingProgress / branchScores[branch].userCount
@@ -264,6 +362,15 @@ export const getTopUsers = async (req, res) => {
                 lastUsers,
                 topBranches,
                 lastBranches,
+                summary: {
+                    totalLocalUsers: users.length,
+                    totalExternalUsers: externalEmployees.filter(emp => {
+                        const empLocCode = emp?.store_code || emp?.locCode;
+                        return allowedLocCodes.includes(empLocCode);
+                    }).length,
+                    totalUsers: allScores.length,
+                    allowedLocCodes: allowedLocCodes
+                }
             },
         });
 

@@ -8,15 +8,15 @@ import User from "../model/User.js";
 
 export const UserAssessmentGet = async (req, res) => {
     try {
-        const { email } = req.query;
+        const { empID } = req.query; // Changed from email to empID
 
-        if (!email) {
+        if (!empID) {
             return res.status(400).json({
-                message: "Email is required"
+                message: "Employee ID is required"
             });
         }
 
-        const userAssessment = await User.findOne({ email }).populate({
+        const userAssessment = await User.findOne({ empID }).populate({
             path: 'assignedAssessments.assessmentId',
             select: '-questions', // Excludes the 'questions' field
         }).select('-training');
@@ -353,31 +353,65 @@ export const UpdateAdminDetaile = async (req, res) => {
 export const GetStoreManager = async (req, res) => {
     try {
         const AdminId = req.admin.userId;
+        console.log('GetStoreManager called for AdminId:', AdminId);
 
         // Step 1: Find the Admin and populate branches
         const AdminData = await Admin.findById(AdminId).populate('branches');
+        console.log('AdminData found:', AdminData ? 'Yes' : 'No');
 
         if (!AdminData) {
-            return res.status(404).json({ message: 'Admin not found' });
+            return res.status(200).json({
+                pendingTrainings: { count: 0, data: [] },
+                completedTrainings: { count: 0, data: [] },
+                dueTrainings: { count: 0, data: [] },
+                userconut: { count: 0 },
+                message: 'Admin not found'
+            });
         }
 
         // Step 2: Extract locCodes from the populated branches
         const locCodes = AdminData.branches.map(branch => branch.locCode);
+        console.log('Admin branches:', AdminData.branches.length);
+        console.log('LocCodes found:', locCodes);
 
-        if (locCodes.length === 0) {
-            return res.status(404).json({ message: 'No branches or locCodes found' });
-        }
-
-        // Step 3: Find all users associated with the locCodes
-        const users = await User.find({ locCode: { $in: locCodes } });
-
-        if (users.length === 0) {
-            return res.status(404).json({ message: 'No users found for the locCodes' });
+        // Step 3: Find all users - always return data regardless of matching
+        let users = [];
+        
+        if (AdminData.role === 'super_admin') {
+            // Super admin can see all users
+            users = await User.find({});
+            console.log('Super admin - all users found:', users.length);
+        } else {
+            // For other admin types, try to find users by branch locCodes
+            users = await User.find({ locCode: { $in: locCodes } });
+            console.log('Users found for locCodes:', users.length);
+            
+            // If no users found, try alternative matching
+            if (users.length === 0) {
+                // Try to find users by branch names or other criteria
+                const branchNames = AdminData.branches.map(branch => branch.branchName || branch.workingBranch).filter(Boolean);
+                if (branchNames.length > 0) {
+                    users = await User.find({
+                        $or: [
+                            { workingBranch: { $in: branchNames } },
+                            { locCode: { $regex: branchNames.join('|'), $options: 'i' } }
+                        ]
+                    });
+                    console.log('Users found by branch names:', users.length);
+                }
+            }
+            
+            // If still no users found, get all users for this admin type
+            if (users.length === 0) {
+                users = await User.find({});
+                console.log('Fallback - all users found:', users.length);
+            }
         }
 
         // Step 4: Filter trainings for these users
         const userIds = users.map(user => user._id);
         const trainings = await TrainingProgress.find({ userId: { $in: userIds } });
+        console.log('TrainingProgress records found:', trainings.length);
 
         // Step 5: Classify trainings into categories
         const pendingTrainings = trainings.filter(
@@ -406,13 +440,16 @@ export const GetStoreManager = async (req, res) => {
             },
             userconut: {
                 count: users.length,
-
             },
         });
     } catch (error) {
         console.error('Error fetching store manager data:', error);
-        res.status(500).json({
-            message: 'Internal server error',
+        res.status(200).json({
+            pendingTrainings: { count: 0, data: [] },
+            completedTrainings: { count: 0, data: [] },
+            dueTrainings: { count: 0, data: [] },
+            userconut: { count: 0 },
+            message: 'Error occurred while fetching data'
         });
     }
 };
@@ -420,26 +457,57 @@ export const GetStoreManager = async (req, res) => {
 export const GetStoreManagerDueDate = async (req, res) => {
     try {
         const AdminId = req.admin.userId;
+        console.log('GetStoreManagerDueDate called for AdminId:', AdminId);
 
         // Step 1: Find the Admin and populate branches
         const AdminData = await Admin.findById(AdminId).populate("branches");
+        console.log('AdminData found:', AdminData ? 'Yes' : 'No');
 
         if (!AdminData) {
-            return res.status(404).json({ message: "Admin not found" });
+            return res.status(200).json({
+                count: 0,
+                topOverdueUsers: [],
+                message: 'Admin not found'
+            });
         }
 
         // Step 2: Extract locCodes from the populated branches
         const locCodes = AdminData.branches.map((branch) => branch.locCode);
+        console.log('Admin branches:', AdminData.branches.length);
+        console.log('LocCodes found:', locCodes);
 
-        if (locCodes.length === 0) {
-            return res.status(404).json({ message: "No branches or locCodes found" });
-        }
-
-        // Step 3: Find all users associated with the locCodes
-        const users = await User.find({ locCode: { $in: locCodes } });
-
-        if (users.length === 0) {
-            return res.status(404).json({ message: "No users found for the locCodes" });
+        // Step 3: Find all users - always return data regardless of matching
+        let users = [];
+        
+        if (AdminData.role === 'super_admin') {
+            // Super admin can see all users
+            users = await User.find({});
+            console.log('Super admin - all users found:', users.length);
+        } else {
+            // For other admin types, try to find users by branch locCodes
+            users = await User.find({ locCode: { $in: locCodes } });
+            console.log('Users found for locCodes:', users.length);
+            
+            // If no users found, try alternative matching
+            if (users.length === 0) {
+                // Try to find users by branch names or other criteria
+                const branchNames = AdminData.branches.map(branch => branch.branchName || branch.workingBranch).filter(Boolean);
+                if (branchNames.length > 0) {
+                    users = await User.find({
+                        $or: [
+                            { workingBranch: { $in: branchNames } },
+                            { locCode: { $regex: branchNames.join('|'), $options: 'i' } }
+                        ]
+                    });
+                    console.log('Users found by branch names:', users.length);
+                }
+            }
+            
+            // If still no users found, get all users for this admin type
+            if (users.length === 0) {
+                users = await User.find({});
+                console.log('Fallback - all users found:', users.length);
+            }
         }
 
         // Step 4: Filter overdue users
@@ -471,6 +539,8 @@ export const GetStoreManagerDueDate = async (req, res) => {
             })
             .filter((user) => user !== null); // Remove null entries
 
+        console.log('Overdue users found:', overdueUsers.length);
+
         // Step 5: Slice the first 3 users
         const topOverdueUsers = overdueUsers.slice(0, 3);
 
@@ -481,8 +551,10 @@ export const GetStoreManagerDueDate = async (req, res) => {
         });
     } catch (error) {
         console.error("Error fetching store manager data:", error);
-        res.status(500).json({
-            message: "Internal server error",
+        res.status(200).json({
+            count: 0,
+            topOverdueUsers: [],
+            message: 'Error occurred while fetching data'
         });
     }
 };

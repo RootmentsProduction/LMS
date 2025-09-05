@@ -1,185 +1,947 @@
+// // ... other imports remain unchanged
+// import { useEffect, useState, useMemo } from "react";
+// import Header from "../../components/Header/Header";
+// import SideNav from "../../components/SideNav/SideNav";
+// import { CiFilter } from "react-icons/ci";
+// import { HiDownload } from "react-icons/hi";
+// import { BiChevronDown } from "react-icons/bi";
+// import baseUrl from "../../api/api";
+// import { Link } from "react-router-dom";
+
+// const EmployeeData = () => {
+//   const [data, setData] = useState([]);
+//   const [filteredData, setFilteredData] = useState([]);
+//   const [filterRole, setFilterRole] = useState("");
+//   const [filterBranch, setFilterBranch] = useState("");
+//   const [isRoleOpen, setIsRoleOpen] = useState(false);
+//   const [isBranchOpen, setIsBranchOpen] = useState(false);
+//   const [error, setError] = useState("");
+//   const [isMobile, setIsMobile] = useState(false);
+//   const token = localStorage.getItem('token');
+
+//   // Check for mobile viewport
+//   useEffect(() => {
+//     const checkMobile = () => {
+//       setIsMobile(window.innerWidth < 768);
+//     };
+    
+//     checkMobile();
+//     window.addEventListener('resize', checkMobile);
+    
+//     return () => window.removeEventListener('resize', checkMobile);
+//   }, []);
+
+//   useEffect(() => {
+//     const fetchEmployees = async () => {
+//       try {
+//         const response = await fetch(`${baseUrl.baseUrl}api/employee_range`, {
+//           method: "POST",
+//           headers: { "Content-Type": "application/json" },
+//           credentials: "include",
+//           body: JSON.stringify({ startEmpId: "EMP1", endEmpId: "EMP9999" }),
+//         });
+
+//         if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText}`);
+//         const json = await response.json();
+
+//         const normalized = (json?.data || []).map((e) => ({
+//           empID: e?.emp_code || "",
+//           username: e?.name || "",
+//           designation: e?.role_name || "",
+//           workingBranch: e?.store_name || "",
+//           trainingCount: 0,
+//           passCountTraining: 0,
+//           Trainingdue: 0,
+//           assignedAssessmentsCount: 0,
+//           passCountAssessment: 0,
+//           AssessmentDue: 0,
+//         }));
+
+//         setData(normalized);
+//         setFilteredData(normalized);
+//         setError("");
+//       } catch (error) {
+//         console.error("Failed to fetch employees:", error.message);
+//         setError("Failed to fetch employee data. Please try again later.");
+//         setData([]);
+//         setFilteredData([]);
+//       }
+//     };
+
+//     fetchEmployees();
+//   }, []);
+
+//   const roles = useMemo(() => [...new Set(data.map(emp => emp.designation))], [data]);
+//   const branches = useMemo(() => [...new Set(data.map(emp => emp.workingBranch))], [data]);
+
+//   const filterData = (role, branch) => {
+//     const filtered = data.filter(
+//       employee =>
+//         (!role || employee.designation === role) &&
+//         (!branch || employee.workingBranch === branch)
+//     );
+//     setFilteredData(filtered);
+//   };
+
+//   const handleRoleChange = (role) => {
+//     setFilterRole(role);
+//     filterData(role, filterBranch);
+//     setIsRoleOpen(false);
+//   };
+
+//   const handleBranchChange = (branch) => {
+//     setFilterBranch(branch);
+//     filterData(filterRole, branch);
+//     setIsBranchOpen(false);
+//   };
+
+//   // Close dropdowns when clicking outside
+//   useEffect(() => {
+//     const handleClickOutside = (event) => {
+//       if (!event.target.closest('.dropdown-container')) {
+//         setIsRoleOpen(false);
+//         setIsBranchOpen(false);
+//       }
+//     };
+
+//     document.addEventListener('mousedown', handleClickOutside);
+//     return () => {
+//       document.removeEventListener('mousedown', handleClickOutside);
+//     };
+//   }, []);
+
+//   const exportToCSV = () => {
+//     const headers = [
+//       "Emp ID",
+//       "Name",
+//       "Role",
+//       "Branch",
+//       "Training",
+//       "Trng. Comp",
+//       "Trng. Overdue",
+//       "Assessments",
+//       "Assmt. Comp",
+//       "Assmt. Overdue"
+//     ];
+
+//     const rows = filteredData.map(emp => [
+//       emp.empID,
+//       emp.username,
+//       emp.designation,
+//       emp.workingBranch,
+//       emp.trainingCount,
+//       `${emp.passCountTraining}%`,
+//       emp.Trainingdue,
+//       emp.assignedAssessmentsCount,
+//       `${emp.passCountAssessment}%`,
+//       emp.AssessmentDue
+//     ]);
+
+//     const csvContent =
+//       "data:text/csv;charset=utf-8," +
+//       [headers.join(","), ...rows.map(row => row.join(","))].join("\n");
+
+//     const encodedUri = encodeURI(csvContent);
+//     const link = document.createElement("a");
+//     link.setAttribute("href", encodedUri);
+//     link.setAttribute("download", "employee_data.csv");
+//     document.body.appendChild(link);
+//     link.click();
+//     document.body.removeChild(link);
+//   };
+
+//   // Mobile Card Component
+//   const MobileEmployeeCard = ({ employee, index }) => (
+//     <div className={`p-4 rounded-lg border ${index % 2 === 0 ? 'bg-gray-50' : 'bg-white'} mb-4 shadow-sm`}>
+//       <div className="flex justify-between items-start mb-3">
+//         <div>
+//           <h3 className="font-semibold text-[#016E5B] text-lg">#{employee.empID}</h3>
+//           <p className="font-medium text-gray-800">{employee.username}</p>
+//         </div>
+//         <Link 
+//           to={`/detailed/${employee.empID}`} 
+//           className="bg-[#016E5B] text-white px-3 py-1 rounded text-sm hover:bg-[#014C3F] transition-colors"
+//         >
+//           View
+//         </Link>
+//       </div>
+      
+//       <div className="grid grid-cols-1 gap-2 text-sm">
+//         <div className="flex justify-between">
+//           <span className="text-gray-600">Role:</span>
+//           <span className="font-medium text-right flex-1 ml-2" title={employee.designation}>
+//             {employee.designation}
+//           </span>
+//         </div>
+//         <div className="flex justify-between">
+//           <span className="text-gray-600">Branch:</span>
+//           <span className="font-medium text-right flex-1 ml-2" title={employee.workingBranch}>
+//             {employee.workingBranch}
+//           </span>
+//         </div>
+        
+//         {/* Training Stats */}
+//         <div className="mt-2 pt-2 border-t border-gray-200">
+//           <p className="font-medium text-gray-700 mb-1">Training:</p>
+//           <div className="grid grid-cols-3 gap-2 text-xs">
+//             <div className="text-center">
+//               <div className="font-semibold text-[#016E5B]">{employee.trainingCount}</div>
+//               <div className="text-gray-500">Total</div>
+//             </div>
+//             <div className="text-center">
+//               <div className="font-semibold text-green-600">{employee.passCountTraining}%</div>
+//               <div className="text-gray-500">Completed</div>
+//             </div>
+//             <div className="text-center">
+//               <div className="font-semibold text-red-600">{employee.Trainingdue}</div>
+//               <div className="text-gray-500">Overdue</div>
+//             </div>
+//           </div>
+//         </div>
+
+//         {/* Assessment Stats */}
+//         <div className="mt-2 pt-2 border-t border-gray-200">
+//           <p className="font-medium text-gray-700 mb-1">Assessments:</p>
+//           <div className="grid grid-cols-3 gap-2 text-xs">
+//             <div className="text-center">
+//               <div className="font-semibold text-[#016E5B]">{employee.assignedAssessmentsCount}</div>
+//               <div className="text-gray-500">Total</div>
+//             </div>
+//             <div className="text-center">
+//               <div className="font-semibold text-green-600">{employee.passCountAssessment}%</div>
+//               <div className="text-gray-500">Completed</div>
+//             </div>
+//             <div className="text-center">
+//               <div className="font-semibold text-red-600">{employee.AssessmentDue}</div>
+//               <div className="text-gray-500">Overdue</div>
+//             </div>
+//           </div>
+//         </div>
+//       </div>
+//     </div>
+//   );
+
+//   return (
+//     <div className="mb-[70px] text-[14px]">
+//       <Header name="Employee" />
+//       <SideNav />
+
+//       <div className="md:ml-[90px] mt-[160px] sm:mt-[140px]">
+//         {/* Header Section */}
+//         <div className="px-4 sm:px-6 lg:px-12">
+//           <div className="flex flex-col gap-4 mt-8 sm:mt-12 lg:mt-16 mb-6">
+//             <h1 className="text-[#212121] text-xl sm:text-2xl font-semibold">Employee Management</h1>
+
+//             {/* Filters and Actions */}
+//             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+//               {/* Filters Container */}
+//               <div className="flex flex-col sm:flex-row gap-3 flex-1">
+//                 {/* Role Dropdown */}
+//                 <div className="relative dropdown-container flex-1 sm:flex-none sm:min-w-[140px] sm:max-w-[180px]">
+//                   <button
+//                     className="flex justify-between items-center w-full border-2 py-2.5 px-3 bg-white text-black rounded-md hover:bg-gray-200 transition-all duration-150"
+//                     onClick={() => {
+//                       setIsRoleOpen(prev => !prev);
+//                       setIsBranchOpen(false);
+//                     }}
+//                   >
+//                     <span className="truncate text-sm font-medium">
+//                       {filterRole || "All Roles"}
+//                     </span>
+//                     <BiChevronDown className={`text-[#016E5B] ml-2 flex-shrink-0 transition-transform ${isRoleOpen ? 'rotate-180' : ''}`} size={18} />
+//                   </button>
+//                   {isRoleOpen && (
+//                     <div className="absolute left-0 right-0 mt-2 bg-white rounded-md shadow-lg z-30 max-h-60 overflow-y-auto border border-gray-200">
+//                       <button 
+//                         onClick={() => handleRoleChange("")} 
+//                         className="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-100 border-b border-gray-100 font-medium"
+//                       >
+//                         All Roles
+//                       </button>
+//                       {roles.filter(role => role).map((role, index) => (
+//                         <button 
+//                           key={index} 
+//                           onClick={() => handleRoleChange(role)} 
+//                           className="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-100 border-b border-gray-100 last:border-b-0"
+//                           title={role}
+//                         >
+//                           {role}
+//                         </button>
+//                       ))}
+//                     </div>
+//                   )}
+//                 </div>
+
+//                 {/* Branch Dropdown */}
+//                 <div className="relative dropdown-container flex-1 sm:flex-none sm:min-w-[140px] sm:max-w-[200px]">
+//                   <button
+//                     className="flex justify-between items-center w-full border-2 py-2.5 px-3 bg-white text-black rounded-md hover:bg-gray-200 transition-all duration-150"
+//                     onClick={() => {
+//                       setIsBranchOpen(prev => !prev);
+//                       setIsRoleOpen(false);
+//                     }}
+//                   >
+//                     <span className="truncate text-sm font-medium">
+//                       {filterBranch || "All Branches"}
+//                     </span>
+//                     <BiChevronDown className={`text-[#016E5B] ml-2 flex-shrink-0 transition-transform ${isBranchOpen ? 'rotate-180' : ''}`} size={18} />
+//                   </button>
+//                   {isBranchOpen && (
+//                     <div className="absolute left-0 right-0 mt-2 bg-white rounded-md shadow-lg z-30 max-h-60 overflow-y-auto border border-gray-200">
+//                       <button 
+//                         onClick={() => handleBranchChange("")} 
+//                         className="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-100 border-b border-gray-100 font-medium"
+//                       >
+//                         All Branches
+//                       </button>
+//                       {branches.filter(branch => branch).map((branch, index) => (
+//                         <button 
+//                           key={index} 
+//                           onClick={() => handleBranchChange(branch)} 
+//                           className="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-100 border-b border-gray-100 last:border-b-0"
+//                           title={branch}
+//                         >
+//                           {branch}
+//                         </button>
+//                       ))}
+//                     </div>
+//                   )}
+//                 </div>
+//               </div>
+
+//               {/* CSV Download Button */}
+//               <button
+//                 className="bg-[#016E5B] text-white px-4 py-2.5 rounded-md hover:bg-[#014C3F] transition-all duration-150 text-sm font-medium flex items-center justify-center gap-2 sm:whitespace-nowrap"
+//                 onClick={exportToCSV}
+//               >
+//                 <HiDownload size={16} />
+//                 <span className="hidden sm:inline">Download CSV</span>
+//                 <span className="sm:hidden">CSV</span>
+//               </button>
+//             </div>
+
+//             {/* Results count */}
+//             <div className="text-sm text-gray-600">
+//               Showing {filteredData.length} of {data.length} employees
+//               {(filterRole || filterBranch) && (
+//                 <button 
+//                   onClick={() => {
+//                     setFilterRole("");
+//                     setFilterBranch("");
+//                     setFilteredData(data);
+//                   }}
+//                   className="ml-2 text-[#016E5B] hover:underline"
+//                 >
+//                   Clear filters
+//                 </button>
+//               )}
+//             </div>
+//           </div>
+//         </div>
+
+//         {/* Error Message */}
+//         {error && (
+//           <div className="text-red-500 text-center my-4 mx-4 sm:mx-6 lg:mx-12 p-3 bg-red-50 border border-red-200 rounded-md text-sm">
+//             {error}
+//           </div>
+//         )}
+
+//         {/* Content Container */}
+//         <div className="mx-4 sm:mx-6 lg:mx-12">
+//           {/* Mobile View */}
+//           {isMobile ? (
+//             <div className="space-y-4">
+//               {filteredData.length > 0 ? (
+//                 filteredData.map((employee, index) => (
+//                   <MobileEmployeeCard key={index} employee={employee} index={index} />
+//                 ))
+//               ) : (
+//                 <div className="text-center py-12 text-gray-500 bg-gray-50 rounded-lg">
+//                   <div className="flex flex-col items-center gap-3">
+//                     <span className="text-4xl">📋</span>
+//                     <span className="text-lg font-medium">No employees found</span>
+//                     <span className="text-sm">Try adjusting your filters</span>
+//                   </div>
+//                 </div>
+//               )}
+//             </div>
+//           ) : (
+//             /* Desktop/Tablet Table View */
+//             <div className="overflow-x-auto text-black bg-white rounded-lg shadow-sm border border-gray-200">
+//               <div className="max-h-[70vh] overflow-y-auto">
+//                 <table className="w-full text-sm">
+//                   <thead className="sticky top-0 z-20 bg-[#016E5B] text-white">
+//                     <tr>
+//                       <th className="px-3 py-3 border-r border-[#014C3F] text-center font-semibold min-w-[90px]">Emp ID</th>
+//                       <th className="px-3 py-3 border-r border-[#014C3F] text-center font-semibold min-w-[150px]">Name</th>
+//                       <th className="px-3 py-3 border-r border-[#014C3F] text-center font-semibold min-w-[140px] hidden lg:table-cell">Role</th>
+//                       <th className="px-3 py-3 border-r border-[#014C3F] text-center font-semibold min-w-[180px] hidden lg:table-cell">Branch</th>
+//                       <th className="px-3 py-3 border-r border-[#014C3F] text-center font-semibold min-w-[80px] hidden md:table-cell">Training</th>
+//                       <th className="px-3 py-3 border-r border-[#014C3F] text-center font-semibold min-w-[90px] hidden md:table-cell">Trng. Comp</th>
+//                       <th className="px-3 py-3 border-r border-[#014C3F] text-center font-semibold min-w-[100px] hidden xl:table-cell">Trng. Overdue</th>
+//                       <th className="px-3 py-3 border-r border-[#014C3F] text-center font-semibold min-w-[100px] hidden md:table-cell">Assessments</th>
+//                       <th className="px-3 py-3 border-r border-[#014C3F] text-center font-semibold min-w-[100px] hidden md:table-cell">Assmt. Comp</th>
+//                       <th className="px-3 py-3 border-r border-[#014C3F] text-center font-semibold min-w-[110px] hidden xl:table-cell">Assmt. Overdue</th>
+//                       <th className="px-3 py-3 text-center font-semibold min-w-[70px]">View</th>
+//                     </tr>
+//                   </thead>
+//                   <tbody className="bg-white">
+//                     {filteredData.length > 0 ? (
+//                       filteredData.map((employee, index) => (
+//                         <tr 
+//                           key={index} 
+//                           className={`${index % 2 === 0 ? 'bg-gray-50' : 'bg-white'} hover:bg-blue-50 transition-all border-b border-gray-200`}
+//                         >
+//                           <td className="px-3 py-3 border-r border-gray-200 text-center font-medium text-[#016E5B]">
+//                             #{employee.empID}
+//                           </td>
+//                           <td className="px-3 py-3 border-r border-gray-200 text-center" title={employee.username}>
+//                             <div className="lg:hidden">
+//                               <div className="font-medium">{employee.username}</div>
+//                               <div className="text-xs text-gray-500 mt-1">{employee.designation}</div>
+//                               <div className="text-xs text-gray-500">{employee.workingBranch}</div>
+//                             </div>
+//                             <div className="hidden lg:block">{employee.username}</div>
+//                           </td>
+//                           <td className="px-3 py-3 border-r border-gray-200 text-center text-sm hidden lg:table-cell" title={employee.designation}>
+//                             {employee.designation}
+//                           </td>
+//                           <td className="px-3 py-3 border-r border-gray-200 text-center text-sm hidden lg:table-cell" title={employee.workingBranch}>
+//                             {employee.workingBranch}
+//                           </td>
+//                           <td className="px-3 py-3 border-r border-gray-200 text-center font-medium hidden md:table-cell">{employee.trainingCount}</td>
+//                           <td className="px-3 py-3 border-r border-gray-200 text-center font-medium hidden md:table-cell">{employee.passCountTraining}%</td>
+//                           <td className="px-3 py-3 border-r border-gray-200 text-center font-medium hidden xl:table-cell">{employee.Trainingdue}</td>
+//                           <td className="px-3 py-3 border-r border-gray-200 text-center font-medium hidden md:table-cell">{employee.assignedAssessmentsCount}</td>
+//                           <td className="px-3 py-3 border-r border-gray-200 text-center font-medium hidden md:table-cell">{employee.passCountAssessment}%</td>
+//                           <td className="px-3 py-3 border-r border-gray-200 text-center font-medium hidden xl:table-cell">{employee.AssessmentDue}</td>
+//                           <td className="px-3 py-3 text-center">
+//                             <Link 
+//                               to={`/detailed/${employee.empID}`} 
+//                               className="text-[#016E5B] font-semibold hover:underline hover:text-[#014C3F] transition-colors text-sm px-2 py-1 rounded"
+//                             >
+//                               View
+//                             </Link>
+//                           </td>
+//                         </tr>
+//                       ))
+//                     ) : (
+//                       <tr>
+//                         <td colSpan="11" className="text-center py-12 text-gray-500 bg-gray-50">
+//                           <div className="flex flex-col items-center gap-3">
+//                             <span className="text-4xl">📋</span>
+//                             <span className="text-lg font-medium">No employees found</span>
+//                             <span className="text-sm">Try adjusting your filters</span>
+//                           </div>
+//                         </td>
+//                       </tr>
+//                     )}
+//                   </tbody>
+//                 </table>
+//               </div>
+//             </div>
+//           )}
+//         </div>
+//       </div>
+//     </div>
+//   );
+// };
+
+// export default EmployeeData;
+
+
 import { useEffect, useState, useMemo } from "react";
 import Header from "../../components/Header/Header";
 import SideNav from "../../components/SideNav/SideNav";
-import { CiFilter } from "react-icons/ci";
+import { HiDownload } from "react-icons/hi";
+import { BiChevronDown } from "react-icons/bi";
 import baseUrl from "../../api/api";
 import { Link } from "react-router-dom";
 
+/* ---------- Helpers (no brand merging here) ---------- */
+function canonFixes(s) {
+  return s
+    .replace(/\bedap{1,2}a?l{1,3}y\b/g, "edappally")
+    .replace(/\bedap{1,2}a?l{1,3}i\b/g, "edappally")
+    .replace(/\bmanjeri\b/g, "manjery")
+    .replace(/\bperinthalmana\b/g, "perinthalmanna")
+    .replace(/\bkottakal\b/g, "kottakkal")
+    .replace(/\bkalpeta\b/g, "kalpetta");
+}
+const norm = (s) =>
+  canonFixes(
+    String(s || "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim()
+  );
+
+const titleCase = (s) =>
+  String(s || "")
+    .toLowerCase()
+    .replace(/\b\w/g, (m) => m.toUpperCase());
+
 const EmployeeData = () => {
-    const [data, setData] = useState([]); // All employee data
-    const [filteredData, setFilteredData] = useState([]); // Filtered employee data
-    const [filterRole, setFilterRole] = useState(""); // Selected role filter
-    const [filterBranch, setFilterBranch] = useState(""); // Selected branch filter
-    const [isRoleOpen, setIsRoleOpen] = useState(false); // Role dropdown state
-    const [isBranchOpen, setIsBranchOpen] = useState(false); // Branch dropdown state
-    const [error, setError] = useState(""); // Error state
-    const token = localStorage.getItem('token');
+  const [data, setData] = useState([]);
+  const [filteredData, setFilteredData] = useState([]);
+  const [filterRole, setFilterRole] = useState("");
+  const [filterBranch, setFilterBranch] = useState("");
+  const [isRoleOpen, setIsRoleOpen] = useState(false);
+  const [isBranchOpen, setIsBranchOpen] = useState(false);
+  const [error, setError] = useState("");
+  const [isMobile, setIsMobile] = useState(false);
 
+  // mobile viewport check
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768);
+    checkMobile();
+    window.addEventListener("resize", checkMobile);
+    return () => window.removeEventListener("resize", checkMobile);
+  }, []);
 
-    // Fetch employee data on component mount
-    useEffect(() => {
-        const fetchEmployees = async () => {
-            try {
-                const response = await fetch(`${baseUrl.baseUrl}api/usercreate/getAllUser`, {
-                    method: "GET",
-                    headers: {
-                        "Content-Type": "application/json",
-                        'Authorization': `Bearer ${token}`,
-                    },
-                    credentials: "include",
-                });
+  useEffect(() => {
+    const fetchEmployees = async () => {
+      try {
+        const response = await fetch(`${baseUrl.baseUrl}api/employee_range`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ startEmpId: "EMP1", endEmpId: "EMP9999" }),
+        });
 
-                if (!response.ok) {
-                    throw new Error(`Error: ${response.statusText}`);
-                }
+        if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText}`);
+        const json = await response.json();
 
-                const result = await response.json();
-                setData(result.data);
-                setFilteredData(result.data);
-            } catch (error) {
-                console.error("Failed to fetch employees:", error.message);
-                setError("Failed to fetch employee data. Please try again later.");
-            }
-        };
+        const normalized = (json?.data || []).map((e) => {
+          const branchRaw = e?.store_name || "";
+          return {
+            empID: e?.emp_code || "",
+            username: e?.name || "",
+            designation: e?.role_name || "",
+            workingBranch: branchRaw,                // raw value (for CSV)
+            workingBranchLabel: titleCase(branchRaw),// UI label
+            trainingCount: 0,
+            passCountTraining: 0,
+            Trainingdue: 0,
+            assignedAssessmentsCount: 0,
+            passCountAssessment: 0,
+            AssessmentDue: 0,
+          };
+        });
 
-        fetchEmployees();
-    }, []);
-
-    // Extract unique roles and branches using useMemo
-    const roles = useMemo(() => [...new Set(data.map(emp => emp.designation))], [data]);
-    const branches = useMemo(() => [...new Set(data.map(emp => emp.workingBranch))], [data]);
-
-    // Filter employee data based on selected role and branch
-    const filterData = (role, branch) => {
-        const filtered = data.filter(
-            employee =>
-                (!role || employee.designation === role) &&
-                (!branch || employee.workingBranch === branch)
-        );
-        setFilteredData(filtered);
+        setData(normalized);
+        setFilteredData(normalized);
+        setError("");
+      } catch (error) {
+        console.error("Failed to fetch employees:", error.message);
+        setError("Failed to fetch employee data. Please try again later.");
+        setData([]);
+        setFilteredData([]);
+      }
     };
 
-    // Handle role filter change
-    const handleRoleChange = (role) => {
-        setFilterRole(role);
-        filterData(role, filterBranch);
+    fetchEmployees();
+  }, []);
+
+  // unique lists
+  const roles = useMemo(
+    () => [...new Set(data.map((emp) => emp.designation).filter(Boolean))],
+    [data]
+  );
+
+  // keep brand distinctions; show clean labels
+  const branches = useMemo(() => {
+    const set = new Map(); // label -> raw
+    data.forEach((emp) => {
+      if (emp.workingBranch) set.set(emp.workingBranchLabel, emp.workingBranch);
+    });
+    return Array.from(set.entries()).map(([label, raw]) => ({ label, raw }));
+  }, [data]);
+
+  const filterData = (role, branchRaw) => {
+    const r = norm(role);
+    const b = norm(branchRaw);
+    const filtered = data.filter((employee) => {
+      const roleOk = !r || norm(employee.designation) === r;
+      const branchOk = !b || norm(employee.workingBranch) === b; // robust to Edappally variants
+      return roleOk && branchOk;
+    });
+    setFilteredData(filtered);
+  };
+
+  const handleRoleChange = (role) => {
+    setFilterRole(role);
+    filterData(role, filterBranch);
+    setIsRoleOpen(false);
+  };
+
+  const handleBranchChange = (branchRaw) => {
+    setFilterBranch(branchRaw);
+    filterData(filterRole, branchRaw);
+    setIsBranchOpen(false);
+  };
+
+  // Close dropdowns when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (!event.target.closest(".dropdown-container")) {
         setIsRoleOpen(false);
-    };
-
-    // Handle branch filter change
-    const handleBranchChange = (branch) => {
-        setFilterBranch(branch);
-        filterData(filterRole, branch);
         setIsBranchOpen(false);
+      }
     };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
-    return (
-        <div className="mb-[70px]">
-            <Header name="Employee" />
-            <SideNav />
-            <div className="md:ml-[90px] mt-[150px]">
-                <div className="flex justify-end mb-5 mt-12">
-                    <div className="flex gap-4">
-                        {/* Role Dropdown */}
-                        <div className="relative inline-block text-left w-36">
-                            <button
-                                type="button"
-                                className="flex justify-between items-center w-full border-2 py-2 px-4 bg-white text-black rounded-md hover:bg-gray-200"
-                                onClick={() => setIsRoleOpen(prev => !prev)}
-                            >
-                                <h4>{filterRole || "Role"}</h4>
-                                <CiFilter className="text-[#016E5B]" />
-                            </button>
-                            {isRoleOpen && (
-                                <div className="absolute right-0 mt-2 w-full bg-white rounded-md shadow-lg">
-                                    <button onClick={() => handleRoleChange("")} className="block w-full py-2 text-sm text-gray-700 hover:bg-gray-100">
-                                        All
-                                    </button>
-                                    {roles.map((role, index) => (
-                                        <button key={index} onClick={() => handleRoleChange(role)} className="block w-full py-2 text-sm text-gray-700 hover:bg-gray-100">
-                                            {role}
-                                        </button>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
+  const exportToCSV = () => {
+    const headers = [
+      "Emp ID",
+      "Name",
+      "Role",
+      "Branch",
+      "Training",
+      "Trng. Comp",
+      "Trng. Overdue",
+      "Assessments",
+      "Assmt. Comp",
+      "Assmt. Overdue",
+    ];
 
-                        {/* Branch Dropdown */}
-                        <div className="relative inline-block text-left w-36 mx-5">
-                            <button
-                                type="button"
-                                className="flex justify-between items-center w-full border-2 py-2 px-4 bg-white text-black rounded-md hover:bg-gray-200"
-                                onClick={() => setIsBranchOpen(prev => !prev)}
-                            >
-                                <h4>{filterBranch || "Branch"}</h4>
-                                <CiFilter className="text-[#016E5B]" />
-                            </button>
-                            {isBranchOpen && (
-                                <div className="absolute right-0 mt-2 w-full bg-white rounded-md shadow-lg">
-                                    <button onClick={() => handleBranchChange("")} className="block w-full py-2 text-sm text-gray-700 hover:bg-gray-100">
-                                        All
-                                    </button>
-                                    {branches.map((branch, index) => (
-                                        <button key={index} onClick={() => handleBranchChange(branch)} className="block w-full py-2 text-sm text-gray-700 hover:bg-gray-100">
-                                            {branch}
-                                        </button>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                </div>
+    const rows = filteredData.map((emp) => [
+      emp.empID,
+      emp.username,
+      emp.designation,
+      emp.workingBranch,
+      emp.trainingCount,
+      `${emp.passCountTraining}%`,
+      emp.Trainingdue,
+      emp.assignedAssessmentsCount,
+      `${emp.passCountAssessment}%`,
+      emp.AssessmentDue,
+    ]);
 
-                {/* Error Message */}
-                {error && <div className="text-red-500 text-center mb-4">{error}</div>}
+    const csvContent =
+      "data:text/csv;charset=utf-8," +
+      [headers.join(","), ...rows.map((row) => row.join(","))].join("\n");
 
-                {/* Employee Table */}
-                <div className="mx-10 overflow-x-auto text-black">
-                    <table className="w-full border-2 border-gray-300">
-                        <thead>
-                            <tr className="bg-[#016E5B] text-white">
-                                <th className="px-3 py-1 border-2 border-gray-300">Emp ID</th>
-                                <th className="px-3 py-1 border-2 border-gray-300">Name</th>
-                                <th className="px-3 py-1 border-2 border-gray-300">Role</th>
-                                <th className="px-3 py-1 border-2 border-gray-300">Branch</th>
-                                <th className="px-3 py-1 border-2 border-gray-300">Training</th>
-                                <th className="px-3 py-1 border-2 border-gray-300">Trng. Comp</th>
-                                <th className="px-3 py-1 border-2 border-gray-300">Trng. Overdue</th>
-                                <th className="px-3 py-1 border-2 border-gray-300">Assessments</th>
-                                <th className="px-3 py-1 border-2 border-gray-300">Assmt. Comp</th>
-                                <th className="px-3 py-1 border-2 border-gray-300">Assmt. Overdue</th>
-                                <th className="px-3 py-1 border-2 border-gray-300">View</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {filteredData.length > 0 ? (
-                                filteredData.map((employee, index) => (
-                                    <tr key={index} className="border-b hover:bg-gray-100">
-                                        <td className="px-3 py-1 border-2 border-gray-300 text-center">#{employee.empID}</td>
-                                        <td className="px-3 py-1 border-2 border-gray-300 text-center">{employee.username}</td>
-                                        <td className="px-3 py-1 border-2 border-gray-300 text-center">{employee.designation}</td>
-                                        <td className="px-3 py-1 border-2 border-gray-300 text-center">{employee.workingBranch}</td>
-                                        <td className="px-3 py-1 border-2 border-gray-300 text-center">{employee.trainingCount}</td>
-                                        <td className="px-3 py-1 border-2 border-gray-300 text-center">{employee.passCountTraining}%</td>
-                                        <td className="px-3 py-1 border-2 border-gray-300 text-center">{employee.Trainingdue}</td>
-                                        <td className="px-3 py-1 border-2 border-gray-300 text-center">{employee.assignedAssessmentsCount}</td>
-                                        <td className="px-3 py-1 border-2 border-gray-300 text-center">{employee.passCountAssessment}%</td>
-                                        <td className="px-3 py-1 border-2 border-gray-300 text-center">{employee.AssessmentDue}</td>
-                                        <Link to={`/detailed/${employee.empID}`}>                                        <td className="px-3 py-1 border-2 border-gray-300 text-center">View</td>
-                                        </Link>
-                                    </tr>
-                                ))
-                            ) : (
-                                <tr>
-                                    <td colSpan="6" className="text-center py-3">No data available</td>
-                                </tr>
-                            )}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", "employee_data.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // Mobile Card
+  const MobileEmployeeCard = ({ employee, index }) => (
+    <div className={`p-4 rounded-lg border ${index % 2 === 0 ? "bg-gray-50" : "bg-white"} mb-4 shadow-sm`}>
+      <div className="flex justify-between items-start mb-3">
+        <div>
+          <h3 className="font-semibold text-[#016E5B] text-lg">#{employee.empID}</h3>
+          <p className="font-medium text-gray-800">{employee.username}</p>
         </div>
-    );
+        <Link
+          to={`/detailed/${employee.empID}`}
+          className="bg-[#016E5B] text-white px-3 py-1 rounded text-sm hover:bg-[#014C3F] transition-colors"
+        >
+          View
+        </Link>
+      </div>
+
+      <div className="grid grid-cols-1 gap-2 text-sm">
+        <div className="flex justify-between">
+          <span className="text-gray-600">Role:</span>
+          <span className="font-medium text-right flex-1 ml-2" title={employee.designation}>
+            {employee.designation}
+          </span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-gray-600">Branch:</span>
+          <span className="font-medium text-right flex-1 ml-2" title={employee.workingBranch}>
+            {employee.workingBranchLabel}
+          </span>
+        </div>
+
+        <div className="mt-2 pt-2 border-t border-gray-200">
+          <p className="font-medium text-gray-700 mb-1">Training:</p>
+          <div className="grid grid-cols-3 gap-2 text-xs">
+            <div className="text-center">
+              <div className="font-semibold text-[#016E5B]">{employee.trainingCount}</div>
+              <div className="text-gray-500">Total</div>
+            </div>
+            <div className="text-center">
+              <div className="font-semibold text-green-600">{employee.passCountTraining}%</div>
+              <div className="text-gray-500">Completed</div>
+            </div>
+            <div className="text-center">
+              <div className="font-semibold text-red-600">{employee.Trainingdue}</div>
+              <div className="text-gray-500">Overdue</div>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-2 pt-2 border-t border-gray-200">
+          <p className="font-medium text-gray-700 mb-1">Assessments:</p>
+          <div className="grid grid-cols-3 gap-2 text-xs">
+            <div className="text-center">
+              <div className="font-semibold text-[#016E5B]">{employee.assignedAssessmentsCount}</div>
+              <div className="text-gray-500">Total</div>
+            </div>
+            <div className="text-center">
+              <div className="font-semibold text-green-600">{employee.passCountAssessment}%</div>
+              <div className="text-gray-500">Completed</div>
+            </div>
+            <div className="text-center">
+              <div className="font-semibold text-red-600">{employee.AssessmentDue}</div>
+              <div className="text-gray-500">Overdue</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="mb-[70px] text-[14px]">
+      <Header name="Employee" />
+      <SideNav />
+
+      <div className="md:ml-[90px] mt-[160px] sm:mt-[140px]">
+        <div className="px-4 sm:px-6 lg:px-12">
+          <div className="flex flex-col gap-4 mt-8 sm:mt-12 lg:mt-16 mb-6">
+            <h1 className="text-[#212121] text-xl sm:text-2xl font-semibold">Employee Management</h1>
+
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+              <div className="flex flex-col sm:flex-row gap-3 flex-1">
+                {/* Role */}
+                <div className="relative dropdown-container flex-1 sm:flex-none sm:min-w-[140px] sm:max-w-[180px]">
+                  <button
+                    className="flex justify-between items-center w-full border-2 py-2.5 px-3 bg-white text-black rounded-md hover:bg-gray-200 transition-all duration-150"
+                    onClick={() => {
+                      setIsRoleOpen((prev) => !prev);
+                      setIsBranchOpen(false);
+                    }}
+                  >
+                    <span className="truncate text-sm font-medium">
+                      {filterRole || "All Roles"}
+                    </span>
+                    <BiChevronDown
+                      className={`text-[#016E5B] ml-2 flex-shrink-0 transition-transform ${
+                        isRoleOpen ? "rotate-180" : ""
+                      }`}
+                      size={18}
+                    />
+                  </button>
+                  {isRoleOpen && (
+                    <div className="absolute left-0 right-0 mt-2 bg-white rounded-md shadow-lg z-30 max-h-60 overflow-y-auto border border-gray-200">
+                      <button
+                        onClick={() => handleRoleChange("")}
+                        className="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-100 border-b border-gray-100 font-medium"
+                      >
+                        All Roles
+                      </button>
+                      {roles.map((role, index) => (
+                        <button
+                          key={index}
+                          onClick={() => handleRoleChange(role)}
+                          className="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-100 border-b border-gray-100 last:border-b-0"
+                          title={role}
+                        >
+                          {role}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Branch */}
+                <div className="relative dropdown-container flex-1 sm:flex-none sm:min-w-[160px] sm:max-w-[220px]">
+                  <button
+                    className="flex justify-between items-center w-full border-2 py-2.5 px-3 bg-white text-black rounded-md hover:bg-gray-200 transition-all duration-150"
+                    onClick={() => {
+                      setIsBranchOpen((prev) => !prev);
+                      setIsRoleOpen(false);
+                    }}
+                  >
+                    <span className="truncate text-sm font-medium">
+                      {filterBranch ? titleCase(filterBranch) : "All Branches"}
+                    </span>
+                    <BiChevronDown
+                      className={`text-[#016E5B] ml-2 flex-shrink-0 transition-transform ${
+                        isBranchOpen ? "rotate-180" : ""
+                      }`}
+                      size={18}
+                    />
+                  </button>
+                  {isBranchOpen && (
+                    <div className="absolute left-0 right-0 mt-2 bg-white rounded-md shadow-lg z-30 max-h-60 overflow-y-auto border border-gray-200">
+                      <button
+                        onClick={() => handleBranchChange("")}
+                        className="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-100 border-b border-gray-100 font-medium"
+                      >
+                        All Branches
+                      </button>
+                      {branches.map(({ label, raw }) => (
+                        <button
+                          key={raw}
+                          onClick={() => handleBranchChange(raw)}
+                          className="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-100 border-b border-gray-100 last:border-b-0"
+                          title={label}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <button
+                className="bg-[#016E5B] text-white px-4 py-2.5 rounded-md hover:bg-[#014C3F] transition-all duration-150 text-sm font-medium flex items-center justify-center gap-2 sm:whitespace-nowrap"
+                onClick={exportToCSV}
+              >
+                <HiDownload size={16} />
+                <span className="hidden sm:inline">Download CSV</span>
+                <span className="sm:hidden">CSV</span>
+              </button>
+            </div>
+
+            {/* Results count */}
+            <div className="text-sm text-gray-600">
+              Showing {filteredData.length} of {data.length} employees
+              {(filterRole || filterBranch) && (
+                <button
+                  onClick={() => {
+                    setFilterRole("");
+                    setFilterBranch("");
+                    setFilteredData(data);
+                  }}
+                  className="ml-2 text-[#016E5B] hover:underline"
+                >
+                  Clear filters
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Error */}
+        {error && (
+          <div className="text-red-500 text-center my-4 mx-4 sm:mx-6 lg:mx-12 p-3 bg-red-50 border border-red-200 rounded-md text-sm">
+            {error}
+          </div>
+        )}
+
+        {/* Content */}
+        <div className="mx-4 sm:mx-6 lg:mx-12">
+          {isMobile ? (
+            <div className="space-y-4">
+              {filteredData.length > 0 ? (
+                filteredData.map((employee, index) => (
+                  <MobileEmployeeCard key={index} employee={employee} index={index} />
+                ))
+              ) : (
+                <div className="text-center py-12 text-gray-500 bg-gray-50 rounded-lg">
+                  <div className="flex flex-col items-center gap-3">
+                    <span className="text-4xl">📋</span>
+                    <span className="text-lg font-medium">No employees found</span>
+                    <span className="text-sm">Try adjusting your filters</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="overflow-x-auto text-black bg-white rounded-lg shadow-sm border border-gray-200">
+              <div className="max-h-[70vh] overflow-y-auto">
+                <table className="w-full text-sm">
+                  <thead className="sticky top-0 z-20 bg-[#016E5B] text-white">
+                    <tr>
+                      <th className="px-3 py-3 border-r border-[#014C3F] text-center font-semibold min-w-[90px]">Emp ID</th>
+                      <th className="px-3 py-3 border-r border-[#014C3F] text-center font-semibold min-w-[150px]">Name</th>
+                      <th className="px-3 py-3 border-r border-[#014C3F] text-center font-semibold min-w-[140px] hidden lg:table-cell">Role</th>
+                      <th className="px-3 py-3 border-r border-[#014C3F] text-center font-semibold min-w-[180px] hidden lg:table-cell">Branch</th>
+                      <th className="px-3 py-3 border-r border-[#014C3F] text-center font-semibold min-w-[80px] hidden md:table-cell">Training</th>
+                      <th className="px-3 py-3 border-r border-[#014C3F] text-center font-semibold min-w-[90px] hidden md:table-cell">Trng. Comp</th>
+                      <th className="px-3 py-3 border-r border-[#014C3F] text-center font-semibold min-w-[100px] hidden xl:table-cell">Trng. Overdue</th>
+                      <th className="px-3 py-3 border-r border-[#014C3F] text-center font-semibold min-w-[100px] hidden md:table-cell">Assessments</th>
+                      <th className="px-3 py-3 border-r border-[#014C3F] text-center font-semibold min-w-[100px] hidden md:table-cell">Assmt. Comp</th>
+                      <th className="px-3 py-3 border-r border-[#014C3F] text-center font-semibold min-w-[110px] hidden xl:table-cell">Assmt. Overdue</th>
+                      <th className="px-3 py-3 text-center font-semibold min-w-[70px]">View</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white">
+                    {filteredData.length > 0 ? (
+                      filteredData.map((employee, index) => (
+                        <tr
+                          key={index}
+                          className={`${index % 2 === 0 ? "bg-gray-50" : "bg-white"} hover:bg-blue-50 transition-all border-b border-gray-200`}
+                        >
+                          <td className="px-3 py-3 border-r border-gray-200 text-center font-medium text-[#016E5B]">
+                            #{employee.empID}
+                          </td>
+                          <td className="px-3 py-3 border-r border-gray-200 text-center" title={employee.username}>
+                            <div className="lg:hidden">
+                              <div className="font-medium">{employee.username}</div>
+                              <div className="text-xs text-gray-500 mt-1">{employee.designation}</div>
+                              <div className="text-xs text-gray-500">{employee.workingBranchLabel}</div>
+                            </div>
+                            <div className="hidden lg:block">{employee.username}</div>
+                          </td>
+                          <td className="px-3 py-3 border-r border-gray-200 text-center text-sm hidden lg:table-cell" title={employee.designation}>
+                            {employee.designation}
+                          </td>
+                          <td className="px-3 py-3 border-r border-gray-200 text-center text-sm hidden lg:table-cell" title={employee.workingBranch}>
+                            {employee.workingBranchLabel}
+                          </td>
+                          <td className="px-3 py-3 border-r border-gray-200 text-center font-medium hidden md:table-cell">
+                            {employee.trainingCount}
+                          </td>
+                          <td className="px-3 py-3 border-r border-gray-200 text-center font-medium hidden md:table-cell">
+                            {employee.passCountTraining}%
+                          </td>
+                          <td className="px-3 py-3 border-r border-gray-200 text-center font-medium hidden xl:table-cell">
+                            {employee.Trainingdue}
+                          </td>
+                          <td className="px-3 py-3 border-r border-gray-200 text-center font-medium hidden md:table-cell">
+                            {employee.assignedAssessmentsCount}
+                          </td>
+                          <td className="px-3 py-3 border-r border-gray-200 text-center font-medium hidden md:table-cell">
+                            {employee.passCountAssessment}%
+                          </td>
+                          <td className="px-3 py-3 border-r border-gray-200 text-center font-medium hidden xl:table-cell">
+                            {employee.AssessmentDue}
+                          </td>
+                          <td className="px-3 py-3 text-center">
+                            <Link
+                              to={`/detailed/${employee.empID}`}
+                              className="text-[#016E5B] font-semibold hover:underline hover:text-[#014C3F] transition-colors text-sm px-2 py-1 rounded"
+                            >
+                              View
+                            </Link>
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan="11" className="text-center py-12 text-gray-500 bg-gray-50">
+                          <div className="flex flex-col items-center gap-3">
+                            <span className="text-4xl">📋</span>
+                            <span className="text-lg font-medium">No employees found</span>
+                            <span className="text-sm">Try adjusting your filters</span>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 };
 
 export default EmployeeData;

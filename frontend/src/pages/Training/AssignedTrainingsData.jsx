@@ -3,6 +3,7 @@ import RoundProgressBar from "../../components/RoundBar/RoundBar";
 import Header from "../../components/Header/Header";
 import { FaPlus } from "react-icons/fa";
 import { CiFilter } from "react-icons/ci";
+import { FaTrashAlt } from "react-icons/fa";
 import { useEffect, useState } from "react";
 import baseUrl from "../../api/api";
 import Card from "../../components/Skeleton/Card";
@@ -18,9 +19,73 @@ const AssignedTrainingsData = () => {
     const [uniqueItems, setUniqueItems] = useState([]);
     const [selectedBranch, setSelectedBranch] = useState("");
     const [selectedItem, setSelectedItem] = useState("");
+    
+    // New state for multiple selection and bulk delete
+    const [selectedTrainings, setSelectedTrainings] = useState(new Set());
+    const [isDeleting, setIsDeleting] = useState(false);
+    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
     const toggleDropdown = (type) => {
         setIsOpen((prev) => ({ ...prev, [type]: !prev[type] }));
+    };
+
+    // Handle training selection
+    const handleTrainingSelection = (trainingId) => {
+        setSelectedTrainings(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(trainingId)) {
+                newSet.delete(trainingId);
+            } else {
+                newSet.add(trainingId);
+            }
+            return newSet;
+        });
+    };
+
+    // Handle select all
+    const handleSelectAll = () => {
+        if (selectedTrainings.size === filteredData.length) {
+            setSelectedTrainings(new Set());
+        } else {
+            setSelectedTrainings(new Set(filteredData.map(item => item.trainingId)));
+        }
+    };
+
+    // Handle bulk delete
+    const handleBulkDelete = async () => {
+        if (selectedTrainings.size === 0) return;
+        
+        setIsDeleting(true);
+        try {
+            const deletePromises = Array.from(selectedTrainings).map(trainingId =>
+                fetch(`${baseUrl.baseUrl}api/user/delete/training/${trainingId}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${localStorage.getItem('token')}`
+                    }
+                })
+            );
+
+            const results = await Promise.all(deletePromises);
+            const failedDeletes = results.filter(result => !result.ok);
+
+            if (failedDeletes.length > 0) {
+                alert(`Failed to delete ${failedDeletes.length} training(s). Please try again.`);
+            } else {
+                // Remove deleted trainings from data
+                setData(prev => prev.filter(item => !selectedTrainings.has(item.trainingId)));
+                setFilteredData(prev => prev.filter(item => !selectedTrainings.has(item.trainingId)));
+                setSelectedTrainings(new Set());
+                setShowDeleteConfirm(false);
+                alert(`Successfully deleted ${selectedTrainings.size} training(s)`);
+            }
+        } catch (error) {
+            console.error('Error deleting trainings:', error);
+            alert('An error occurred while deleting trainings. Please try again.');
+        } finally {
+            setIsDeleting(false);
+        }
     };
 
     useEffect(() => {
@@ -54,6 +119,24 @@ const AssignedTrainingsData = () => {
 
         fetchData(); // Call the function to fetch data
     }, []); // Dependency array ensures it runs only once
+
+    // Keyboard shortcuts
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            // Ctrl+A for select all
+            if (e.ctrlKey && e.key === 'a') {
+                e.preventDefault();
+                handleSelectAll();
+            }
+            // Escape to close delete confirmation
+            if (e.key === 'Escape' && showDeleteConfirm) {
+                setShowDeleteConfirm(false);
+            }
+        };
+
+        document.addEventListener('keydown', handleKeyDown);
+        return () => document.removeEventListener('keydown', handleKeyDown);
+    }, [showDeleteConfirm, filteredData.length]);
 
     // Filter data based on completion range, branch, and item
     const applyFilters = () => {
@@ -114,164 +197,300 @@ const AssignedTrainingsData = () => {
     }, [filterRange, selectedBranch, selectedItem]); // Reapply filters when any filter changes
 
     return (
-        <div className=" mb-[70px] w-full h-full bg-white">
-            <div>
-                <Header name="Assigned Training" />
-            </div>
-            <SideNav />
-            <div className="md:ml-[100px] mt-[100px]">
+        <>
+            <div className="mb-[70px] w-full h-full bg-white">
                 <div>
-                    <div className="flex justify-end mr-20">
-                        <Link to={"/Alltraining"}>
-                            <div className="flex w-56 mt-5 border-2 justify-center items-center py-2 ml-10 cursor-pointer">
-                                <h4 className="text-black">Show All Training</h4>
-                            </div>
-                        </Link>
-                    </div>
-                    <div className="flex text-black ml-10 gap-5 text-xl w-auto">
-                        <Link to="/training">
-                            <h4 className="cursor-pointer">Mandatory Trainings</h4>
-                        </Link>
-                        <h4 className="border-b-[3px] border-[#016E5B] text-[#016E5B] ">
-                            Assigned Trainings
-                        </h4>
-                    </div>
-                    <hr className="mx-10 mt-[-1px] border-[#016E5B]" />
-
-                    <div className="flex mx-10 justify-between mt-10 gap-5">
-                        <div className="flex w-56 border-2 justify-evenly items-center py-2 ml-10 cursor-pointer">
-                            <div className="text-[#016E5B]">
-                                <FaPlus />
-                            </div>
-                            <Link to={"/createnewtraining"}>
-                                <h4 className="text-black">Create new Training</h4>
-                            </Link>
-                        </div>
-
-                        {/* Filter by Range */}
-                        <div className="flex gap-2">
-                            <div className="relative text-left w-36">
-                                <button
-                                    type="button"
-                                    className="flex justify-between items-center w-full border-2 py-2 px-4 bg-white text-black rounded-md hover:bg-gray-200"
-                                    onClick={() => toggleDropdown("range")}
-                                >
-                                    <h4>{filterRange ? `${filterRange}%` : "Range"}</h4>
-                                    <CiFilter className="text-[#016E5B]" />
-                                </button>
-                                {isOpen.range && (
-                                    <div className="absolute mt-2 w-full rounded-md shadow-lg bg-white z-10">
-                                        <div className="py-1">
-                                            {["", "0-25", "26-51", "52-77", "78-100"].map((range) => (
-                                                <a
-                                                    key={range}
-                                                    href="#"
-                                                    className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                                                    onClick={(e) => {
-                                                        e.preventDefault();
-                                                        setFilterRange(range);
-                                                        toggleDropdown("range");
-                                                    }}
-                                                >
-                                                    {range ? `${range}%` : "All"}
-                                                </a>
-                                            ))}
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Filter by Branch */}
-                            <div className="relative text-left w-36">
-                                <button
-                                    type="button"
-                                    className="flex justify-between items-center w-full border-2 py-2 px-4 bg-white text-black rounded-md hover:bg-gray-200"
-                                    onClick={() => toggleDropdown("branch")}
-                                >
-                                    <h4>{selectedBranch || "Branch"}</h4>
-                                    <CiFilter className="text-[#016E5B]" />
-                                </button>
-                                {isOpen.branch && (
-                                    <div className="absolute mt-2 w-full rounded-md shadow-lg bg-white z-10">
-                                        <div className="py-1">
-                                            {["", ...uniqueBranches].map((branch) => (
-                                                <a
-                                                    key={branch}
-                                                    href="#"
-                                                    className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                                                    onClick={(e) => {
-                                                        e.preventDefault();
-                                                        setSelectedBranch(branch);
-                                                        toggleDropdown("branch");
-                                                    }}
-                                                >
-                                                    {branch || "All"}
-                                                </a>
-                                            ))}
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Filter by Role */}
-                            <div className="relative text-left w-36">
-                                <button
-                                    type="button"
-                                    className="flex justify-between items-center w-full border-2 py-2 px-4 bg-white text-black rounded-md hover:bg-gray-200"
-                                    onClick={() => toggleDropdown("role")}
-                                >
-                                    <h4>{selectedItem || "Role"}</h4>
-                                    <CiFilter className="text-[#016E5B]" />
-                                </button>
-                                {isOpen.role && (
-                                    <div className="absolute mt-2 w-full rounded-md shadow-lg bg-white z-10">
-                                        <div className="py-1">
-                                            {["", ...uniqueItems].map((item) => (
-                                                <a
-                                                    key={item}
-                                                    href="#"
-                                                    className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                                                    onClick={(e) => {
-                                                        e.preventDefault();
-                                                        setSelectedItem(item);
-                                                        toggleDropdown("role");
-                                                    }}
-                                                >
-                                                    {item || "All"}
-                                                </a>
-                                            ))}
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    </div>
+                    <Header name="Assigned Training" />
                 </div>
-
-                <div className="mt-10 ml-10 flex flex-wrap gap-3">
-                    {loading ? (
-                        <>
-                            <Card />
-                            <Card />
-                            <Card />
-                            <Card />
-                        </>
-                    ) : (
-                        filteredData.map((item) => (
-                            <Link key={item.trainingId} to={`/AssigTraining/${item.trainingId}`}>
-                                <RoundProgressBar
-                                    initialProgress={item.averageCompletionPercentage}
-                                    title={item.trainingName}
-                                    Module={`No. of Modules : ${item.numberOfModules}`}
-                                    duration={`No. of users: ${item.totalUsers}`}
-                                    complete={`Completion Rate : ${item.averageCompletionPercentage}%`}
-                                />
+                <SideNav />
+                <div className="md:ml-[100px] mt-[100px]">
+                    <div>
+                        <div className="flex justify-end mr-20">
+                            <Link to={"/Alltraining"}>
+                                <div className="flex w-56 mt-5 border-2 justify-center items-center py-2 ml-10 cursor-pointer">
+                                    <h4 className="text-black">Show All Training</h4>
+                                </div>
                             </Link>
-                        ))
+                        </div>
+                        <div className="flex text-black ml-10 gap-5 text-xl w-auto">
+                            <Link to="/training">
+                                <h4 className="cursor-pointer">Mandatory Trainings</h4>
+                            </Link>
+                            <h4 className="border-b-[3px] border-[#016E5B] text-[#016E5B] ">
+                                Assigned Trainings
+                            </h4>
+                        </div>
+                        <hr className="mx-10 mt-[-1px] border-[#016E5B]" />
+
+                        <div className="flex mx-10 justify-between mt-10 gap-5">
+                            <div className="flex w-56 border-2 justify-evenly items-center py-2 ml-10 cursor-pointer">
+                                <div className="text-[#016E5B]">
+                                    <FaPlus />
+                                </div>
+                                <Link to={"/createnewtraining"}>
+                                    <h4 className="text-black">Create new Training</h4>
+                                </Link>
+                            </div>
+
+                            {/* Filter by Range */}
+                            <div className="flex gap-2">
+                                <div className="relative text-left w-36">
+                                    <button
+                                        type="button"
+                                        className="flex justify-between items-center w-full border-2 py-2 px-4 bg-white text-black rounded-md hover:bg-gray-200"
+                                        onClick={() => toggleDropdown("range")}
+                                    >
+                                        <h4>{filterRange ? `${filterRange}%` : "Range"}</h4>
+                                        <CiFilter className="text-[#016E5B]" />
+                                    </button>
+                                    {isOpen.range && (
+                                        <div className="absolute mt-2 w-full rounded-md shadow-lg bg-white z-10">
+                                            <div className="py-1">
+                                                {["", "0-25", "26-51", "52-77", "78-100"].map((range) => (
+                                                    <a
+                                                        key={range}
+                                                        href="#"
+                                                        className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                                                        onClick={(e) => {
+                                                            e.preventDefault();
+                                                            setFilterRange(range);
+                                                            toggleDropdown("range");
+                                                        }}
+                                                    >
+                                                        {range ? `${range}%` : "All"}
+                                                    </a>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Filter by Branch */}
+                                <div className="relative text-left w-36">
+                                    <button
+                                        type="button"
+                                        className="flex justify-between items-center w-full border-2 py-2 px-4 bg-white text-black rounded-md hover:bg-gray-200"
+                                        onClick={() => toggleDropdown("branch")}
+                                    >
+                                        <h4>{selectedBranch || "Branch"}</h4>
+                                        <CiFilter className="text-[#016E5B]" />
+                                    </button>
+                                    {isOpen.branch && (
+                                        <div className="absolute mt-2 w-full rounded-md shadow-lg bg-white z-10">
+                                            <div className="py-1">
+                                                {["", ...uniqueBranches].map((branch) => (
+                                                    <a
+                                                        key={branch}
+                                                        href="#"
+                                                        className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                                                        onClick={(e) => {
+                                                            e.preventDefault();
+                                                            setSelectedBranch(branch);
+                                                            toggleDropdown("branch");
+                                                        }}
+                                                    >
+                                                        {branch || "All"}
+                                                    </a>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Filter by Role */}
+                                <div className="relative text-left w-36">
+                                    <button
+                                        type="button"
+                                        className="flex justify-between items-center w-full border-2 py-2 px-4 bg-white text-black rounded-md hover:bg-gray-200"
+                                        onClick={() => toggleDropdown("role")}
+                                    >
+                                        <h4>{selectedItem || "Role"}</h4>
+                                        <CiFilter className="text-[#016E5B]" />
+                                    </button>
+                                    {isOpen.role && (
+                                        <div className="absolute mt-2 w-full rounded-md shadow-lg bg-white z-10">
+                                            <div className="py-1">
+                                                {["", ...uniqueItems].map((item) => (
+                                                    <a
+                                                        key={item}
+                                                        href="#"
+                                                        className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                                                        onClick={(e) => {
+                                                            e.preventDefault();
+                                                            setSelectedItem(item);
+                                                            toggleDropdown("role");
+                                                        }}
+                                                    >
+                                                        {item || "All"}
+                                                    </a>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Bulk Actions Bar */}
+                    {filteredData.length > 0 && (
+                        <div className="mt-6 ml-10 flex items-center gap-4 p-4 bg-gray-50 rounded-lg border">
+                            <div className="flex items-center gap-2">
+                                <input
+                                    type="checkbox"
+                                    checked={selectedTrainings.size === filteredData.length && filteredData.length > 0}
+                                    onChange={handleSelectAll}
+                                    className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
+                                />
+                                <span className="text-sm text-gray-700">
+                                    {selectedTrainings.size === 0 
+                                        ? "Select All (Ctrl+A)" 
+                                        : `${selectedTrainings.size} of ${filteredData.length} selected`
+                                    }
+                                </span>
+                            </div>
+                            
+                            {selectedTrainings.size > 0 && (
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={() => setSelectedTrainings(new Set())}
+                                        className="px-3 py-2 text-gray-600 bg-gray-200 rounded-md hover:bg-gray-300"
+                                    >
+                                        Clear Selection
+                                    </button>
+                                    <button
+                                        onClick={() => setShowDeleteConfirm(true)}
+                                        disabled={isDeleting}
+                                        className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                        <FaTrashAlt />
+                                        Delete Selected ({selectedTrainings.size})
+                                    </button>
+                                </div>
+                            )}
+                            
+                            {/* Delete All Trainings Option */}
+                            <div className="ml-auto flex items-center gap-3 border-l border-gray-300 pl-4">
+                                <div className="flex items-center gap-2">
+                                    <input
+                                        type="checkbox"
+                                        id="deleteAllCheckbox"
+                                        className="w-4 h-4 text-red-600 bg-gray-100 border-gray-300 rounded focus:ring-red-500 focus:ring-2"
+                                    />
+                                    <label htmlFor="deleteAllCheckbox" className="text-sm text-gray-700 font-medium">
+                                        Delete All Trainings
+                                    </label>
+                                </div>
+                                <button
+                                    onClick={() => {
+                                        const deleteAllCheckbox = document.getElementById('deleteAllCheckbox');
+                                        if (deleteAllCheckbox && deleteAllCheckbox.checked) {
+                                            // Select all trainings and show delete confirmation
+                                            setSelectedTrainings(new Set(filteredData.map(item => item.trainingId)));
+                                            setShowDeleteConfirm(true);
+                                        } else {
+                                            alert('Please check the "Delete All Trainings" checkbox to confirm you want to delete all trainings.');
+                                        }
+                                    }}
+                                    disabled={isDeleting}
+                                    className="px-4 py-2 bg-red-700 text-white rounded-md hover:bg-red-800 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                                >
+                                    <FaTrashAlt />
+                                    Delete All
+                                </button>
+                            </div>
+                        </div>
                     )}
+
+                    <div className="mt-10 ml-10 flex flex-wrap gap-3">
+                        {loading ? (
+                            <>
+                                <Card />
+                                <Card />
+                                <Card />
+                                <Card />
+                            </>
+                        ) : (
+                            filteredData.map((item) => (
+                                <div key={item.trainingId} className={`relative group ${
+                                    selectedTrainings.has(item.trainingId) ? 'ring-2 ring-blue-500 ring-offset-2' : ''
+                                }`}>
+                                    {/* Selection Checkbox */}
+                                    <div className={`absolute top-2 left-2 z-10 transition-opacity ${
+                                        selectedTrainings.has(item.trainingId) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                                    }`}>
+                                        <input
+                                            type="checkbox"
+                                            checked={selectedTrainings.has(item.trainingId)}
+                                            onChange={(e) => {
+                                                e.stopPropagation();
+                                                handleTrainingSelection(item.trainingId);
+                                            }}
+                                            className="w-5 h-5 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2 cursor-pointer"
+                                        />
+                                    </div>
+                                    
+                                    {/* Training Card */}
+                                    <Link to={`/assigtraining/${item.trainingId}`}>
+                                        <RoundProgressBar
+                                            initialProgress={item.averageCompletionPercentage}
+                                            title={item.trainingName}
+                                            Module={`No. of Modules : ${item.numberOfModules}`}
+                                            duration={`Total Users: ${item.totalUsers} | Assigned: ${item.totalAssignedUsers || 0}`}
+                                            complete={`Completion Rate : ${item.averageCompletionPercentage}%`}
+                                        />
+                                    </Link>
+                                </div>
+                            ))
+                        )}
+                    </div>
                 </div>
             </div>
-        </div>
+
+            {/* Delete Confirmation Modal */}
+            {showDeleteConfirm && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                    <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+                        <div className="flex items-center gap-3 mb-4">
+                            <FaTrashAlt className="text-red-600 text-xl" />
+                            <h3 className="text-lg font-semibold text-gray-900">Confirm Bulk Delete</h3>
+                        </div>
+                        
+                        <p className="text-gray-700 mb-6">
+                            Are you sure you want to delete <span className="font-semibold">{selectedTrainings.size}</span> training(s)? 
+                            This action cannot be undone and will also remove all associated training progress records.
+                        </p>
+                        
+                        <div className="flex gap-3 justify-end">
+                            <button
+                                onClick={() => setShowDeleteConfirm(false)}
+                                disabled={isDeleting}
+                                className="px-4 py-2 text-gray-700 bg-gray-200 rounded-md hover:bg-gray-300 disabled:opacity-50"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleBulkDelete}
+                                disabled={isDeleting}
+                                className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:opacity-50 flex items-center gap-2"
+                            >
+                                {isDeleting ? (
+                                    <>
+                                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                        Deleting...
+                                    </>
+                                ) : (
+                                    <>
+                                        <FaTrashAlt />
+                                        Delete
+                                    </>
+                                )}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </>
     );
 };
 

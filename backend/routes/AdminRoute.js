@@ -15,6 +15,7 @@ const router = express.Router();
  * @swagger
  * /api/admin/get/bestThreeUser:
  *   get:
+ *     tags: [Admin]
  *     summary: Retrieve top three users
  *     description: Fetches the three best users based on certain criteria.
  *     responses:
@@ -93,6 +94,7 @@ router.get('/get/HomeProgressData', MiddilWare, HomeBar);
  * @swagger
  * /api/admin/admin/createadmin:
  *   post:
+ *     tags: [Admin]
  *     summary: Create a new admin user
  *     description: Allows the creation of a new administrator with specific credentials and roles.
  *     requestBody:
@@ -415,6 +417,7 @@ router.get('/overdue/Assessment', MiddilWare, FindOverDueAssessment);
  * @swagger
  * /api/admin/overdue/Training:
  *   get:
+ *     tags: [Training]
  *     summary: Find overdue trainings
  *     description: Retrieves a list of users or tasks with overdue trainings.
  *     responses:
@@ -429,8 +432,9 @@ router.get('/overdue/Training', MiddilWare, FindOverDueTraining);
 
 /**
  * @swagger
- * /api/admin/overdue/Training/send/{empId}:
+ * /api/user/overdue/Training/send/{empId}:
  *   get:
+ *     tags: [Training]
  *     summary: Send notification for overdue training
  *     description: Sends a notification to a user about overdue training.
  *     parameters:
