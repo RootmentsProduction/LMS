@@ -455,6 +455,7 @@ import Header from "../../components/Header/Header";
 import SideNav from "../../components/SideNav/SideNav";
 import { HiDownload } from "react-icons/hi";
 import { BiChevronDown } from "react-icons/bi";
+import { HiRefresh } from "react-icons/hi";
 import baseUrl from "../../api/api";
 import { Link } from "react-router-dom";
 
@@ -490,6 +491,7 @@ const EmployeeData = () => {
   const [isBranchOpen, setIsBranchOpen] = useState(false);
   const [error, setError] = useState("");
   const [isMobile, setIsMobile] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // mobile viewport check
   useEffect(() => {
@@ -499,47 +501,74 @@ const EmployeeData = () => {
     return () => window.removeEventListener("resize", checkMobile);
   }, []);
 
-  useEffect(() => {
-    const fetchEmployees = async () => {
-      try {
-        const response = await fetch(`${baseUrl.baseUrl}api/employee_range`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
+  const fetchEmployees = async () => {
+    try {
+      setIsRefreshing(true);
+      const token = localStorage.getItem('token');
+      if (!token) {
+        setError("Authentication required. Please login again.");
+        return;
+      }
+
+        // Use the new API endpoint that includes training details with cache-busting
+        const cacheBuster = `?t=${Date.now()}`;
+        const response = await fetch(`${baseUrl.baseUrl}api/employee/management/with-training-details${cacheBuster}`, {
+          method: "GET",
+          headers: { 
+            "Content-Type": "application/json",
+            'Authorization': `Bearer ${token}`,
+          },
           credentials: "include",
-          body: JSON.stringify({ startEmpId: "EMP1", endEmpId: "EMP9999" }),
         });
 
-        if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText}`);
-        const json = await response.json();
+      if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText}`);
+      const json = await response.json();
 
-        const normalized = (json?.data || []).map((e) => {
-          const branchRaw = e?.store_name || "";
+      if (json.success && json.data) {
+        const normalized = json.data.map((employee) => {
+          const branchRaw = employee.workingBranch || "";
           return {
-            empID: e?.emp_code || "",
-            username: e?.name || "",
-            designation: e?.role_name || "",
+            empID: employee.empID || "",
+            username: employee.username || "",
+            designation: employee.designation || "",
             workingBranch: branchRaw,                // raw value (for CSV)
             workingBranchLabel: titleCase(branchRaw),// UI label
-            trainingCount: 0,
-            passCountTraining: 0,
-            Trainingdue: 0,
-            assignedAssessmentsCount: 0,
-            passCountAssessment: 0,
-            AssessmentDue: 0,
+            // Training data from the API
+            trainingCount: employee.trainingCount || 0,
+            passCountTraining: employee.passCountTraining || 0,
+            Trainingdue: employee.trainingDue || 0,
+            trainingCompletionPercentage: employee.trainingCompletionPercentage || 0,
+            // Assessment data from the API
+            assignedAssessmentsCount: employee.assignedAssessmentsCount || 0,
+            passCountAssessment: employee.passCountAssessment || 0,
+            AssessmentDue: employee.assessmentDue || 0,
+            assessmentCompletionPercentage: employee.assessmentCompletionPercentage || 0,
+            // Additional info
+            isLocalUser: employee.isLocalUser || false,
+            hasTrainingData: employee.hasTrainingData || false,
           };
         });
 
         setData(normalized);
         setFilteredData(normalized);
         setError("");
-      } catch (error) {
-        console.error("Failed to fetch employees:", error.message);
-        setError("Failed to fetch employee data. Please try again later.");
-        setData([]);
-        setFilteredData([]);
+        
+        console.log(`✅ Loaded ${normalized.length} employees with training details`);
+        console.log(`📊 Employees with training data: ${json.employeesWithTraining}`);
+      } else {
+        throw new Error(json.message || "Invalid response format");
       }
-    };
+    } catch (error) {
+      console.error("Failed to fetch employees:", error.message);
+      setError("Failed to fetch employee data. Please try again later.");
+      setData([]);
+      setFilteredData([]);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
+  useEffect(() => {
     fetchEmployees();
   }, []);
 
@@ -593,6 +622,10 @@ const EmployeeData = () => {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  const handleRefresh = async () => {
+    await fetchEmployees();
+  };
+
   const exportToCSV = () => {
     const headers = [
       "Emp ID",
@@ -613,10 +646,10 @@ const EmployeeData = () => {
       emp.designation,
       emp.workingBranch,
       emp.trainingCount,
-      `${emp.passCountTraining}%`,
+      `${emp.trainingCompletionPercentage}%`,
       emp.Trainingdue,
       emp.assignedAssessmentsCount,
-      `${emp.passCountAssessment}%`,
+      `${emp.assessmentCompletionPercentage}%`,
       emp.AssessmentDue,
     ]);
 
@@ -797,6 +830,18 @@ const EmployeeData = () => {
                 </div>
               </div>
 
+              {/* Refresh Button */}
+              <button
+                className="bg-blue-600 text-white px-4 py-2.5 rounded-md hover:bg-blue-700 transition-all duration-150 text-sm font-medium flex items-center justify-center gap-2 sm:whitespace-nowrap"
+                onClick={handleRefresh}
+                disabled={isRefreshing}
+              >
+                <HiRefresh size={16} className={isRefreshing ? 'animate-spin' : ''} />
+                <span className="hidden sm:inline">{isRefreshing ? 'Refreshing...' : 'Refresh'}</span>
+                <span className="sm:hidden">{isRefreshing ? '...' : '↻'}</span>
+              </button>
+
+              {/* CSV Download Button */}
               <button
                 className="bg-[#016E5B] text-white px-4 py-2.5 rounded-md hover:bg-[#014C3F] transition-all duration-150 text-sm font-medium flex items-center justify-center gap-2 sm:whitespace-nowrap"
                 onClick={exportToCSV}
@@ -898,7 +943,7 @@ const EmployeeData = () => {
                             {employee.trainingCount}
                           </td>
                           <td className="px-3 py-3 border-r border-gray-200 text-center font-medium hidden md:table-cell">
-                            {employee.passCountTraining}%
+                            {employee.trainingCompletionPercentage}%
                           </td>
                           <td className="px-3 py-3 border-r border-gray-200 text-center font-medium hidden xl:table-cell">
                             {employee.Trainingdue}
@@ -907,7 +952,7 @@ const EmployeeData = () => {
                             {employee.assignedAssessmentsCount}
                           </td>
                           <td className="px-3 py-3 border-r border-gray-200 text-center font-medium hidden md:table-cell">
-                            {employee.passCountAssessment}%
+                            {employee.assessmentCompletionPercentage}%
                           </td>
                           <td className="px-3 py-3 border-r border-gray-200 text-center font-medium hidden xl:table-cell">
                             {employee.AssessmentDue}

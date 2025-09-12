@@ -5,6 +5,7 @@ import Branch from "../model/Branch.js";
 import Notification from "../model/Notification.js";
 import TrainingProgress from "../model/Trainingprocessschema.js";
 import User from "../model/User.js";
+import mongoose from 'mongoose';
 
 export const UserAssessmentGet = async (req, res) => {
     try {
@@ -167,30 +168,97 @@ export const userAssessmentUpdate = async (req, res) => {
 };
 
 export const GetAllUserDetailes = async (req, res) => {
-    console.log();
+    console.log('GetAllUserDetailes called with empID:', req.params.id);
 
     try {
+        // Check database connection
+        if (mongoose.connection.readyState !== 1) {
+            console.error('Database not connected. Ready state:', mongoose.connection.readyState);
+            return res.status(500).json({
+                message: "Database connection error"
+            });
+        }
+
         const { id } = req.params;
         const empID = id;
+        
+        console.log('Searching for user with empID:', empID);
+        
         const userData = await User.findOne({ empID })
-            .populate('training.trainingId') // Populate training details
-            .populate('assignedAssessments.assessmentId');
+            .populate({
+                path: 'training.trainingId',
+                select: '-questions' // Exclude questions field to reduce payload
+            })
+            .populate({
+                path: 'assignedAssessments.assessmentId',
+                select: '-questions' // Exclude questions field to reduce payload
+            });
+            
         if (!userData) {
+            console.log('User not found with empID:', empID);
             return res.status(404).json({
                 message: "user not found"
             })
         }
+
+        console.log('User found, fetching mandatory trainings for userId:', userData._id);
+
+        // Get mandatory trainings from TrainingProgress collection
+        const mandatoryTrainings = await TrainingProgress.find({ userId: userData._id })
+            .populate({
+                path: 'trainingId',
+                select: '-questions' // Exclude questions field to reduce payload
+            });
+
+        console.log('Found mandatory trainings:', mandatoryTrainings.length);
+
+        // Get assigned training IDs to avoid duplicates
+        const assignedTrainingIds = userData.training ? 
+            userData.training.map(t => t.trainingId ? t.trainingId.toString() : null).filter(Boolean) : [];
+
+        // Filter out mandatory trainings that are already in assigned trainings
+        const uniqueMandatoryTrainings = mandatoryTrainings.filter(tp => 
+            tp.trainingId && !assignedTrainingIds.includes(tp.trainingId.toString())
+        );
+
+        // Convert mandatory trainings to the same format as assigned trainings
+        const mandatoryTrainingsFormatted = uniqueMandatoryTrainings.map(tp => ({
+            trainingId: tp.trainingId,
+            deadline: tp.deadline,
+            pass: tp.pass,
+            status: tp.pass ? 'Completed' : 'Pending',
+            isMandatory: true // Flag to identify mandatory trainings
+        }));
+
+        // Combine assigned and mandatory trainings
+        const allTrainings = [
+            ...(userData.training || []),
+            ...mandatoryTrainingsFormatted
+        ];
+
+        // Create response data with combined trainings
+        const responseData = {
+            ...userData.toObject(),
+            training: allTrainings
+        };
+
+        console.log('Successfully retrieved user details for empID:', empID);
         res.status(200).json({
             message: "Data found",
-            data: userData
-
-
+            data: responseData
         })
 
-
     } catch (error) {
+        console.error('Error in GetAllUserDetailes:', error);
+        console.error('Error details:', {
+            message: error.message,
+            stack: error.stack,
+            empID: req.params.id
+        });
+        
         res.status(500).json({
-            message: "internal server error"
+            message: "internal server error",
+            error: process.env.NODE_ENV === 'development' ? error.message : undefined
         })
     }
 }

@@ -21,6 +21,7 @@ import TopEmployeeAndBranch from "../../components/TopEmployeeAndBranch/TopEmplo
 import Notification from "../../components/Notification/Notification";
 import TrainingProgress from "../../components/StoreManager/TrainingProgress";
 import OverdueTrainings from "../../components/StoreManager/OverdueTrainings";
+import LMSWebsiteLoginStats from "../../components/LMSWebsiteLoginStats/LMSWebsiteLoginStats";
 
 
 
@@ -201,6 +202,8 @@ const HomeDatastore = ({ user }) => {
                                     </div>
                                 </div>
                             </Link>
+                            {/* LMS Website Login Statistics Box */}
+                            <LMSWebsiteLoginStats />
                         </div>
                     </div>
                 )}

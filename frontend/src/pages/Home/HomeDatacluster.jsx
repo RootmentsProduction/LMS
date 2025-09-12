@@ -15,6 +15,7 @@ import { RiIdCardLine } from "react-icons/ri";
 import TopEmployeeAndBranch from "../../components/TopEmployeeAndBranch/TopEmployeeAndBranch";
 import Quick from "../../components/Quick/Quick";
 import Notification from "../../components/Notification/Notification";
+import LMSWebsiteLoginStats from "../../components/LMSWebsiteLoginStats/LMSWebsiteLoginStats";
 
 const HomeDatacluster = ({ user }) => {
     const [data, setData] = useState([]);
@@ -192,6 +193,8 @@ const HomeDatacluster = ({ user }) => {
                                     </div>
                                 </div>
                             </Link>
+                            {/* LMS Website Login Statistics Box */}
+                            <LMSWebsiteLoginStats />
                         </div>
                     </div>
                 )}

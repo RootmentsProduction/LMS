@@ -872,6 +872,11 @@ export const GetUserAllTrainings = async (req, res) => {
   try {
     console.log('🔍 Getting all trainings for user:', empID);
 
+    // Validate empID parameter
+    if (!empID) {
+      return res.status(400).json({ message: "Employee ID (empID) is required" });
+    }
+
     // 1. Find user based on empID
     const user = await User.findOne({ empID })
       .populate({
@@ -879,7 +884,11 @@ export const GetUserAllTrainings = async (req, res) => {
       });
 
     if (!user) {
-      return res.status(404).json({ message: "User not found" });
+      console.log(`❌ User not found for empID: ${empID}`);
+      return res.status(404).json({ 
+        message: `User not found with employee ID: ${empID}`,
+        empID: empID
+      });
     }
 
     // 2. Fetch all training progress using user ID
@@ -892,6 +901,12 @@ export const GetUserAllTrainings = async (req, res) => {
     // 4. Process assigned trainings (non-mandatory)
     const assignedTrainings = user.training
       .filter(training => {
+        // Check if trainingId exists and is populated
+        if (!training.trainingId) {
+          console.log(`⚠️ Skipping training with null trainingId: ${training._id}`);
+          return false;
+        }
+        
         const trainingType = training.trainingId.Trainingtype;
         const isMandatory = trainingType === 'Mandatory' || trainingType === 'mandatory';
         
@@ -903,6 +918,12 @@ export const GetUserAllTrainings = async (req, res) => {
         return true;
       })
       .map(training => {
+        // Additional safety check
+        if (!training.trainingId) {
+          console.log(`⚠️ Skipping training with null trainingId in map: ${training._id}`);
+          return null;
+        }
+        
         const progress = trainingProgress.find(p => p.trainingId.toString() === training.trainingId._id.toString());
 
         if (!progress) {
@@ -943,7 +964,8 @@ export const GetUserAllTrainings = async (req, res) => {
           totalVideos,
           completedVideos
         };
-      });
+      })
+      .filter(training => training !== null); // Remove null values
 
     // 5. Get mandatory trainings that are assigned to user's role
     // Only include trainings specifically assigned to the user's role, not "All" or "No Role"

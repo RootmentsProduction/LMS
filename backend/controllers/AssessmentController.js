@@ -429,7 +429,8 @@ export const createTraining = async (req, res) => {
                 // Update existing user with latest info from external API
                 user.username = emp.name || user.username;
                 user.designation = emp.role_name || user.designation;
-                user.locCode = emp.store_name || user.locCode;
+                // IMPORTANT: Don't update locCode from external API to preserve our branch mapping fix
+                // user.locCode = emp.store_name || user.locCode; // COMMENTED OUT
                 user.workingBranch = emp.store_name || user.workingBranch;
                 user.phoneNumber = emp.phone || user.phoneNumber;
                 await user.save();
@@ -703,14 +704,75 @@ export const calculateProgress = async (req, res) => {
             externalEmployees = response.data?.data || [];
             console.log(`Fetched ${externalEmployees.length} external employees`);
             
-            // Filter external employees by allowed location codes
+            // Create mapping from store names to location codes
+            const storeNameToLocCode = {
+                'GROOMS TRIVANDRUM': '5',
+                'GROOMS PALAKKAD': '19',
+                'GROOMS EDAPALLY': '3',
+                'GROOMS KOTTAYAM': '9',
+                'GROOMS PERUMBAVOOR': '10',
+                'GROOMS THRISSUR': '11',
+                'GROOMS CHAVAKKAD': '12',
+                'GROOMS EDAPPAL': '15',
+                'GROOMS VATAKARA': '14',
+                'GROOMS PERINTHALMANNA': '16',
+                'GROOMS MANJERY': '18',
+                'GROOMS KOTTAKKAL': '17',
+                'GROOMS KOZHIKODE': '13',
+                'GROOMS CALICUT': '13', // Map CALICUT to KOZHIKODE
+                'GROOMS KANNUR': '21',
+                'GROOMS KALPETTA': '20',
+                'ZORUCCI EDAPPAL': '6',
+                'ZORUCCI KOTTAKKAL': '8',
+                'ZORUCCI PERINTHALMANNA': '7',
+                'ZORUCCI EDAPPALLY': '1',
+                // Map SUITOR GUY stores to GROOMS equivalents
+                'SUITOR GUY TRIVANDRUM': '5',
+                'SUITOR GUY PALAKKAD': '19',
+                'SUITOR GUY EDAPPALLY': '3',
+                'SUITOR GUY KOTTAYAM': '9',
+                'SUITOR GUY PERUMBAVOOR': '10',
+                'SUITOR GUY THRISSUR': '11',
+                'SUITOR GUY CHAVAKKAD': '12',
+                'SUITOR GUY EDAPPAL': '15',
+                'SUITOR GUY VATAKARA': '14',
+                'SUITOR GUY PERINTHALMANNA': '16',
+                'SUITOR GUY MANJERI': '18',
+                'SUITOR GUY KOTTAKKAL': '17',
+                'SUITOR GUY CALICUT': '13',
+                'SUITOR GUY KALPETTA': '20', // Add missing mappings
+                'SUITOR GUY KANNUR': '21'
+            };
+            
+            // Filter external employees by allowed location codes using store name mapping
             const filteredExternalEmployees = externalEmployees.filter(emp => {
+                const storeName = emp?.store_name?.toUpperCase();
+                const mappedLocCode = storeNameToLocCode[storeName];
+                
+                if (mappedLocCode && allowedLocCodes.includes(mappedLocCode)) {
+                    return true;
+                }
+                
+                // Also check direct location code if available
                 const empLocCode = emp?.store_code || emp?.locCode;
                 return allowedLocCodes.includes(empLocCode);
             });
             
             totalEmployeeCount = filteredExternalEmployees.length;
             console.log(`Filtered external employees for allowed locations: ${totalEmployeeCount}`);
+            console.log(`External employees breakdown by store:`);
+            
+            // Log breakdown by store
+            const storeBreakdown = {};
+            filteredExternalEmployees.forEach(emp => {
+                const storeName = emp?.store_name?.toUpperCase();
+                storeBreakdown[storeName] = (storeBreakdown[storeName] || 0) + 1;
+            });
+            
+            Object.entries(storeBreakdown).forEach(([store, count]) => {
+                const locCode = storeNameToLocCode[store] || 'Unknown';
+                console.log(`   - ${store} (${locCode}): ${count} employees`);
+            });
             
         } catch (error) {
             console.error('Error fetching external employee data:', error.message);
@@ -721,27 +783,59 @@ export const calculateProgress = async (req, res) => {
         const users = await User.find({ locCode: { $in: allowedLocCodes } });
         const userID = users.map(id => id._id)
 
-        // Fetch all trainings
-        const trainings = await TrainingProgress.find({ userId: { $in: userID } });
-
-        // Calculate completion percentage for each training
-        const progressArray = trainings.map((training) => {
-            if (!training.modules || !Array.isArray(training.modules)) return 0;
-
-            const totalModules = training.modules.length;
-            const completedModules = training.modules.reduce((count, module) => {
-                const totalVideos = module.videos?.length || 0;
-                const completedVideos = module.videos?.filter(video => video.pass).length || 0;
-                return count + (module.pass && completedVideos === totalVideos ? 1 : 0);
-            }, 0);
-
-            return totalModules > 0 ? (completedModules / totalModules) * 100 : 0;
+        // Calculate average progress from both user.training records AND mandatory trainings (TrainingProgress)
+        let totalUserTrainings = 0;
+        let completedUserTrainings = 0;
+        
+        // Pre-fetch all training progress records for these users
+        const allTrainingProgress = await TrainingProgress.find({ 
+            userId: { $in: userID } 
         });
-
-        // Calculate overall average progress
-        const averageProgress = progressArray.length
-            ? (progressArray.reduce((a, b) => a + b, 0) / progressArray.length).toFixed(2)
-            : "0.00";
+        
+        // Create a map of userId -> training progress records
+        const trainingProgressMap = new Map();
+        allTrainingProgress.forEach(progress => {
+            const userId = progress.userId.toString();
+            if (!trainingProgressMap.has(userId)) {
+                trainingProgressMap.set(userId, []);
+            }
+            trainingProgressMap.get(userId).push(progress);
+        });
+        
+        users.forEach(user => {
+            // Count assigned trainings from user.training array
+            if (user.training && Array.isArray(user.training)) {
+                totalUserTrainings += user.training.length;
+                completedUserTrainings += user.training.filter(training => training.pass).length;
+            }
+            
+            // Count mandatory trainings from TrainingProgress collection (avoid duplicates)
+            const userTrainingProgress = trainingProgressMap.get(user._id.toString()) || [];
+            
+            // Get assigned training IDs to avoid duplicates
+            const assignedTrainingIds = user.training ? 
+                user.training.map(t => t.trainingId.toString()) : [];
+            
+            // Filter out mandatory trainings that are already in assigned trainings
+            const uniqueMandatoryTrainings = userTrainingProgress.filter(tp => 
+                !assignedTrainingIds.includes(tp.trainingId.toString())
+            );
+            
+            totalUserTrainings += uniqueMandatoryTrainings.length;
+            completedUserTrainings += uniqueMandatoryTrainings.filter(tp => tp.pass).length;
+        });
+        
+        // Calculate average progress from user training records
+        const averageProgress = totalUserTrainings > 0 ? (completedUserTrainings / totalUserTrainings) * 100 : 0;
+        
+        console.log(`🔍 Dashboard calculation debug:`);
+        console.log(`   - Admin allowed branches: ${allowedLocCodes.length}`);
+        console.log(`   - Users in allowed branches: ${users.length}`);
+        console.log(`   - Total user trainings: ${totalUserTrainings}`);
+        console.log(`   - Completed user trainings: ${completedUserTrainings}`);
+        console.log(`   - Average progress: ${averageProgress.toFixed(2)}%`);
+        
+        const finalAverageProgress = parseFloat(averageProgress.toFixed(2));
 
         // Calculate assessment progress
         let totalAssessments = 0;
@@ -756,11 +850,28 @@ export const calculateProgress = async (req, res) => {
                 ).length;
             }
 
+            // Count overdue assigned trainings from user.training array
             if (Array.isArray(user.training)) {
                 trainingpend += user.training.filter(
                     item => day > item.deadline && item.pass === false
                 ).length;
             }
+            
+            // Count overdue mandatory trainings from TrainingProgress collection (avoid duplicates)
+            const userTrainingProgress = trainingProgressMap.get(user._id.toString()) || [];
+            
+            // Get assigned training IDs to avoid duplicates
+            const assignedTrainingIds = user.training ? 
+                user.training.map(t => t.trainingId.toString()) : [];
+            
+            // Filter out mandatory trainings that are already in assigned trainings
+            const uniqueMandatoryTrainings = userTrainingProgress.filter(tp => 
+                !assignedTrainingIds.includes(tp.trainingId.toString())
+            );
+            
+            trainingpend += uniqueMandatoryTrainings.filter(tp => 
+                day > tp.deadline && tp.pass === false
+            ).length;
         });
 
         // Get login statistics
@@ -785,7 +896,7 @@ export const calculateProgress = async (req, res) => {
                 branchCount: AdminData.branches.length,
                 userCount: totalEmployeeCount, // Use total employee count from external API
                 localUserCount: userCount.length, // Keep local user count for reference
-                averageProgress: parseFloat(averageProgress),
+                averageProgress: finalAverageProgress,
                 assessmentProgress: passedAssessments,
                 trainingPending: trainingpend,
                 // Login statistics

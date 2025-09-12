@@ -6,7 +6,7 @@ const verifyJWT = (req, res, next) => {
     }
 
     try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET_KEY);
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
         req.user = decoded; // Attach decoded user data to the request object
         next(); // Proceed to the next middleware or route
     } catch (err) {

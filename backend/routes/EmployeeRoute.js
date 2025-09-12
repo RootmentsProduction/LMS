@@ -4,8 +4,10 @@ import {
     getAllEmployees,
     getEmployeeById,
     updateEmployee,
-    deleteEmployee
+    deleteEmployee,
+    getAllEmployeesWithTrainingDetails
 } from '../controllers/EmployeeController.js';
+import { MiddilWare } from '../lib/middilWare.js';
 
 const router = express.Router();
 
@@ -170,5 +172,82 @@ router.put('/:id', updateEmployee);
  *         description: Internal server error
  */
 router.delete('/:id', deleteEmployee);
+
+/**
+ * @swagger
+ * /api/employee/management/with-training-details:
+ *   get:
+ *     tags: [Employee]
+ *     summary: Get all employees with training and assessment details
+ *     description: Retrieves all employees with their training completion, overdue trainings, assessment completion, and overdue assessments
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Employee data with training details retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Employee data with training details fetched successfully"
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       empID:
+ *                         type: string
+ *                         example: "EMP01"
+ *                       username:
+ *                         type: string
+ *                         example: "John Doe"
+ *                       designation:
+ *                         type: string
+ *                         example: "Manager"
+ *                       workingBranch:
+ *                         type: string
+ *                         example: "GROOMS Trivandrum"
+ *                       trainingCount:
+ *                         type: integer
+ *                         example: 3
+ *                       passCountTraining:
+ *                         type: integer
+ *                         example: 2
+ *                       trainingDue:
+ *                         type: integer
+ *                         example: 1
+ *                       trainingCompletionPercentage:
+ *                         type: integer
+ *                         example: 67
+ *                       assignedAssessmentsCount:
+ *                         type: integer
+ *                         example: 2
+ *                       passCountAssessment:
+ *                         type: integer
+ *                         example: 1
+ *                       assessmentDue:
+ *                         type: integer
+ *                         example: 1
+ *                       assessmentCompletionPercentage:
+ *                         type: integer
+ *                         example: 50
+ *                 totalCount:
+ *                   type: integer
+ *                   example: 122
+ *                 employeesWithTraining:
+ *                   type: integer
+ *                   example: 6
+ *       401:
+ *         description: Unauthorized - Invalid token
+ *       500:
+ *         description: Internal server error
+ */
+router.get('/management/with-training-details', MiddilWare, getAllEmployeesWithTrainingDetails);
 
 export default router;

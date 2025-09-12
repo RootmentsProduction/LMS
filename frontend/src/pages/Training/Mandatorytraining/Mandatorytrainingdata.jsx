@@ -486,63 +486,7 @@ const Mandatorytrainingdata = () => {
             )}
             
             {/* Debug Section */}
-            {assignedTo.length > 0 && (
-              <div className="mt-3 p-3 bg-gray-50 rounded border">
-                <p className="text-sm font-medium text-gray-700 mb-2">Debug Designation Lookup:</p>
-                {assignedTo.map((designation, index) => (
-                  <button
-                    key={index}
-                    onClick={() => debugDesignation(designation.value)}
-                    className="mr-2 mb-2 px-3 py-1 bg-blue-100 text-blue-700 rounded text-sm hover:bg-blue-200"
-                  >
-                    Debug: {designation.label}
-                  </button>
-                ))}
-                
-                {/* Test Backend API Button */}
-                <div className="mt-3 pt-3 border-t border-gray-200">
-                  <button
-                    onClick={testBackendAPI}
-                    className="px-3 py-1 bg-green-100 text-green-700 rounded text-sm hover:bg-green-200"
-                  >
-                    Test Backend API
-                  </button>
-                  <p className="text-xs text-gray-500 mt-1">
-                    This will test the backend API directly to see what's happening
-                  </p>
-                </div>
-                
-                {/* Log Employee Data Structure Button */}
-                <div className="mt-3 pt-3 border-t border-gray-200">
-                  <button
-                    onClick={logEmployeeDataStructure}
-                    className="px-3 py-1 bg-purple-100 text-purple-700 rounded text-sm hover:bg-purple-200"
-                  >
-                    Log Employee Data Structure
-                  </button>
-                  <p className="text-xs text-gray-500 mt-1">
-                    This will log the structure of employee data to understand the format
-                  </p>
-                </div>
-                
-                {/* Check Backend Data Mismatch Button */}
-                <div className="mt-3 pt-3 border-t border-gray-200">
-                  <button
-                    onClick={checkBackendDataMismatch}
-                    className="px-3 py-1 bg-red-100 text-red-700 rounded text-sm hover:bg-red-200"
-                  >
-                    Check Backend Data Mismatch
-                  </button>
-                  <p className="text-xs text-gray-500 mt-1">
-                    This will compare frontend employee data with what the backend might be expecting
-                  </p>
-                </div>
-                
-                {debugInfo && (
-                  <p className="text-sm text-gray-600 mt-2">{debugInfo}</p>
-                )}
-              </div>
-            )}
+           
           </div>
 
           {/* Delete All Trainings Section */}

@@ -8,6 +8,7 @@ import cors from 'cors';
 import express from 'express';
 import cookieParser from 'cookie-parser';
 import axios from 'axios';                           // ✅ needed
+import mongoose from 'mongoose';
 
 import connectMongoDB from './db/database.js';
 import ModuleRouter from './routes/ModuleRoute.js';
@@ -18,6 +19,7 @@ import AdminData from './routes/AdminRoute.js'
 import FutterAssessment from './routes/FutterAssessment.js'
 import Whatsapprouter from './routes/WhatsappRouteZoho.js'
 import EmployeeRouter from './routes/EmployeeRoute.js'
+import DebugRouter from './routes/DebugRoute.js'
 
 import { AlertNotification } from './lib/CornJob.js';
 import setupSwagger from './swagger.js';
@@ -52,7 +54,8 @@ app.use(
         'https://lmsrootments.vercel.app',
         'https://lms-testenv-q8co.vercel.app',
         'https://web-lms-fawn.vercel.app',
-        'https://trainingweb-gamma.vercel.app' // ✅ Your Vercel deployment
+        'https://trainingweb-gamma.vercel.app',
+        'https://learn.rootments.live'
       ];
       
       // Allow Vercel domains
@@ -88,6 +91,50 @@ app.use(
 app.get('/', (req, res) => {
   console.log('🌐 Root endpoint accessed from:', req.headers.origin);
   res.send('✅ API is working');
+});
+
+// Debug endpoint to check database connection
+app.get('/debug/database', async (req, res) => {
+  try {
+    const currentUri = process.env.MONGODB_URI;
+    // const fallbackUri = 'mongodb+srv://abhirambca2021_db_user:Root@cluster0.5rf3i8g.mongodb.net/Rootments?retryWrites=true&w=majority&appName=Cluster0';
+    
+    const connectionState = mongoose.connection.readyState;
+    const connectionStates = {
+      0: 'disconnected',
+      1: 'connected',
+      2: 'connecting',
+      3: 'disconnecting'
+    };
+
+    const debugInfo = {
+      environment: process.env.NODE_ENV || 'development',
+      currentMongoUri: currentUri ? currentUri.substring(0, 50) + '...' : 'NOT SET',
+      fallbackUri: fallbackUri.substring(0, 50) + '...',
+      connectionState: connectionStates[connectionState],
+      connectionReadyState: connectionState,
+      databaseName: mongoose.connection.db?.databaseName || 'Not connected',
+      host: mongoose.connection.host || 'Not connected',
+      port: mongoose.connection.port || 'Not connected',
+      timestamp: new Date().toISOString()
+    };
+
+    console.log('=== DATABASE DEBUG INFO ===');
+    console.log(debugInfo);
+    console.log('===========================');
+
+    res.status(200).json({
+      message: 'Database debug info',
+      data: debugInfo
+    });
+
+  } catch (error) {
+    console.error('Debug endpoint error:', error);
+    res.status(500).json({
+      message: 'Debug endpoint error',
+      error: error.message
+    });
+  }
 });
 
 // Handle preflight OPTIONS requests for all routes
@@ -328,10 +375,15 @@ app.use('/api/admin', AdminData)
 app.use('/api/user/assessment', FutterAssessment)
 app.use('/zoho', Whatsapprouter)
 app.use('/api/employee', EmployeeRouter)
+app.use('/api/debug', DebugRouter)
 
 // User Login Tracking Routes
 import UserLoginRouter from './routes/UserLoginRoute.js';
 app.use('/api/user-login', UserLoginRouter)
+
+// LMS Website Login Tracking Routes
+import LMSLoginRouter from './routes/LMSLoginRoute.js';
+app.use('/api/lms-login', LMSLoginRouter)
 
 console.log(new Date());
 

@@ -193,8 +193,8 @@ const CreateTrainingData = () => {
             ? Array(4)
               .fill(null)
               .map((_, i) => <Card key={i} />)
-            : filteredData.map((item) => (
-              <Link key={item._id} to={`/AssigTraining/${item?.trainingId}`}>
+            : filteredData.map((item, index) => (
+              <Link key={item._id || `training-${index}`} to={`/AssigTraining/${item?.trainingId}`}>
                 <RoundProgressBar
                   initialProgress={item?.averageCompletionPercentage || 0}
                   title={item?.trainingName}

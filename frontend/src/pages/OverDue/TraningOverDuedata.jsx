@@ -179,16 +179,18 @@ const TraningOverDuedata = () => {
                                         <td className="px-3 py-1 border-2 border-gray-300 text-center">{employee.workingBranch}</td>
                                         <td className="px-3 py-1 border-2 border-gray-300 text-center">
                                             {employee.overdueAssessments?.length > 0 ? (
-                                                employee.overdueAssessments.map((assessment, idx) => (
-                                                    <div key={idx} className="flex flex-col">
-                                                        <div className="text-left">
-                                                            {assessment.trainingId.trainingName} (Due: {new Date(assessment.deadline).toLocaleDateString()})
+                                                employee.overdueAssessments
+                                                    .filter(assessment => assessment.trainingId) // Filter out null trainingId
+                                                    .map((assessment, idx) => (
+                                                        <div key={idx} className="flex flex-col">
+                                                            <div className="text-left">
+                                                                {assessment.trainingId?.trainingName || 'Unknown Training'} (Due: {new Date(assessment.deadline).toLocaleDateString()})
+                                                            </div>
+                                                            {idx < employee.overdueAssessments.filter(a => a.trainingId).length - 1 && (
+                                                                <div className="border-t border-black w-full my-2"></div>
+                                                            )}
                                                         </div>
-                                                        {idx < employee.overdueAssessments.length - 1 && (
-                                                            <div className="border-t border-black w-full my-2"></div>
-                                                        )}
-                                                    </div>
-                                                ))
+                                                    ))
                                             ) : (
                                                 "No Overdue Assessments"
                                             )}

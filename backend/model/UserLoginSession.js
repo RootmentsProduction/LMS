@@ -110,6 +110,11 @@ const userLoginSessionSchema = new mongoose.Schema({
     sessionDuration: {
         type: Number, // in minutes
         default: 0
+    },
+    loginSource: {
+        type: String,
+        enum: ['main-app', 'lms-website', 'mobile-app'],
+        default: 'main-app'
     }
 }, {
     timestamps: true
@@ -121,6 +126,7 @@ userLoginSessionSchema.index({ deviceType: 1, deviceOS: 1 });
 userLoginSessionSchema.index({ browser: 1, browserVersion: 1 });
 userLoginSessionSchema.index({ deviceBrand: 1, deviceModel: 1 });
 userLoginSessionSchema.index({ isActive: 1 });
+userLoginSessionSchema.index({ loginSource: 1 });
 
 const UserLoginSession = mongoose.model('UserLoginSession', userLoginSessionSchema);
 

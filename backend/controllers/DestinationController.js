@@ -3,6 +3,7 @@ import Permission from "../model/AdminPermission.js";
 import Branch from "../model/Branch.js";
 import Designation from "../model/designation.js"; // Import the destination model
 import User from "../model/User.js";
+import TrainingProgress from "../model/Trainingprocessschema.js";
 import bcrypt from 'bcrypt'
 import axios from 'axios'; // Added axios import
 
@@ -74,6 +75,12 @@ export const HomeBar = async (req, res) => {
         // Fetch all branches and users
         const branches = await Branch.find({ _id: { $in: AdminData.branches } });
         const users = await User.find({ locCode: { $in: allowedLocCodes } });
+        
+        // Fetch mandatory training data for all users
+        const userIds = users.map(user => user._id);
+        const mandatoryTrainings = await TrainingProgress.find({ 
+            userId: { $in: userIds } 
+        }).populate('trainingId');
 
         // Fetch external employee data
         let externalEmployees = [];
@@ -105,6 +112,15 @@ export const HomeBar = async (req, res) => {
             }
             userMap.get(user.locCode).push(user);
         }
+        
+        // Create a map of userId to mandatory trainings for quick lookup
+        const mandatoryTrainingMap = new Map();
+        for (const training of mandatoryTrainings) {
+            if (!mandatoryTrainingMap.has(training.userId.toString())) {
+                mandatoryTrainingMap.set(training.userId.toString(), []);
+            }
+            mandatoryTrainingMap.get(training.userId.toString()).push(training);
+        }
 
         // Create a map of locCode to external employees for quick lookup
         const externalUserMap = new Map();
@@ -129,9 +145,18 @@ export const HomeBar = async (req, res) => {
 
             // Calculate counts for the branch (local users only for now)
             branchUsers.forEach((user) => {
-                trainingCount += user.training.length;
+                // Assigned training data
+                const assignedTrainings = user.training || [];
+                trainingCount += assignedTrainings.length;
+                trainingCountPending += assignedTrainings.filter((item) => item.pass === false).length;
+                
+                // Mandatory training data
+                const userMandatoryTrainings = mandatoryTrainingMap.get(user._id.toString()) || [];
+                trainingCount += userMandatoryTrainings.length;
+                trainingCountPending += userMandatoryTrainings.filter((item) => item.pass === false).length;
+                
+                // Assessment data
                 assessmentCount += user.assignedAssessments.length;
-                trainingCountPending += user.training.filter((item) => item.pass === false).length;
                 assessmentCountPending += user.assignedAssessments.filter((item) => item.pass === false).length;
             });
 
@@ -191,6 +216,21 @@ export const getTopUsers = async (req, res) => {
                 path: 'assignedModules.moduleId',
             });
 
+        // Fetch mandatory training data for all users
+        const userIds = users.map(user => user._id);
+        const mandatoryTrainings = await TrainingProgress.find({ 
+            userId: { $in: userIds } 
+        }).populate('trainingId');
+        
+        // Create a map of userId to mandatory trainings for quick lookup
+        const mandatoryTrainingMap = new Map();
+        for (const training of mandatoryTrainings) {
+            if (!mandatoryTrainingMap.has(training.userId.toString())) {
+                mandatoryTrainingMap.set(training.userId.toString(), []);
+            }
+            mandatoryTrainingMap.get(training.userId.toString()).push(training);
+        }
+
         // Fetch external employee data
         let externalEmployees = [];
         try {
@@ -215,9 +255,19 @@ export const getTopUsers = async (req, res) => {
 
         // Calculate progress for each user
         const scores = users.map((user) => {
-            // Training progress calculation
-            const completedTrainings = user.training.filter(t => t.pass).length;
-            const totalTrainings = user.training.length;
+            // Assigned training progress calculation
+            const assignedTrainings = user.training || [];
+            const completedAssignedTrainings = assignedTrainings.filter(t => t.pass).length;
+            const totalAssignedTrainings = assignedTrainings.length;
+            
+            // Mandatory training progress calculation
+            const userMandatoryTrainings = mandatoryTrainingMap.get(user._id.toString()) || [];
+            const completedMandatoryTrainings = userMandatoryTrainings.filter(t => t.pass).length;
+            const totalMandatoryTrainings = userMandatoryTrainings.length;
+            
+            // Combined training progress
+            const completedTrainings = completedAssignedTrainings + completedMandatoryTrainings;
+            const totalTrainings = totalAssignedTrainings + totalMandatoryTrainings;
             const trainingProgress = totalTrainings > 0 ? (completedTrainings / totalTrainings) * 100 : 0;
 
             // Assessment progress calculation (using `pass` and `complete`)
@@ -242,6 +292,10 @@ export const getTopUsers = async (req, res) => {
                 completedTrainings,
                 totalTrainings,
                 trainingProgress,
+                completedAssignedTrainings,
+                totalAssignedTrainings,
+                completedMandatoryTrainings,
+                totalMandatoryTrainings,
                 completedAssessments,
                 totalAssessments,
                 assessmentProgress,

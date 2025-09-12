@@ -317,6 +317,10 @@ export const ReassignTraining = async (req, res) => {
         user.designation = employeeInfo.role_name || user.designation;
         user.workingBranch = employeeInfo.store_name || user.workingBranch;
         user.email = employeeInfo.email || user.email;
+        
+        // IMPORTANT: Don't update locCode from external API to preserve our branch mapping fix
+        // The locCode should remain as our corrected value (e.g., "15" for SUITOR GUY EDAPPAL)
+        // user.locCode = employeeInfo.store_code || user.locCode; // COMMENTED OUT
       }
 
       // Check if this is a mandatory training

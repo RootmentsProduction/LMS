@@ -1,10 +1,12 @@
 import express from 'express';
+import mongoose from 'mongoose';
 import { handlePermissions, CreatingAdminUsers, getTopUsers, HomeBar, } from '../controllers/DestinationController.js';
 import { AdminLogin, ChangeVisibility, getAllNotifications, getEscalationLevel, getNotifications, GetSubroles, getVisibility, Subroles, upsertEscalationLevel } from '../controllers/moduleController.js';
 import { VerifyToken } from '../lib/VerifyJwt.js';
 import { CreateNotification, FindOverDueAssessment, FindOverDueTraining, SendNotification, SendNotificationAssessment } from '../controllers/AssessmentReassign.js';
 import { MiddilWare } from '../lib/middilWare.js';
 import { GetAllUserDetailes, GetBranchDetailes, GetCurrentAdmin, GetPermissionController, GetSearchDataController, GetStoreManager, GetStoreManagerDueDate, PermissionController, UpdateAdminDetaile, UpdateBranchDetails, UpdateOneUserDetailes } from '../controllers/FutterAssessment.js';
+import User from '../model/User.js';
 
 const router = express.Router();
 
@@ -534,6 +536,64 @@ router.post('/notification/create', CreateNotification);
  *         description: Internal server error.
  */
 router.get('/user/detailed/info/:id', MiddilWare, GetAllUserDetailes);
+
+/**
+ * @swagger
+ * /api/admin/user/detailed/info/{id}/debug:
+ *   get:
+ *     summary: Debug user details endpoint
+ *     description: Debug version of user details endpoint with additional logging
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: User ID
+ *     responses:
+ *       200:
+ *         description: Successfully retrieved user details.
+ *       401:
+ *         description: Unauthorized, invalid credentials or no token provided.
+ *       404:
+ *         description: User not found.
+ *       500:
+ *         description: Internal server error.
+ */
+router.get('/user/detailed/info/:id/debug', MiddilWare, async (req, res) => {
+    try {
+        console.log('=== DEBUG ENDPOINT CALLED ===');
+        console.log('Request params:', req.params);
+        console.log('Request headers:', req.headers);
+        console.log('Database ready state:', mongoose.connection.readyState);
+        console.log('Database name:', mongoose.connection.db?.databaseName);
+        
+        const { id } = req.params;
+        console.log('Looking for empID:', id);
+        
+        // Test basic user lookup
+        const userExists = await User.findOne({ empID: id }).select('empID username email');
+        console.log('User exists:', userExists ? 'YES' : 'NO');
+        
+        if (userExists) {
+            console.log('User data:', userExists);
+        }
+        
+        res.status(200).json({
+            message: 'Debug info logged to console',
+            empID: id,
+            userExists: !!userExists,
+            databaseConnected: mongoose.connection.readyState === 1,
+            databaseName: mongoose.connection.db?.databaseName
+        });
+    } catch (error) {
+        console.error('Debug endpoint error:', error);
+        res.status(500).json({
+            message: 'Debug endpoint error',
+            error: error.message
+        });
+    }
+});
 
 /**
  * @swagger
