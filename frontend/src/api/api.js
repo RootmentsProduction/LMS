@@ -1,6 +1,6 @@
 const baseUrl = {
     // Production URL (Render deployment)
-    baseUrl: "https://lms-testenv.onrender.com/",
+    baseUrl: "https://lms-1-lavs.onrender.com/",
     
     // Development URL (for local development)
     // baseUrl: "http://localhost:7000/",
