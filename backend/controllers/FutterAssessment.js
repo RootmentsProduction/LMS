@@ -4,6 +4,7 @@ import AssessmentProcess from "../model/Assessmentprocessschema.js";
 import Branch from "../model/Branch.js";
 import Notification from "../model/Notification.js";
 import TrainingProgress from "../model/Trainingprocessschema.js";
+import { Training } from "../model/Traning.js";
 import User from "../model/User.js";
 import mongoose from 'mongoose';
 
@@ -167,6 +168,80 @@ export const userAssessmentUpdate = async (req, res) => {
     }
 };
 
+// Helper function to assign mandatory trainings to a user
+const assignMandatoryTrainingsToUser = async (user) => {
+    try {
+        console.log(`Checking mandatory trainings for user: ${user.empID} with designation: ${user.designation}`);
+        
+        // Function to flatten a string (remove spaces and lowercase)
+        const flatten = (str) => str.toLowerCase().replace(/\s+/g, '');
+        
+        // Flatten input designation
+        const flatDesignation = flatten(user.designation);
+        
+        // Step 1: Fetch all mandatory trainings
+        const allTrainings = await Training.find({
+            Trainingtype: 'Mandatory'
+        }).populate('modules');
+        
+        // Step 2: Filter in JS using flattened comparison
+        const mandatoryTraining = allTrainings.filter(training =>
+            training.Assignedfor.some(role => flatten(role) === flatDesignation)
+        );
+        
+        console.log(`Found ${mandatoryTraining.length} mandatory trainings for designation: ${user.designation}`);
+        
+        if (mandatoryTraining.length === 0) {
+            console.log(`No mandatory trainings found for designation: ${user.designation}`);
+            return;
+        }
+        
+        const deadlineDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // Default 30-day deadline
+        
+        // Create TrainingProgress for each mandatory training
+        const trainingAssignments = mandatoryTraining.map(async (training) => {
+            // Check if this user already has this training assigned
+            const existingProgress = await TrainingProgress.findOne({
+                userId: user._id,
+                trainingId: training._id
+            });
+            
+            if (existingProgress) {
+                console.log(`User ${user.empID} already has training ${training.trainingName} assigned`);
+                return;
+            }
+            
+            // Create TrainingProgress for the user
+            const trainingProgress = new TrainingProgress({
+                userId: user._id,
+                trainingId: training._id,
+                trainingName: training.trainingName,
+                deadline: deadlineDate,
+                pass: false,
+                modules: training.modules.map(module => ({
+                    moduleId: module._id,
+                    pass: false,
+                    videos: module.videos.map(video => ({
+                        videoId: video._id,
+                        pass: false,
+                    })),
+                })),
+            });
+            
+            await trainingProgress.save();
+            console.log(`Assigned mandatory training "${training.trainingName}" to user ${user.empID}`);
+        });
+        
+        // Wait for all training assignments to complete
+        await Promise.all(trainingAssignments);
+        console.log(`Successfully assigned ${mandatoryTraining.length} mandatory trainings to user ${user.empID}`);
+        
+    } catch (error) {
+        console.error(`Error assigning mandatory trainings to user ${user.empID}:`, error);
+        // Don't throw error - let the main process continue
+    }
+};
+
 export const GetAllUserDetailes = async (req, res) => {
     console.log('GetAllUserDetailes called with empID:', req.params.id);
 
@@ -184,7 +259,7 @@ export const GetAllUserDetailes = async (req, res) => {
         
         console.log('Searching for user with empID:', empID);
         
-        const userData = await User.findOne({ empID })
+        let userData = await User.findOne({ empID })
             .populate({
                 path: 'training.trainingId',
                 select: '-questions' // Exclude questions field to reduce payload
@@ -194,11 +269,126 @@ export const GetAllUserDetailes = async (req, res) => {
                 select: '-questions' // Exclude questions field to reduce payload
             });
             
+        // If user not found in database, try to fetch from external API and create user
         if (!userData) {
-            console.log('User not found with empID:', empID);
-            return res.status(404).json({
-                message: "user not found"
-            })
+            console.log('User not found in database, trying external API for empID:', empID);
+            
+            try {
+                // Fetch directly from external API (avoid self-referencing)
+                const axios = (await import('axios')).default;
+                const ROOTMENTS_API_TOKEN = 'RootX-production-9d17d9485eb772e79df8564004d4a4d4';
+                const response = await axios.post('https://rootments.in/api/employee_range', {
+                    startEmpId: empID,
+                    endEmpId: empID
+                }, { 
+                    timeout: 15000,
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'Authorization': `Bearer ${ROOTMENTS_API_TOKEN}`,
+                    }
+                });
+                
+                const externalEmployee = response.data?.data?.[0];
+                if (!externalEmployee) {
+                    console.log('Employee not found in external API:', empID);
+                    return res.status(404).json({
+                        message: "Employee not found"
+                    });
+                }
+                
+                // Create new user from external data
+                console.log('Creating new user from external data:', externalEmployee.name);
+                
+                // Handle locCode properly - provide fallback for empty values
+                let locCode = externalEmployee.store_code || '';
+                if (!locCode || locCode.trim() === '') {
+                    // If no store_code, try to map from store_name
+                    const storeNameToLocCode = {
+                        'GROOMS TRIVANDRUM': '5',
+                        'GROOMS PALAKKAD': '19',
+                        'GROOMS EDAPALLY': '3',
+                        'GROOMS KOTTAYAM': '9',
+                        'GROOMS PERUMBAVOOR': '10',
+                        'GROOMS THRISSUR': '11',
+                        'GROOMS CHAVAKKAD': '12',
+                        'GROOMS EDAPPAL': '15',
+                        'GROOMS VATAKARA': '14',
+                        'GROOMS PERINTHALMANNA': '16',
+                        'GROOMS MANJERY': '18',
+                        'GROOMS KOTTAKKAL': '17',
+                        'GROOMS KOZHIKODE': '13',
+                        'GROOMS CALICUT': '13',
+                        'GROOMS KANNUR': '21',
+                        'GROOMS KALPETTA': '20',
+                        'ZORUCCI EDAPPAL': '6',
+                        'ZORUCCI KOTTAKKAL': '8',
+                        'ZORUCCI PERINTHALMANNA': '7',
+                        'ZORUCCI EDAPPALLY': '1',
+                        'SUITOR GUY TRIVANDRUM': '5',
+                        'SUITOR GUY PALAKKAD': '19',
+                        'SUITOR GUY EDAPPALLY': '3',
+                        'SUITOR GUY KOTTAYAM': '9',
+                        'SUITOR GUY PERUMBAVOOR': '10',
+                        'SUITOR GUY THRISSUR': '11',
+                        'SUITOR GUY CHAVAKKAD': '12',
+                        'SUITOR GUY EDAPPAL': '15',
+                        'SUITOR GUY VATAKARA': '14',
+                        'SUITOR GUY PERINTHALMANNA': '16',
+                        'SUITOR GUY MANJERI': '18',
+                        'SUITOR GUY KOTTAKKAL': '17',
+                        'SUITOR GUY CALICUT': '13',
+                        'SUITOR GUY KALPETTA': '20',
+                        'SUITOR GUY KANNUR': '21'
+                    };
+                    
+                    const storeName = externalEmployee.store_name?.toUpperCase() || '';
+                    locCode = storeNameToLocCode[storeName] || '1'; // Default to '1' if no mapping found
+                    console.log(`Mapped store "${externalEmployee.store_name}" to locCode: ${locCode}`);
+                }
+                
+                userData = new User({
+                    username: externalEmployee.name || '',
+                    email: externalEmployee.email || `${empID}@company.com`,
+                    empID: empID,
+                    designation: externalEmployee.role_name || '',
+                    workingBranch: externalEmployee.store_name || 'No Store',
+                    locCode: locCode,
+                    phoneNumber: externalEmployee.phone || '',
+                    training: [],
+                    assignedAssessments: []
+                });
+                
+                await userData.save();
+                console.log('New user created successfully:', empID);
+                
+                // Auto-assign mandatory trainings to the new user
+                await assignMandatoryTrainingsToUser(userData);
+                
+                // Refresh user data with populated fields
+                userData = await User.findOne({ empID })
+                    .populate({
+                        path: 'training.trainingId',
+                        select: '-questions'
+                    })
+                    .populate({
+                        path: 'assignedAssessments.assessmentId',
+                        select: '-questions'
+                    });
+                    
+            } catch (externalError) {
+                console.error('Error fetching from external API:', externalError);
+                return res.status(404).json({
+                    message: "Employee not found in database or external system"
+                });
+            }
+        } else {
+            // User exists in database, but check if they have mandatory trainings assigned
+            const existingProgress = await TrainingProgress.find({ userId: userData._id });
+            if (existingProgress.length === 0) {
+                console.log('Existing user has no mandatory trainings, assigning them now...');
+                await assignMandatoryTrainingsToUser(userData);
+            }
         }
 
         console.log('User found, fetching mandatory trainings for userId:', userData._id);
@@ -246,7 +436,7 @@ export const GetAllUserDetailes = async (req, res) => {
         res.status(200).json({
             message: "Data found",
             data: responseData
-        })
+        });
 
     } catch (error) {
         console.error('Error in GetAllUserDetailes:', error);

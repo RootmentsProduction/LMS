@@ -626,6 +626,45 @@ const EmployeeData = () => {
     await fetchEmployees();
   };
 
+  const handleAutoSync = async () => {
+    try {
+      setIsRefreshing(true);
+      const token = localStorage.getItem('token');
+      
+      const response = await fetch(`${baseUrl.baseUrl}api/employee/auto-sync`, {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+          'Authorization': `Bearer ${token}`,
+        },
+        credentials: "include",
+      });
+
+      if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText}`);
+      const result = await response.json();
+
+      if (result.success) {
+        console.log('✅ Auto-sync completed:', result.results);
+        // Refresh the employee list after sync
+        await fetchEmployees();
+        
+        // Show success message with details
+        const message = `Sync completed! Created: ${result.results.created}, Updated: ${result.results.updated}, Total: ${result.results.totalInDatabase}`;
+        setError(""); // Clear any previous errors
+        
+        // You could add a toast notification here if you have one
+        console.log(message);
+      } else {
+        throw new Error(result.message || "Auto-sync failed");
+      }
+    } catch (error) {
+      console.error("Auto-sync failed:", error.message);
+      setError(`Auto-sync failed: ${error.message}`);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
   const exportToCSV = () => {
     const headers = [
       "Emp ID",
@@ -829,6 +868,18 @@ const EmployeeData = () => {
                   )}
                 </div>
               </div>
+
+              {/* Auto-Sync Button */}
+              <button
+                className="bg-green-600 text-white px-4 py-2.5 rounded-md hover:bg-green-700 transition-all duration-150 text-sm font-medium flex items-center justify-center gap-2 sm:whitespace-nowrap"
+                onClick={handleAutoSync}
+                disabled={isRefreshing}
+                title="Sync all employees from external API to database"
+              >
+                <HiRefresh size={16} className={isRefreshing ? 'animate-spin' : ''} />
+                <span className="hidden sm:inline">{isRefreshing ? 'Syncing...' : 'Auto-Sync'}</span>
+                <span className="sm:hidden">{isRefreshing ? '...' : '⟳'}</span>
+              </button>
 
               {/* Refresh Button */}
               <button

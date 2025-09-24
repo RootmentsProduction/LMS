@@ -9,6 +9,78 @@ import User from "../model/User.js";
 import axios from 'axios';
 import UserLoginSession from '../model/UserLoginSession.js';
 
+// Helper function to assign existing mandatory trainings to new users
+const assignExistingMandatoryTrainingsToUser = async (user) => {
+  try {
+    const designation = user.designation;
+    console.log(`Assigning existing mandatory trainings to new user with designation: ${designation}`);
+    
+    // Function to flatten a string (remove spaces and lowercase) - same logic as createUser
+    const flatten = (str) => str.toLowerCase().replace(/\s+/g, '');
+    const flatDesignation = flatten(designation);
+
+    // Fetch all mandatory trainings
+    const allTrainings = await Training.find({
+      Trainingtype: 'Mandatory'
+    }).populate('modules');
+
+    // Filter trainings that match this user's designation
+    const mandatoryTraining = allTrainings.filter(training =>
+      training.Assignedfor.some(role => flatten(role) === flatDesignation)
+    );
+
+    console.log(`Found ${mandatoryTraining.length} existing mandatory trainings for designation: ${designation}`);
+
+    if (mandatoryTraining.length === 0) {
+      console.log(`No existing mandatory trainings found for designation: ${designation}`);
+      return;
+    }
+
+    const deadlineDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // Default 30-day deadline
+
+    // Create TrainingProgress records for each mandatory training
+    const trainingAssignments = mandatoryTraining.map(async (training) => {
+      // Check if this user already has this training assigned
+      const existingProgress = await TrainingProgress.findOne({
+        userId: user._id,
+        trainingId: training._id
+      });
+
+      if (existingProgress) {
+        console.log(`User ${user.empID} already has training ${training.trainingName} assigned`);
+        return;
+      }
+
+      // Create TrainingProgress for the user
+      const trainingProgress = new TrainingProgress({
+        userId: user._id,
+        trainingId: training._id,
+        deadline: deadlineDate,
+        pass: false,
+        modules: training.modules.map(module => ({
+          moduleId: module._id,
+          pass: false,
+          videos: module.videos.map(video => ({
+            videoId: video._id,
+            pass: false,
+          })),
+        })),
+      });
+
+      await trainingProgress.save();
+      console.log(`Assigned mandatory training "${training.trainingName}" to user ${user.empID}`);
+    });
+
+    // Wait for all training assignments to complete
+    await Promise.all(trainingAssignments);
+    console.log(`Successfully assigned ${mandatoryTraining.length} mandatory trainings to user ${user.empID}`);
+    
+  } catch (error) {
+    console.error(`Error assigning mandatory trainings to user ${user.empID}:`, error);
+    // Don't throw error - let the main process continue
+  }
+};
+
 export const createAssessment = async (req, res) => {
     try {
         const assessmentData = req.body;
@@ -424,6 +496,10 @@ export const createTraining = async (req, res) => {
                 });
                 await user.save();
                 console.log('Created new user for employee:', emp.emp_code);
+                
+                // IMPORTANT: Assign existing mandatory trainings to new external employee
+                await assignExistingMandatoryTrainingsToUser(user);
+                console.log(`Assigned existing mandatory trainings to new external employee: ${emp.emp_code}`);
             } else {
                 console.log(`Updating existing user for employee: ${emp.emp_code}`);
                 // Update existing user with latest info from external API
@@ -1123,7 +1199,7 @@ export const createMandatoryTraining = async (req, res) => {
                         username: emp.name || emp.emp_code || 'Unknown',
                         email: emp.email,
                         empID: emp.emp_code,
-                        locCode: emp.store_code || 'DEFAULT',
+                        locCode: emp.store_code || '1', // Default to '1' if no store_code
                         designation: emp.role_name || '',
                         workingBranch: emp.store_name || 'DEFAULT',
                     });
@@ -1211,6 +1287,17 @@ export const createMandatoryTraining = async (req, res) => {
             //     pass: false,
             //     status: 'Pending',
             // });
+
+            // Check if this user already has this training assigned to avoid duplicates
+            const existingProgress = await TrainingProgress.findOne({
+                userId: user._id,
+                trainingId: newTraining._id
+            });
+
+            if (existingProgress) {
+                console.log(`Training already exists for user ${user.empID} (${user.username})`);
+                return user; // Skip if already assigned
+            }
 
             // Create training progress for mandatory training
             const trainingProgress = new TrainingProgress({

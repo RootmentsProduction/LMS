@@ -6,6 +6,93 @@ import User from '../model/User.js';
 import axios from 'axios';
 import Module from '../model/Module.js'; // Added import for Module
 
+// Helper function to assign existing mandatory trainings to new users
+const assignExistingMandatoryTrainings = async (user) => {
+  try {
+    const designation = user.designation;
+    console.log(`Assigning existing mandatory trainings to new user with designation: ${designation}`);
+    
+    // STRICT MATCHING: Only match exact roles, no partial matches (same logic as createMandatoryTraining)
+    const matchExactDesignation = (userDesig, roleList) => {
+        if (!userDesig || !Array.isArray(roleList)) return false;
+        
+        // Normalize the user designation (trim and lowercase)
+        const normalizedUserDesig = userDesig.trim().toLowerCase();
+        
+        // Check if the user's designation exactly matches any of the roles in the training
+        return roleList.some(role => {
+            if (!role) return false;
+            const normalizedRole = role.trim().toLowerCase();
+            
+            // EXACT MATCH ONLY - no partial matches
+            return normalizedUserDesig === normalizedRole;
+        });
+    };
+
+    // Fetch all mandatory trainings
+    const allTrainings = await Training.find({
+      Trainingtype: 'Mandatory'
+    }).populate('modules');
+
+    // Filter trainings using EXACT designation matching (same logic as createMandatoryTraining)
+    const mandatoryTraining = allTrainings.filter(training => {
+        const isMatch = matchExactDesignation(designation, training.Assignedfor);
+        console.log(`  Training: "${training.trainingName}" - Roles: [${training.Assignedfor.join(', ')}] - User Designation: "${designation}" - Match: ${isMatch}`);
+        return isMatch;
+    });
+
+    console.log(`Found ${mandatoryTraining.length} existing mandatory trainings for designation: ${designation}`);
+
+    if (mandatoryTraining.length === 0) {
+      console.log(`No existing mandatory trainings found for designation: ${designation}`);
+      return;
+    }
+
+    const deadlineDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // Default 30-day deadline
+
+    // Create TrainingProgress records for each mandatory training
+    const trainingAssignments = mandatoryTraining.map(async (training) => {
+      // Check if this user already has this training assigned
+      const existingProgress = await TrainingProgress.findOne({
+        userId: user._id,
+        trainingId: training._id
+      });
+
+      if (existingProgress) {
+        console.log(`User ${user.empID} already has training ${training.trainingName} assigned`);
+        return;
+      }
+
+      // Create TrainingProgress for the user
+      const trainingProgress = new TrainingProgress({
+        userId: user._id,
+        trainingId: training._id,
+        deadline: deadlineDate,
+        pass: false,
+        modules: training.modules.map(module => ({
+          moduleId: module._id,
+          pass: false,
+          videos: module.videos.map(video => ({
+            videoId: video._id,
+            pass: false,
+          })),
+        })),
+      });
+
+      await trainingProgress.save();
+      console.log(`Assigned mandatory training "${training.trainingName}" to user ${user.empID}`);
+    });
+
+    // Wait for all training assignments to complete
+    await Promise.all(trainingAssignments);
+    console.log(`Successfully assigned ${mandatoryTraining.length} mandatory trainings to user ${user.empID}`);
+    
+  } catch (error) {
+    console.error(`Error assigning mandatory trainings to user ${user.empID}:`, error);
+    // Don't throw error - let the main process continue
+  }
+};
+
 export const assignModuleToUser = async (req, res) => {
   try {
     const { userId, moduleId, deadline } = req.body;
@@ -55,10 +142,19 @@ export const assignAssessmentToUser = async (req, res) => {
 // Helper function to fetch employee data from external API
 const fetchEmployeeData = async () => {
   try {
-    const response = await axios.post(`${process.env.BASE_URL || 'http://localhost:7000'}/api/employee_range`, {
+    // Fetch directly from external API (avoid self-referencing)
+    const ROOTMENTS_API_TOKEN = 'RootX-production-9d17d9485eb772e79df8564004d4a4d4';
+    const response = await axios.post('https://rootments.in/api/employee_range', {
       startEmpId: 'EMP1',
       endEmpId: 'EMP9999'
-    }, { timeout: 15000 });
+    }, { 
+      timeout: 15000,
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'Authorization': `Bearer ${ROOTMENTS_API_TOKEN}`,
+      }
+    });
     
     return response.data?.data || [];
   } catch (error) {
@@ -92,12 +188,20 @@ export const GetAllTrainingWithCompletion = async (req, res) => {
       }
     });
 
-    // Fetch employee data from local API (like we fixed in mandatory training)
+    // Fetch employee data directly from external API (avoid self-referencing)
     let employeeData = [];
     try {
-      const response = await axios.post(`${process.env.BASE_URL || 'http://localhost:7000'}/api/employee_range`, {
+      const ROOTMENTS_API_TOKEN = 'RootX-production-9d17d9485eb772e79df8564004d4a4d4';
+      const response = await axios.post('https://rootments.in/api/employee_range', {
         startEmpId: 'EMP1',
         endEmpId: 'EMP9999'
+      }, {
+        timeout: 15000,
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Authorization': `Bearer ${ROOTMENTS_API_TOKEN}`,
+        }
       });
       
       employeeData = response.data?.data || [];
@@ -303,7 +407,7 @@ export const ReassignTraining = async (req, res) => {
           username: employeeInfo.name || '',
           email: employeeInfo.email || `${empCode}@company.com`,
           phoneNumber: employeeInfo.phone || '',
-          locCode: employeeInfo.store_code || '',
+          locCode: employeeInfo.store_code || '1', // Default to '1' if no store_code
           empID: empCode,
           designation: employeeInfo.role_name || '',
           workingBranch: employeeInfo.store_name || '',
@@ -311,6 +415,10 @@ export const ReassignTraining = async (req, res) => {
           assignedAssessments: [],
           training: []
         });
+        
+        // IMPORTANT: Assign existing mandatory trainings to new external employee
+        await assignExistingMandatoryTrainings(user);
+        console.log(`Assigned existing mandatory trainings to new external employee: ${empCode}`);
       } else {
         // Update existing user with latest employee data
         user.username = employeeInfo.name || user.username;
@@ -410,6 +518,376 @@ export const deleteTrainingController = async (req, res) => {
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// API endpoint to assign missing mandatory trainings to users by designation
+export const assignMissingMandatoryTrainingsByDesignation = async (req, res) => {
+  try {
+    const { designation } = req.body;
+    
+    if (!designation) {
+      return res.status(400).json({ 
+        message: 'Designation is required',
+        example: { designation: 'Store Manager' }
+      });
+    }
+
+    console.log(`API call: Assigning missing mandatory trainings for designation: ${designation}`);
+
+    // STRICT MATCHING: Only match exact roles, no partial matches
+    const matchExactDesignation = (userDesig, roleList) => {
+        if (!userDesig || !Array.isArray(roleList)) return false;
+        
+        // Normalize the user designation (trim and lowercase)
+        const normalizedUserDesig = userDesig.trim().toLowerCase();
+        
+        // Check if the user's designation exactly matches any of the roles in the training
+        return roleList.some(role => {
+            if (!role) return false;
+            const normalizedRole = role.trim().toLowerCase();
+            
+            // EXACT MATCH ONLY - no partial matches
+            return normalizedUserDesig === normalizedRole;
+        });
+    };
+
+    // Find users with the specified designation (case-insensitive exact match)
+    const users = await User.find({ 
+      designation: { $regex: new RegExp(`^${designation.trim()}$`, 'i') }
+    });
+
+    if (users.length === 0) {
+      return res.status(404).json({ 
+        message: `No users found with designation: ${designation}`,
+        suggestion: 'Please check if the designation name is spelled correctly'
+      });
+    }
+
+    console.log(`Found ${users.length} users with designation: ${designation}`);
+
+    // Get all mandatory trainings
+    const mandatoryTrainings = await Training.find({ Trainingtype: 'Mandatory' }).populate('modules');
+    console.log(`Found ${mandatoryTrainings.length} mandatory trainings`);
+
+    let totalAssigned = 0;
+    let totalSkipped = 0;
+    let totalErrors = 0;
+    const assignmentResults = [];
+
+    for (const user of users) {
+      console.log(`Processing user: ${user.username} (${user.empID})`);
+      
+      // Find mandatory trainings that match this user's designation
+      const matchingTrainings = mandatoryTrainings.filter(training => {
+          const isMatch = matchExactDesignation(user.designation, training.Assignedfor);
+          console.log(`  Training: "${training.trainingName}" - Match: ${isMatch}`);
+          return isMatch;
+      });
+
+      console.log(`Found ${matchingTrainings.length} matching mandatory trainings for user ${user.empID}`);
+
+      for (const training of matchingTrainings) {
+        try {
+          // Check if user already has this training assigned
+          const existingProgress = await TrainingProgress.findOne({
+            userId: user._id,
+            trainingId: training._id
+          });
+
+          if (existingProgress) {
+            console.log(`Training "${training.trainingName}" already assigned to ${user.empID} - skipping`);
+            totalSkipped++;
+            continue;
+          }
+
+          // Create new training progress
+          const deadlineDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30-day deadline
+
+          const trainingProgress = new TrainingProgress({
+            userId: user._id,
+            trainingId: training._id,
+            deadline: deadlineDate,
+            pass: false,
+            modules: training.modules.map(module => ({
+              moduleId: module._id,
+              pass: false,
+              videos: module.videos.map(video => ({
+                videoId: video._id,
+                pass: false,
+              })),
+            })),
+          });
+
+          await trainingProgress.save();
+          console.log(`✅ Assigned mandatory training "${training.trainingName}" to ${user.empID}`);
+          totalAssigned++;
+
+          assignmentResults.push({
+            userEmpID: user.empID,
+            userName: user.username,
+            trainingName: training.trainingName,
+            status: 'assigned'
+          });
+
+        } catch (error) {
+          console.error(`Error assigning training "${training.trainingName}" to ${user.empID}:`, error.message);
+          totalErrors++;
+          
+          assignmentResults.push({
+            userEmpID: user.empID,
+            userName: user.username,
+            trainingName: training.trainingName,
+            status: 'error',
+            error: error.message
+          });
+        }
+      }
+    }
+
+    return res.status(200).json({
+      message: `Successfully processed mandatory training assignments for designation: ${designation}`,
+      summary: {
+        usersProcessed: users.length,
+        trainingsAssigned: totalAssigned,
+        alreadyAssigned: totalSkipped,
+        errors: totalErrors
+      },
+      results: assignmentResults
+    });
+
+  } catch (error) {
+    console.error('Error in assignMissingMandatoryTrainingsByDesignation:', error);
+    return res.status(500).json({ 
+      message: 'Internal server error', 
+      error: error.message 
+    });
+  }
+};
+
+// NEW API endpoint to assign missing mandatory trainings to ALL users
+export const assignMissingMandatoryTrainingsToAllUsers = async (req, res) => {
+  try {
+    console.log(`🚀 API call: Assigning missing mandatory trainings to ALL users`);
+    
+    // STRICT MATCHING: Only match exact roles, no partial matches
+    const matchExactDesignation = (userDesig, roleList) => {
+        if (!userDesig || !Array.isArray(roleList)) return false;
+        
+        // Normalize the user designation (trim and lowercase)
+        const normalizedUserDesig = userDesig.trim().toLowerCase();
+        
+        // Check if the user's designation exactly matches any of the roles in the training
+        return roleList.some(role => {
+            if (!role) return false;
+            const normalizedRole = role.trim().toLowerCase();
+            
+            // EXACT MATCH ONLY - no partial matches
+            return normalizedUserDesig === normalizedRole;
+        });
+    };
+
+    // Get all users
+    const users = await User.find({});
+    console.log(`📊 Found ${users.length} total users`);
+
+    if (users.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'No users found in the system'
+      });
+    }
+
+    // Get all mandatory trainings
+    const mandatoryTrainings = await Training.find({ Trainingtype: 'Mandatory' }).populate('modules');
+    console.log(`📚 Found ${mandatoryTrainings.length} mandatory trainings`);
+
+    let totalAssigned = 0;
+    let totalSkipped = 0;
+    let totalErrors = 0;
+    const assignmentResults = [];
+    const designationSummary = {};
+
+    for (const user of users) {
+      console.log(`\n=== Processing User: ${user.username} (${user.empID}) - Designation: "${user.designation}" ===`);
+      
+      if (!designationSummary[user.designation]) {
+        designationSummary[user.designation] = { users: 0, assigned: 0, skipped: 0, errors: 0 };
+      }
+      designationSummary[user.designation].users++;
+      
+      // Find mandatory trainings that match this user's designation
+      const matchingTrainings = mandatoryTrainings.filter(training => {
+          const isMatch = matchExactDesignation(user.designation, training.Assignedfor);
+          console.log(`  Training: "${training.trainingName}" - Roles: [${training.Assignedfor.join(', ')}] - Match: ${isMatch}`);
+          return isMatch;
+      });
+
+      console.log(`📋 Found ${matchingTrainings.length} matching mandatory trainings for user ${user.empID}`);
+
+      for (const training of matchingTrainings) {
+        try {
+          // Check if user already has this training assigned
+          const existingProgress = await TrainingProgress.findOne({
+            userId: user._id,
+            trainingId: training._id
+          });
+
+          if (existingProgress) {
+            console.log(`  ⏭️  Training "${training.trainingName}" already assigned to ${user.empID} - skipping`);
+            totalSkipped++;
+            designationSummary[user.designation].skipped++;
+            continue;
+          }
+
+          // Create new training progress
+          const deadlineDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30-day deadline
+
+          const trainingProgress = new TrainingProgress({
+            userId: user._id,
+            trainingId: training._id,
+            deadline: deadlineDate,
+            pass: false,
+            modules: training.modules.map(module => ({
+              moduleId: module._id,
+              pass: false,
+              videos: module.videos.map(video => ({
+                videoId: video._id,
+                pass: false,
+              })),
+            })),
+          });
+
+          await trainingProgress.save();
+          console.log(`  ✅ Assigned mandatory training "${training.trainingName}" to ${user.empID}`);
+          
+          assignmentResults.push({
+            userEmpID: user.empID,
+            userName: user.username,
+            designation: user.designation,
+            trainingName: training.trainingName,
+            status: 'assigned'
+          });
+          
+          totalAssigned++;
+          designationSummary[user.designation].assigned++;
+
+        } catch (error) {
+          console.error(`  ❌ Error assigning training "${training.trainingName}" to ${user.empID}:`, error.message);
+          
+          assignmentResults.push({
+            userEmpID: user.empID,
+            userName: user.username,
+            designation: user.designation,
+            trainingName: training.trainingName,
+            status: 'error',
+            error: error.message
+          });
+          
+          totalErrors++;
+          designationSummary[user.designation].errors++;
+        }
+      }
+    }
+
+    console.log('\n=== ASSIGNMENT SUMMARY ===');
+    console.log('Overall:', {
+      totalUsers: users.length,
+      totalAssigned,
+      totalSkipped,
+      totalErrors
+    });
+    
+    console.log('\nBy Designation:');
+    Object.entries(designationSummary).forEach(([designation, stats]) => {
+      console.log(`  ${designation}: ${stats.users} users, ${stats.assigned} assigned, ${stats.skipped} skipped, ${stats.errors} errors`);
+    });
+
+    res.status(200).json({
+      success: true,
+      message: `Successfully processed mandatory training assignments for all users`,
+      results: {
+        totalUsers: users.length,
+        totalAssigned,
+        totalSkipped,
+        totalErrors,
+        designationSummary,
+        assignments: assignmentResults.length > 100 ? assignmentResults.slice(0, 100) : assignmentResults, // Limit response size
+        totalAssignmentRecords: assignmentResults.length
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error in assignMissingMandatoryTrainingsToAllUsers:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: error.message
+    });
+  }
+};
+
+export const getUserTrainingProgress = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    // First, try to find user by MongoDB _id, then by empID if that fails
+    let user = null;
+    let actualUserId = null;
+    
+    // Check if userId is a valid MongoDB ObjectId
+    if (userId && userId.match(/^[0-9a-fA-F]{24}$/)) {
+      // It's a MongoDB ObjectId
+      actualUserId = userId;
+      user = await User.findById(userId);
+    } else {
+      // It's likely an empID, find the user first
+      user = await User.findOne({ empID: userId });
+      if (user) {
+        actualUserId = user._id;
+      }
+    }
+    
+    if (!user) {
+      return res.status(404).json({ 
+        message: "User not found",
+        searchedBy: userId.match(/^[0-9a-fA-F]{24}$/) ? "MongoDB ID" : "Employee ID"
+      });
+    }
+    
+    // Find all mandatory training progress for this user using the actual MongoDB _id
+    const trainingProgressRecords = await TrainingProgress.find({ userId: actualUserId })
+      .populate({
+        path: 'trainingId',
+        select: 'trainingName modules Trainingtype deadline'
+      });
+    
+    // Format the mandatory trainings to match the user.training structure
+    const mandatoryTrainings = trainingProgressRecords.map(progress => ({
+      trainingId: progress.trainingId,
+      deadline: progress.deadline,
+      status: progress.status,
+      pass: progress.pass,
+      assignedAt: progress.createdAt,
+      isMandatory: true
+    }));
+    
+    res.status(200).json({
+      message: "Training progress retrieved successfully",
+      mandatoryTrainings,
+      totalMandatoryTrainings: mandatoryTrainings.length,
+      userInfo: {
+        empID: user.empID,
+        username: user.username,
+        designation: user.designation
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching user training progress:', error);
+    res.status(500).json({ 
+      message: "Internal server error", 
+      error: error.message 
+    });
   }
 };
 

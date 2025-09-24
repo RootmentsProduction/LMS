@@ -22,6 +22,7 @@ import EmployeeRouter from './routes/EmployeeRoute.js'
 import DebugRouter from './routes/DebugRoute.js'
 
 import { AlertNotification } from './lib/CornJob.js';
+import { startEmployeeAutoSync } from './lib/EmployeeAutoSync.js';
 import setupSwagger from './swagger.js';
 
 const app = express();
@@ -400,6 +401,12 @@ cron.schedule("30 18 * * *", async () => {
 connectMongoDB().then(() => {
   app.listen(port, () => {
     console.log(`✅ Server running on port ${port}`);
+    
+    // Start the employee auto-sync scheduler
+    startEmployeeAutoSync();
+    
+    // Start existing notification cron job
+    AlertNotification();
   });
 }).catch(err => {
   console.error('❌ MongoDB connection failed:', err);

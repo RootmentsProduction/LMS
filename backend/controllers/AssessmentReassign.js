@@ -63,8 +63,34 @@ export const TrainingDetails = async (req, res) => {
             return res.status(404).json({ message: "Training not found" });
         }
 
-        // Fetch all users assigned to this training by querying the `User` collection
-        const users = await User.find({ 'training.trainingId': id }).populate('training.trainingId'); // Populate the user information
+        // Fetch users from both assigned and mandatory training sources
+        // 1. Users with training assigned in user.training array
+        const usersWithAssignedTraining = await User.find({ 'training.trainingId': id }).populate('training.trainingId');
+        
+        // 2. Users with mandatory training in TrainingProgress collection
+        const trainingProgressRecords = await TrainingProgress.find({ trainingId: id }).populate('userId');
+        
+        // Combine and deduplicate users
+        const allUserIds = new Set();
+        const users = [];
+        
+        // Add users from assigned training
+        usersWithAssignedTraining.forEach(user => {
+            if (!allUserIds.has(user._id.toString())) {
+                allUserIds.add(user._id.toString());
+                users.push(user);
+            }
+        });
+        
+        // Add users from mandatory training progress
+        trainingProgressRecords.forEach(record => {
+            if (record.userId && !allUserIds.has(record.userId._id.toString())) {
+                allUserIds.add(record.userId._id.toString());
+                users.push(record.userId);
+            }
+        });
+
+        console.log(`Found ${users.length} total users for training ${id} (${usersWithAssignedTraining.length} assigned, ${trainingProgressRecords.length} mandatory)`);
 
         // Declare uniqueBranches set to store distinct branches
         const uniqueBranches = new Set();
@@ -77,9 +103,14 @@ export const TrainingDetails = async (req, res) => {
                 if (!progress) {
                     return {
                         userId: user._id,
-                        userName: user.fullName,
+                        userName: user.username || user.fullName,
                         userEmail: user.email,
                         progress: 0, // No progress if no record is found
+                        moduleCompletion: 0,
+                        user: { 
+                            ...user._doc, 
+                            training: user.training ? user.training.filter(t => t.trainingId.toString() === id) : []
+                        },
                     };
                 }
 
@@ -110,17 +141,15 @@ export const TrainingDetails = async (req, res) => {
                 const completionPercentage = totalVideos > 0 ? Math.round((passedVideos / totalVideos) * 100) : 0;
                 const moduleCompletionPercentage = totalModules > 0 ? Math.round((completedModules / totalModules) * 100) : 0;
 
-                // Fetch detailed user information
-                const detaileduser = await User.findById(user._id);
-
-                // Filter user training details by specific ID
-                const filteredTraining = detaileduser.training.filter(t => t.trainingId.toString() === id);
-
                 // Add unique working branches to the set
-                uniqueBranches.add(detaileduser.workingBranch);
-                uniquedesignation.add(detaileduser.designation)
+                uniqueBranches.add(user.workingBranch);
+                uniquedesignation.add(user.designation);
+                
+                // Filter user training details by specific ID
+                const filteredTraining = user.training ? user.training.filter(t => t.trainingId.toString() === id) : [];
+                
                 return {
-                    user: { ...detaileduser._doc, training: filteredTraining },
+                    user: { ...user._doc, training: filteredTraining },
                     userEmail: user.email, // Populated email field
                     progress: completionPercentage, // Overall progress based on videos
                     moduleCompletion: moduleCompletionPercentage, // Completion based on modules

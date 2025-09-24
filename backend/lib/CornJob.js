@@ -193,6 +193,27 @@ const processDeadlines = async (user, items, escalationContext) => {
         const MgmtManagers = await Admin.find({ subRole: "Level 3" });
         const escalation = await EscalationLevel.find();
 
+        // Store name to location code mapping - needed to match user locCodes with branch locCodes
+        const storeNameToLocCode = {
+            'ZORUCCI PERINTHALMANNA': '7',
+            'ZORUCCI EDAPPALLY': '1',
+            'SUITOR GUY TRIVANDRUM': '5',
+            'SUITOR GUY PALAKKAD': '19',
+            'SUITOR GUY EDAPPALLY': '3',
+            'SUITOR GUY KOTTAYAM': '9',
+            'SUITOR GUY PERUMBAVOOR': '10',
+            'SUITOR GUY THRISSUR': '11',
+            'SUITOR GUY CHAVAKKAD': '12',
+            'SUITOR GUY EDAPPAL': '15',
+            'SUITOR GUY VATAKARA': '14',
+            'SUITOR GUY PERINTHALMANNA': '16',
+            'SUITOR GUY MANJERI': '18',
+            'SUITOR GUY KOTTAKKAL': '17',
+            'SUITOR GUY CALICUT': '13',
+            'SUITOR GUY KALPETTA': '20',
+            'SUITOR GUY KANNUR': '21'
+        };
+
         const BFoneDay = escalation.find((item) => item.id === 1);
         const AFoneDay = escalation.find((item) => item.id === 3);
         const leveltwo = escalation.find((item) => item.id === 4);
@@ -206,16 +227,20 @@ const processDeadlines = async (user, items, escalationContext) => {
 
             const name = item?.trainingId?.trainingName || item?.assessmentId?.title || "Unknown";
             const userLocCode = user?.locCode;
+            
+            // Convert store name to numeric location code for branch matching
+            const numericLocCode = storeNameToLocCode[userLocCode] || userLocCode;
+            console.log(`Converting user locCode "${userLocCode}" to numeric "${numericLocCode}"`);
 
             const matchingStoreManagers = storeManagers.filter((storeManager) =>
-                storeManager.branches.some((branch) => branch.locCode === userLocCode)
+                storeManager.branches.some((branch) => branch.locCode === numericLocCode)
             );
             const matchingClusterManagers = clusterManagers.filter((clusterManager) =>
-                clusterManager.branches.some((branch) => branch.locCode === userLocCode)
+                clusterManager.branches.some((branch) => branch.locCode === numericLocCode)
             );
 
             if (!matchingStoreManagers.length) {
-                console.warn(`No store managers found for user location code: ${userLocCode}`);
+                console.warn(`No store managers found for user location code: ${userLocCode} (mapped to: ${numericLocCode})`);
                 continue;
             }
 

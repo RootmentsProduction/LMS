@@ -306,7 +306,35 @@ const EmployeeDetaileData = () => {
         workingBranch: userdetail?.data?.workingBranch || "",
       };
 
-      setfullData(userdetail.data || {});
+      // Also fetch mandatory training progress for this user
+      try {
+        const trainingProgressResponse = await fetch(`${baseUrl.baseUrl}api/user/training-progress/${id}`, {
+          method: 'GET',
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+        });
+        
+        if (trainingProgressResponse.ok) {
+          const progressData = await trainingProgressResponse.json();
+          
+          // Combine assigned and mandatory trainings
+          const combinedTrainingData = {
+            ...userdetail.data,
+            training: [
+              ...(userdetail.data?.training || []),
+              ...(progressData.mandatoryTrainings || [])
+            ]
+          };
+          
+          setfullData(combinedTrainingData);
+        } else {
+          setfullData(userdetail.data || {});
+        }
+      } catch (progressError) {
+        console.error("Error fetching training progress:", progressError);
+        setfullData(userdetail.data || {});
+      }
+
       setData(selectedData);
       setIsExternal(false);
       return;
@@ -457,6 +485,7 @@ const EmployeeDetaileData = () => {
             <thead>
               <tr className="bg-[#016E5B] text-white">
                 <th className="px-3 py-1 border-2 border-gray-300">Training Name</th>
+                <th className="px-3 py-1 border-2 border-gray-300">Type</th>
                 <th className="px-3 py-1 border-2 border-gray-300">No:modules</th>
                 <th className="px-3 py-1 border-2 border-gray-300">deadline</th>
                 <th className="px-3 py-1 border-2 border-gray-300">pass</th>
@@ -471,6 +500,11 @@ const EmployeeDetaileData = () => {
                     <tr key={index} className="border-b hover:bg-gray-100">
                       <td className="px-3 py-1 border-2 border-gray-300 text-center">
                         {employee.trainingId?.trainingName || 'Unknown Training'}
+                      </td>
+                      <td className="px-3 py-1 border-2 border-gray-300 text-center">
+                        <span className={`px-2 py-1 rounded text-xs ${employee.isMandatory ? 'bg-orange-100 text-orange-800' : 'bg-blue-100 text-blue-800'}`}>
+                          {employee.isMandatory ? 'Mandatory' : 'Assigned'}
+                        </span>
                       </td>
                       <td className="px-3 py-1 border-2 border-gray-300 text-center">
                         {employee.trainingId?.modules?.length || 0}
@@ -488,7 +522,7 @@ const EmployeeDetaileData = () => {
                   ))
               ) : (
                 <tr>
-                  <td colSpan="6" className="text-center py-3">No data available</td>
+                  <td colSpan="7" className="text-center py-3">No data available</td>
                 </tr>
               )}
             </tbody>

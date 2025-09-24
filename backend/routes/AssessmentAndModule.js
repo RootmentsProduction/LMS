@@ -1,5 +1,5 @@
 import express from 'express';
-import { assignModuleToUser, assignAssessmentToUser, ReassignTraining, deleteTrainingController, GetAssessment, getVideoAssessment, submitVideoAssessment } from '../controllers/AssessmentAndModule.js';
+import { assignModuleToUser, assignAssessmentToUser, ReassignTraining, deleteTrainingController, GetAssessment, getVideoAssessment, submitVideoAssessment, getUserTrainingProgress, assignMissingMandatoryTrainingsByDesignation, assignMissingMandatoryTrainingsToAllUsers } from '../controllers/AssessmentAndModule.js';
 import { GetuserTraining, GetuserTrainingprocess, GetuserTrainingprocessmodule, UpdateuserTrainingprocess, GetUserAllTrainings } from '../controllers/CreateUser.js';
 import { AssessmentAssign, TrainingDetails, GetTrainingDetailsSimple } from '../controllers/AssessmentReassign.js';
 import { GetAssessmentDetails } from '../controllers/moduleController.js';
@@ -624,6 +624,15 @@ router.get('/get/Training/details/:id', TrainingDetails);
 
 // Simple training details for frontend
 router.get('/get/Training/details/simple/:id', GetTrainingDetailsSimple);
+
+// Get user training progress (mandatory trainings)
+router.get('/user/training-progress/:userId', getUserTrainingProgress);
+
+// Assign missing mandatory trainings to users by designation
+router.post('/assign-missing-mandatory-trainings', MiddilWare, assignMissingMandatoryTrainingsByDesignation);
+
+// Assign missing mandatory trainings to ALL users
+router.post('/assign-missing-mandatory-trainings-all', MiddilWare, assignMissingMandatoryTrainingsToAllUsers);
 
 
 

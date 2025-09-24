@@ -177,9 +177,104 @@ export const createEmployee = async (req, res) => {
         // Save employee to database
         const savedEmployee = await newEmployee.save();
 
+        // Also create a corresponding User record for the training system
+        try {
+            // Import the necessary models and functions here to avoid circular imports
+            const User = (await import('../model/User.js')).default;
+            const { Training } = (await import('../model/Traning.js'));
+            const TrainingProgress = (await import('../model/Trainingprocessschema.js')).default;
+
+            // Check if a User with this empID already exists
+            const existingUser = await User.findOne({ empID: employeeId });
+            
+            if (!existingUser) {
+                // Create a new User record for the training system
+                const newUser = new User({
+                    username: `${firstName} ${lastName}`,
+                    email: email,
+                    empID: employeeId,
+                    locCode: '1', // Set a default locCode - can be updated later
+                    designation: designation,
+                    workingBranch: department, // Using department as working branch
+                    phoneNumber: phoneNumber,
+                    assignedModules: [],
+                    assignedAssessments: [],
+                    training: []
+                });
+
+                // Save the user first to get the _id
+                await newUser.save();
+                console.log(`✅ Created User record for employee: ${employeeId} (${firstName} ${lastName})`);
+
+                // Assign mandatory trainings based on designation using EXACT matching
+                // STRICT MATCHING: Only match exact roles, no partial matches
+                const matchExactDesignation = (userDesig, roleList) => {
+                    if (!userDesig || !Array.isArray(roleList)) return false;
+                    
+                    // Normalize the user designation (trim and lowercase)
+                    const normalizedUserDesig = userDesig.trim().toLowerCase();
+                    
+                    // Check if the user's designation exactly matches any of the roles in the training
+                    return roleList.some(role => {
+                        if (!role) return false;
+                        const normalizedRole = role.trim().toLowerCase();
+                        
+                        // EXACT MATCH ONLY - no partial matches
+                        return normalizedUserDesig === normalizedRole;
+                    });
+                };
+
+                // Fetch all mandatory trainings
+                const allTrainings = await Training.find({
+                    Trainingtype: 'Mandatory'
+                }).populate('modules');
+
+                // Filter using EXACT designation matching
+                const mandatoryTraining = allTrainings.filter(training => {
+                    const isMatch = matchExactDesignation(designation, training.Assignedfor);
+                    console.log(`  Training: "${training.trainingName}" - Roles: [${training.Assignedfor.join(', ')}] - User Designation: "${designation}" - Match: ${isMatch}`);
+                    return isMatch;
+                });
+
+                // Create TrainingProgress records for mandatory trainings
+                const deadlineDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // Default 30-day deadline
+                
+                const trainingAssignments = mandatoryTraining.map(async (training) => {
+                    const trainingProgress = new TrainingProgress({
+                        userId: newUser._id,
+                        trainingId: training._id,
+                        trainingName: training.trainingName,
+                        deadline: deadlineDate,
+                        pass: false,
+                        modules: training.modules.map(module => ({
+                            moduleId: module._id,
+                            pass: false,
+                            videos: module.videos.map(video => ({
+                                videoId: video._id,
+                                pass: false,
+                            })),
+                        })),
+                    });
+
+                    await trainingProgress.save();
+                });
+
+                // Wait for all training assignments to complete
+                await Promise.all(trainingAssignments);
+                
+                console.log(`✅ Successfully assigned ${mandatoryTraining.length} mandatory trainings to employee: ${employeeId}`);
+            } else {
+                console.log(`User record already exists for employee: ${employeeId}`);
+            }
+        } catch (userCreationError) {
+            console.error('Error creating User record for training system:', userCreationError);
+            // Don't fail the employee creation if user creation fails
+            // But log it for debugging
+        }
+
         res.status(201).json({
             success: true,
-            message: 'Employee created successfully',
+            message: 'Employee created successfully and added to training system',
             data: savedEmployee
         });
 
