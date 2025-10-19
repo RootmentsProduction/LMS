@@ -206,11 +206,12 @@ export const createTraining = async (req, res) => {
         const deadlineDate = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
         console.log("Calculated deadline:", deadlineDate);
 
-        // Create a new training record with deadline stored as a Date
+        // Create a new training record with both deadline (days) and deadlineDate (actual date)
         const newTraining = new Training({
             trainingName,
             modules,
-            deadline: days, // Store deadline as a proper Date object
+            deadline: days, // Store original days input (keeping existing format)
+            deadlineDate: deadlineDate, // Store actual calculated date
             Assignedfor: workingBranch || [], // Set the Assignedfor field with workingBranch data
         });
 
@@ -1026,7 +1027,8 @@ export const createMandatoryTraining = async (req, res) => {
             Trainingtype: "Mandatory", // Correct field for training type
             modules,
             Assignedfor: workingBranch, // Correct field for assigned branches
-            deadline: days, // Store deadline as a proper Date
+            deadline: days, // Store original days input (keeping existing format)
+            deadlineDate: deadlineDate, // Store actual calculated date
         });
 
         // Save the training record

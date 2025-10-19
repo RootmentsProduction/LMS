@@ -4,15 +4,27 @@ import { IoIosLogOut } from "react-icons/io";
 import { FaRegIdCard } from "react-icons/fa";
 import { IoSettingsOutline } from "react-icons/io5";
 import { useNavigate } from 'react-router-dom';
-import { useSelector } from "react-redux";
+import { useSelector, useDispatch } from "react-redux";
+import { useState } from "react";
+import LogoutConfirmation from "../LogoutConfirmation/LogoutConfirmation";
+import { logout } from "../../features/auth/authSlice";
 
 
 const SideNav = () => {
     const navigate = useNavigate();
+    const dispatch = useDispatch();
     const user = useSelector((state) => state.auth.user);
-    const handleLogout = () => {
+    const [showLogoutConfirmation, setShowLogoutConfirmation] = useState(false);
+
+    const handleLogoutClick = () => {
+        setShowLogoutConfirmation(true);
+    };
+
+    const handleLogoutConfirm = () => {
         // Remove token from localStorage
         localStorage.removeItem('token');
+        // Dispatch logout action to clear Redux state
+        dispatch(logout());
         // Redirect to login page
         navigate('/login');
     };
@@ -104,15 +116,19 @@ const SideNav = () => {
 
 
                 {/* Logout Section */}
-                <div className="flex justify-center lg:justify-start cursor-pointer items-center space-x-4 hover:bg-[#016E5B] hover:text-white p-2 rounded-lg transition-all duration-200 " onClick={handleLogout}>
+                <div className="flex justify-center lg:justify-start cursor-pointer items-center space-x-4 hover:bg-[#016E5B] hover:text-white p-2 rounded-lg transition-all duration-200 " onClick={handleLogoutClick}>
                     <IoIosLogOut className="text-xl" />
                     <div className="hidden lg:group-hover:block">Logout</div>
                 </div>
             </div>
+
+            {/* Logout Confirmation Modal */}
+            <LogoutConfirmation
+                isOpen={showLogoutConfirmation}
+                onClose={() => setShowLogoutConfirmation(false)}
+                onConfirm={handleLogoutConfirm}
+            />
         </div>
-
-
-
     );
 };
 

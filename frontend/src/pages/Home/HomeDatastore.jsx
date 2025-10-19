@@ -57,19 +57,19 @@ const HomeDatastore = ({ user }) => {
 
         const fetchEmployeeCount = async () => {
             try {
-                const response = await fetch(baseUrl.baseUrl + 'api/employee_range', {
-                    method: "POST",
+                const response = await fetch(baseUrl.baseUrl + 'api/employee/management/with-training-details', {
+                    method: "GET",
                     headers: {
-                        "Content-Type": "application/json"
+                        "Content-Type": "application/json",
+                        'Authorization': `Bearer ${localStorage.getItem('token')}`,
                     },
                     credentials: "include",
-                    body: JSON.stringify({ startEmpId: "EMP1", endEmpId: "EMP9999" }),
                 });
                 
                 if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText}`);
                 const json = await response.json();
                 
-                if (json?.data && Array.isArray(json.data)) {
+                if (json?.success && json?.data && Array.isArray(json.data)) {
                     setEmployeeCount(json.data.length);
                     console.log('Employee count fetched:', json.data.length);
                 }

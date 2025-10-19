@@ -35,10 +35,10 @@ const assignMandatoryTrainingsToUser = async (user) => {
             return;
         }
         
-        const deadlineDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // Default 30-day deadline
-        
         // Create TrainingProgress for each mandatory training
         const trainingAssignments = mandatoryTraining.map(async (training) => {
+            // Use the training's actual deadline instead of hardcoded 30 days
+            const deadlineDate = new Date(Date.now() + training.deadline * 24 * 60 * 60 * 1000);
             // Check if this user already has this training assigned
             const existingProgress = await TrainingProgress.findOne({
                 userId: user._id,
@@ -128,8 +128,8 @@ export const getAllEmployeesWithTrainingDetailsV2 = async (req, res) => {
     try {
         console.log('🔄 Starting enhanced employee data fetch...');
         
-        // Get admin permissions
-        const admin = await Admin.findById(req?.admin?.userId);
+        // Get admin permissions and branches
+        const admin = await Admin.findById(req?.admin?.userId).populate('branches');
         if (!admin) {
             return res.status(401).json({
                 success: false,
@@ -137,12 +137,13 @@ export const getAllEmployeesWithTrainingDetailsV2 = async (req, res) => {
             });
         }
 
-        const allowedLocCodes = admin.allowedLocCodes || [];
-        const isGlobalAdmin = allowedLocCodes.length === 0 || allowedLocCodes.includes('*');
+        // Extract allowed location codes from admin's branches
+        const allowedLocCodes = admin.branches.map(branch => branch.locCode);
+        const isGlobalAdmin = admin.role === 'super_admin' || allowedLocCodes.length === 0;
         
-        console.log(`👤 Admin: ${admin.firstName} ${admin.lastName}`);
-
-        console.log(`🔐 Allowed location codes: ${isGlobalAdmin ? 'ALL (Global Admin)' : allowedLocCodes.join(', ')}`);
+        console.log(`👤 Admin: ${admin.name} (Role: ${admin.role})`);
+        console.log(`🏢 Admin branches: ${admin.branches.length}`);
+        console.log(`🔐 Allowed location codes: ${isGlobalAdmin ? 'ALL (Super Admin)' : allowedLocCodes.join(', ')}`);
 
         // Fetch external employees with retry logic
         let externalEmployees = [];
@@ -190,17 +191,16 @@ export const getAllEmployeesWithTrainingDetailsV2 = async (req, res) => {
             }
         }
 
-        // Filter external employees by permissions (only if not global admin)
-        let filteredExternalEmployees = externalEmployees;
+        // Always exclude "No Store" employees for all admins
+        let filteredExternalEmployees = externalEmployees.filter(emp => {
+            const storeName = emp?.store_name?.toUpperCase();
+            return !(storeName === 'NO STORE' || !storeName || storeName === '');
+        });
         
+        // Filter by permissions (only if not global admin)
         if (!isGlobalAdmin) {
-            filteredExternalEmployees = externalEmployees.filter(emp => {
+            filteredExternalEmployees = filteredExternalEmployees.filter(emp => {
                 const storeName = emp?.store_name?.toUpperCase();
-                
-                // Always include employees with "No Store" - they should be visible to all admins
-                if (storeName === 'NO STORE' || !storeName || storeName === '') {
-                    return true;
-                }
                 
                 const mappedLocCode = storeNameToLocCode[storeName];
                 
@@ -220,15 +220,18 @@ export const getAllEmployeesWithTrainingDetailsV2 = async (req, res) => {
         // Get local users in allowed branches
         let localUsersQuery = {};
         
-        if (!isGlobalAdmin) {
+        if (!isGlobalAdmin && allowedLocCodes.length > 0) {
             localUsersQuery = { 
-                $or: [
+                $and: [
                     { locCode: { $in: allowedLocCodes } },
-                    { workingBranch: 'No Store' },
-                    { workingBranch: 'NO STORE' },
-                    { workingBranch: 'no store' },
-                    { workingBranch: '' },
-                    { workingBranch: { $exists: false } }
+                    { 
+                        $nor: [
+                            { workingBranch: 'No Store' },
+                            { workingBranch: 'NO STORE' },
+                            { workingBranch: 'no store' },
+                            { workingBranch: '' }
+                        ]
+                    }
                 ]
             };
         }

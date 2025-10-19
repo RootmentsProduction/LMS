@@ -101,6 +101,9 @@ export const TrainingDetails = async (req, res) => {
                 const progress = await TrainingProgress.findOne({ userId: user._id, trainingId: id });
 
                 if (!progress) {
+                    // Filter user training details by specific ID
+                    const filteredTraining = user.training ? user.training.filter(t => t.trainingId.toString() === id) : [];
+                    
                     return {
                         userId: user._id,
                         userName: user.username || user.fullName,
@@ -109,7 +112,7 @@ export const TrainingDetails = async (req, res) => {
                         moduleCompletion: 0,
                         user: { 
                             ...user._doc, 
-                            training: user.training ? user.training.filter(t => t.trainingId.toString() === id) : []
+                            training: filteredTraining
                         },
                     };
                 }
@@ -146,7 +149,21 @@ export const TrainingDetails = async (req, res) => {
                 uniquedesignation.add(user.designation);
                 
                 // Filter user training details by specific ID
-                const filteredTraining = user.training ? user.training.filter(t => t.trainingId.toString() === id) : [];
+                let filteredTraining = user.training ? user.training.filter(t => t.trainingId.toString() === id) : [];
+                
+                // If no training found in user.training but we have progress (mandatory training),
+                // create a training object with deadline from TrainingProgress
+                if (filteredTraining.length === 0 && progress.deadline) {
+                    filteredTraining = [{
+                        trainingId: id,
+                        deadline: progress.deadline,
+                        pass: progress.pass || false,
+                        status: progress.pass ? 'Completed' : 'Pending'
+                    }];
+                } else if (filteredTraining.length > 0 && progress.deadline) {
+                    // Ensure the training has the deadline from TrainingProgress if it's missing
+                    filteredTraining[0].deadline = progress.deadline;
+                }
                 
                 return {
                     user: { ...user._doc, training: filteredTraining },
@@ -533,7 +550,6 @@ export const FindOverDueTraining = async (req, res) => {
         }
         console.log("ADMIN ID ID " + AdminId);
 
-
         // Find admin and get branches
         const AdminBranch = await Admin.findById(AdminId).populate('branches').lean();
         if (!AdminBranch || !AdminBranch.branches) {
@@ -541,54 +557,120 @@ export const FindOverDueTraining = async (req, res) => {
         }
         console.log(AdminBranch);
 
-
         const allowedLocCodes = AdminBranch.branches.map(branch => branch.locCode);
-        const currentDate = new Date(); // Get current date
+        const currentDate = new Date();
 
-        // Find users with overdue training assessments
-        const DueAssessment = await User.find({
-            locCode: { $in: allowedLocCodes },
-            training: {
-                $elemMatch: {
-                    pass: false,
-                    deadline: { $lt: currentDate } // Deadline is in the past
-                }
-            }
-        }).populate("training.trainingId").lean();
+        // Get all users in allowed branches
+        const users = await User.find({ locCode: { $in: allowedLocCodes } });
+        console.log(`Found ${users.length} users in allowed branches`);
 
-        if (!DueAssessment || DueAssessment.length === 0) {
+        if (users.length === 0) {
             return res.status(200).json({
-                message: "No overdue assessments found",
+                message: "No users found in admin branches",
                 data: []
             });
         }
 
-        // Filter overdue assessments for each user
-        const filterData = DueAssessment.map((user) => ({
-            userId: user._id,
-            empID: user.empID,
-            userName: user.username,
-            role: user.designation,
-            workingBranch: user.workingBranch,
-            overdueAssessments: user.training.filter(
-                (item) => item.pass === false && item.deadline < currentDate
-            )
-        })).filter(user => user.overdueAssessments.length > 0);
+        const userIDs = users.map(user => user._id);
+        
+        // Find overdue trainings from BOTH sources:
+        // 1. Assigned trainings in User.training array
+        // 2. Mandatory trainings in TrainingProgress collection
+        
+        const userWithOverdueTrainings = await User.find({
+            locCode: { $in: allowedLocCodes },
+            training: {
+                $elemMatch: {
+                    pass: false,
+                    deadline: { $lt: currentDate }
+                }
+            }
+        }).populate("training.trainingId").lean();
+
+        // Get overdue mandatory trainings from TrainingProgress collection
+        const overdueTrainingProgress = await TrainingProgress.find({
+            userId: { $in: userIDs },
+            pass: false,
+            deadline: { $lt: currentDate }
+        }).populate('trainingId userId').lean();
+
+        console.log(`Found ${userWithOverdueTrainings.length} users with overdue assigned trainings`);
+        console.log(`Found ${overdueTrainingProgress.length} overdue mandatory training records`);
+
+        // Combine data from both sources
+        const userMap = new Map();
+        
+        // Process assigned trainings
+        userWithOverdueTrainings.forEach(user => {
+            if (!userMap.has(user._id.toString())) {
+                userMap.set(user._id.toString(), {
+                    userId: user._id,
+                    empID: user.empID,
+                    userName: user.username,
+                    role: user.designation,
+                    workingBranch: user.workingBranch,
+                    overdueAssessments: []
+                });
+            }
+            
+            const overdueAssignedTrainings = user.training.filter(
+                (item) => item.pass === false && new Date(item.deadline) < currentDate
+            );
+            
+            const currentData = userMap.get(user._id.toString());
+            currentData.overdueAssessments.push(...overdueAssignedTrainings);
+        });
+
+        // Process mandatory trainings
+        overdueTrainingProgress.forEach(progress => {
+            const userId = progress.userId._id.toString();
+            
+            if (!userMap.has(userId)) {
+                userMap.set(userId, {
+                    userId: progress.userId._id,
+                    empID: progress.userId.empID,
+                    userName: progress.userId.username,
+                    role: progress.userId.designation,
+                    workingBranch: progress.userId.workingBranch,
+                    overdueAssessments: []
+                });
+            }
+            
+            const currentData = userMap.get(userId);
+            currentData.overdueAssessments.push({
+                trainingId: progress.trainingId,
+                deadline: progress.deadline,
+                pass: false
+            });
+        });
+
+        // Filter users with actual overdue assessments and convert Map to array
+        const filterData = Array.from(userMap.values())
+            .filter(user => user.overdueAssessments.length > 0)
+            .map(user => ({
+                ...user,
+                overdueAssessments: user.overdueAssessments.filter(assessment => 
+                    assessment.trainingId != null // Ensure trainingId exists
+                )
+            }))
+            .filter(user => user.overdueAssessments.length > 0); // Final filter
+
+        console.log(`Final result: ${filterData.length} users with overdue trainings`);
 
         if (filterData.length === 0) {
             return res.status(200).json({
-                message: "No overdue assessments found",
+                message: "No overdue trainings found",
                 data: []
             });
         }
 
         return res.status(200).json({
-            message: "Overdue assessments found",
+            message: "Overdue trainings found",
             data: filterData
         });
 
     } catch (error) {
-        console.error("Error finding overdue assessments:", error);
+        console.error("Error finding overdue trainings:", error);
         return res.status(500).json({
             message: "Internal server error",
             error: error.message
@@ -606,58 +688,75 @@ export const SendNotification = async (req, res) => {
 
         const day = new Date(); // Current date
 
-        // Find the user with overdue assessments
-        const DueAssessment = await User.findOne({
-            empID: empId,
-            training: {
-                $elemMatch: {
-                    pass: false, // Condition: pass is false
-                    deadline: { $lt: day }, // Condition: deadline is in the past
-                },
-            },
-        }).populate("training.trainingId");
+        // Find the user
+        const user = await User.findOne({ empID: empId });
 
-        if (!DueAssessment) {
+        if (!user) {
             return res.status(400).json({
-                message: "No due assessments found for this employee.",
+                message: "Employee not found.",
             });
         }
 
-        // Filter overdue assessments
-        const overdueAssessments = DueAssessment.training.filter(
-            (item) => item.pass === false && item.deadline < day
+        // Get overdue trainings from BOTH sources:
+        // 1. Assigned trainings in User.training array
+        // 2. Mandatory trainings in TrainingProgress collection
+
+        const overdueAssignedTrainings = user.training.filter(
+            (item) => item.pass === false && new Date(item.deadline) < day
         );
 
-        if (overdueAssessments.length === 0) {
+        const overdueMandatoryTrainings = await TrainingProgress.find({
+            userId: user._id,
+            pass: false,
+            deadline: { $lt: day }
+        }).populate('trainingId');
+
+        console.log(`Found ${overdueAssignedTrainings.length} overdue assigned trainings`);
+        console.log(`Found ${overdueMandatoryTrainings.length} overdue mandatory trainings`);
+
+        // Combine all overdue trainings
+        const allOverdueTrainings = [
+            ...overdueAssignedTrainings.map(t => ({
+                trainingName: t.trainingId?.trainingName || "Unnamed Training",
+                source: 'assigned'
+            })),
+            ...overdueMandatoryTrainings.map(t => ({
+                trainingName: t.trainingId?.trainingName || "Unnamed Training",
+                source: 'mandatory'
+            }))
+        ];
+
+        if (allOverdueTrainings.length === 0) {
             return res.status(400).json({
-                message: "No overdue assessments found for this employee.",
+                message: "No overdue trainings found for this employee.",
             });
         }
 
         // Extract training names
-        const trainingNames = overdueAssessments.map(
-            (assessment) => assessment.trainingId?.trainingName || "Unnamed Training"
-        );
+        const trainingNames = allOverdueTrainings.map(t => t.trainingName);
+        const uniqueTrainingNames = [...new Set(trainingNames)]; // Remove duplicates
 
         // Create a notification
         await Notification.create({
-            title: `${DueAssessment.username} has overdue training tasks`,
-            body: `You need to complete ${trainingNames.length} training tasks: ${trainingNames.join(
+            title: `${user.username} has overdue training tasks`,
+            body: `You need to complete ${uniqueTrainingNames.length} training tasks: ${uniqueTrainingNames.join(
                 ", "
             )}. Notification sent by ${admin.username}.`,
-            user: DueAssessment._id,
+            user: user._id,
             useradmin: admin.username,
         });
 
         // Response
         res.status(200).json({
-            message: `Notification sent successfully to ${DueAssessment.username}`,
-            overdueTrainings: trainingNames,
+            message: `Notification sent successfully to ${user.username}`,
+            overdueTrainings: uniqueTrainingNames,
+            count: uniqueTrainingNames.length
         });
     } catch (error) {
-        console.error("Error finding overdue assessments:", error);
+        console.error("Error finding overdue trainings:", error);
         res.status(500).json({
             message: "Internal server error",
+            error: error.message
         });
     }
 };

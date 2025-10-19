@@ -556,7 +556,7 @@ const EmployeeDetaileData = () => {
                       {employee.assessmentId.duration}
                     </td>
                     <td className="px-3 py-1 border-2 border-gray-300 text-center">
-                      {new Date(employee.deadline).toLocaleDateString()}
+                      {employee.deadline ? new Date(employee.deadline).toLocaleDateString() : 'No deadline'}
                     </td>
                     <td className="px-3 py-1 border-2 border-gray-300 text-center">
                       {employee.status}

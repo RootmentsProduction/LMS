@@ -48,6 +48,47 @@ const CreateModuleData = () => {
         setCurrentVideo({ ...currentVideo, questions: updatedQuestions });
     };
 
+    // Remove Question
+    const removeQuestion = (qIndex) => {
+        if (currentVideo.questions.length <= 1) {
+            toast.warning("At least one question is required for each video.");
+            return;
+        }
+        
+        const updatedQuestions = currentVideo.questions.filter((_, index) => index !== qIndex);
+        setCurrentVideo({ ...currentVideo, questions: updatedQuestions });
+        toast.success("Question removed successfully!");
+    };
+
+    // Validate if current video has at least one complete question
+    const validateVideoQuestions = () => {
+        if (!currentVideo.questions || currentVideo.questions.length === 0) {
+            return false;
+        }
+
+        // Check if at least one question is complete
+        const hasCompleteQuestion = currentVideo.questions.some(question => {
+            return question.questionText && 
+                   question.questionText.trim() !== "" &&
+                   question.options && 
+                   question.options.length >= 2 &&
+                   question.options.some(option => option.trim() !== "") &&
+                   question.correctAnswer && 
+                   question.correctAnswer.trim() !== "";
+        });
+
+        return hasCompleteQuestion;
+    };
+
+    // Check if current video is ready to be saved
+    const isCurrentVideoReady = () => {
+        return currentVideo.title && 
+               currentVideo.title.trim() !== "" &&
+               currentVideo.videoUri && 
+               currentVideo.videoUri.trim() !== "" &&
+               validateVideoQuestions();
+    };
+
     // Save Video and Questions
     const saveCurrentVideo = () => {
         // Validate current video before saving
@@ -57,6 +98,12 @@ const CreateModuleData = () => {
         }
         if (!currentVideo.videoUri || !currentVideo.videoUri.trim()) {
             toast.error("Please enter a video URL.");
+            return;
+        }
+
+        // Validate that at least one question is complete
+        if (!validateVideoQuestions()) {
+            toast.error("⚠️ Please add at least one complete question to submit the video. Each question must have a question text, at least 2 options, and a correct answer selected.");
             return;
         }
 
@@ -79,6 +126,18 @@ const CreateModuleData = () => {
         toast.success("Video saved successfully!");
     };
 
+    // Clear all form data
+    const clearForm = () => {
+        setModuleTitle("");
+        setModuleDescription("");
+        setVideos(null);
+        setCurrentVideo({
+            title: "",
+            videoUri: "",
+            questions: [{ questionText: "", options: ["", "", "", ""], correctAnswer: "" }],
+        });
+    };
+
     // Submit Module
     const handleSaveModule = async () => {
         if (!videos || videos.length === 0) {
@@ -97,7 +156,7 @@ const CreateModuleData = () => {
             return;
         }
 
-        // Validate each video has required fields
+        // Validate each video has required fields and complete questions
         for (let i = 0; i < videos.length; i++) {
             const video = videos[i];
             if (!video.title || !video.title.trim()) {
@@ -106,6 +165,27 @@ const CreateModuleData = () => {
             }
             if (!video.videoUri || !video.videoUri.trim()) {
                 toast.error(`Video ${i + 1} is missing a video URL.`);
+                return;
+            }
+            
+            // Validate that each video has at least one complete question
+            if (!video.questions || video.questions.length === 0) {
+                toast.error(`⚠️ Video "${video.title}" has no questions. Please add at least one complete question to submit the module.`);
+                return;
+            }
+            
+            const hasCompleteQuestion = video.questions.some(question => {
+                return question.questionText && 
+                       question.questionText.trim() !== "" &&
+                       question.options && 
+                       question.options.length >= 2 &&
+                       question.options.some(option => option.trim() !== "") &&
+                       question.correctAnswer && 
+                       question.correctAnswer.trim() !== "";
+            });
+            
+            if (!hasCompleteQuestion) {
+                toast.error(`⚠️ Video "${video.title}" has incomplete questions. Please ensure each video has at least one complete question with question text, options, and correct answer selected.`);
                 return;
             }
         }
@@ -139,6 +219,9 @@ const CreateModuleData = () => {
 
             const data = await response.json();
             toast.success(data.message);
+            
+            // Clear the form after successful submission
+            clearForm();
         } catch (error) {
             console.error('Network error:', error);
             toast.error(`Network error: ${error.message}`);
@@ -209,15 +292,40 @@ const CreateModuleData = () => {
                             />
                         </div>
 
-                        {currentVideo.questions.map((q, qIndex) => (
-                            <div key={qIndex} className="space-y-4 p-4 border rounded-lg">
-                                <input
-                                    type="text"
-                                    placeholder={`Question ${qIndex + 1}`}
-                                    value={q.questionText}
-                                    onChange={(e) => handleQuestionChange(qIndex, "questionText", e.target.value)}
-                                    className="w-full p-2 border rounded-lg bg-white "
-                                />
+                        {currentVideo.questions.map((q, qIndex) => {
+                            const isQuestionComplete = q.questionText && 
+                                                      q.questionText.trim() !== "" &&
+                                                      q.options && 
+                                                      q.options.length >= 2 &&
+                                                      q.options.some(option => option.trim() !== "") &&
+                                                      q.correctAnswer && 
+                                                      q.correctAnswer.trim() !== "";
+                            
+                            return (
+                                <div key={qIndex} className={`space-y-4 p-4 border rounded-lg ${isQuestionComplete ? 'border-green-300 bg-green-50' : 'border-orange-300 bg-orange-50'}`}>
+                                    <div className="flex items-center gap-2">
+                                        <input
+                                            type="text"
+                                            placeholder={`Question ${qIndex + 1}`}
+                                            value={q.questionText}
+                                            onChange={(e) => handleQuestionChange(qIndex, "questionText", e.target.value)}
+                                            className="w-full p-2 border rounded-lg bg-white"
+                                        />
+                                        {isQuestionComplete ? (
+                                            <span className="text-green-600 text-lg" title="Question is complete">✅</span>
+                                        ) : (
+                                            <span className="text-orange-600 text-lg" title="Question is incomplete">⚠️</span>
+                                        )}
+                                        {currentVideo.questions.length > 1 && (
+                                            <button
+                                                onClick={() => removeQuestion(qIndex)}
+                                                className="px-3 py-1 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors text-sm"
+                                                title="Remove this question"
+                                            >
+                                                🗑️ Remove
+                                            </button>
+                                        )}
+                                    </div>
 
                                 {q.options.map((option, oIndex) => (
                                     <div key={oIndex} className="flex items-center space-x-3">
@@ -237,15 +345,51 @@ const CreateModuleData = () => {
                                         />
                                     </div>
                                 ))}
-                                <button onClick={addQuestion} className="p-2 bg-blue-500 text-white rounded-lg">
-                                    Add Question
-                                </button>
-                            </div>
-                        ))}
+                                
+                                {/* Add Question Button */}
+                                <div className="flex justify-center pt-2">
+                                    <button 
+                                        onClick={addQuestion} 
+                                        className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors flex items-center gap-2"
+                                    >
+                                        ➕ Add Question
+                                    </button>
+                                </div>
+                                
+                                {/* Question Count Info */}
+                                <div className="text-center text-sm text-gray-600 mt-2">
+                                    {currentVideo.questions.length} question{currentVideo.questions.length !== 1 ? 's' : ''} added
+                                </div>
+                                </div>
+                            );
+                        })}
                     </div>
                 </div>
 
-                <button onClick={saveCurrentVideo} className="p-3 w-56 bg-[#016E5B] text-white rounded-lg float-right mt-5 mb-32">
+                {/* Validation Status Indicator */}
+                <div className="float-right mt-2 mb-2">
+                    {isCurrentVideoReady() ? (
+                        <div className="flex items-center gap-2 text-green-600">
+                            <span className="text-lg">✅</span>
+                            <span className="text-sm font-medium">Video ready to save</span>
+                        </div>
+                    ) : (
+                        <div className="flex items-center gap-2 text-orange-600">
+                            <span className="text-lg">⚠️</span>
+                            <span className="text-sm font-medium">Complete video details and add at least one question</span>
+                        </div>
+                    )}
+                </div>
+
+                <button 
+                    onClick={saveCurrentVideo} 
+                    className={`p-3 w-56 rounded-lg float-right mt-5 mb-32 ${
+                        isCurrentVideoReady() 
+                            ? 'bg-[#016E5B] text-white hover:bg-[#014d42]' 
+                            : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                    }`}
+                    disabled={!isCurrentVideoReady()}
+                >
                     Save video and questions
                 </button>
 

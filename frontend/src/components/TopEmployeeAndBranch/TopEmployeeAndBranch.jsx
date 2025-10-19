@@ -32,7 +32,9 @@ const TopEmployeeAndBranch = () => {
                 }
                 const result = await response.json();
                 setAllData(result.data);
-                console.log(result.data);
+                console.log('API Response:', result);
+                console.log('Top Branches:', result.data?.topBranches);
+                console.log('Last Branches:', result.data?.lastBranches);
 
                 setIsLoading(false); // Data is fetched, hide the loading state
             } catch (error) {
@@ -100,7 +102,7 @@ const TopEmployeeAndBranch = () => {
                 </div>
 
                 <div className="ml-4 flex-1">
-                    <p className="font-medium">{branch.branch}</p>
+                    <p className="font-medium">{branch.branch || branch}</p>
                 </div>
                 <div className="text-right">
                     <p className="font-bold text-green-600">{Math.round(branch?.averageTrainingProgress) + " %"} <span className="text-gray-500">Completed Training</span></p>

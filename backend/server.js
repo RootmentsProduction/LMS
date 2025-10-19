@@ -20,10 +20,13 @@ import FutterAssessment from './routes/FutterAssessment.js'
 import Whatsapprouter from './routes/WhatsappRouteZoho.js'
 import EmployeeRouter from './routes/EmployeeRoute.js'
 import DebugRouter from './routes/DebugRoute.js'
+import TrainingRouter from './routes/TrainingRoute.js'
 
 import { AlertNotification } from './lib/CornJob.js';
 import { startEmployeeAutoSync } from './lib/EmployeeAutoSync.js';
 import setupSwagger from './swagger.js';
+import { MiddilWare } from './lib/middilWare.js';
+import Admin from './model/Admin.js';
 
 const app = express();
 setupSwagger(app);
@@ -181,6 +184,118 @@ app.post('/api/employee_range', async (req, res) => {
     const status = err?.response?.status || 500;
     const payload = err?.response?.data || { message: err.message || 'Proxy failed' };
     console.error('❌ /api/employee_range error:', status, payload);
+    return res.status(status).json(payload);
+  }
+});
+
+// New filtered employee_range endpoint with authentication and branch filtering
+app.post('/api/employee_range/filtered', MiddilWare, async (req, res) => {
+  try {
+    const { startEmpId = 'EMP1', endEmpId = 'EMP9999' } = req.body || {};
+    console.log('↗️  /api/employee_range/filtered', { startEmpId, endEmpId });
+
+    // Get admin's allowed branches
+    const AdminId = req.admin.userId;
+    const AdminBranch = await Admin.findById(AdminId).populate('branches');
+    const allowedLocCodes = AdminBranch.branches.map(branch => branch.locCode);
+    const isGlobalAdmin = AdminBranch.role === 'super_admin' || allowedLocCodes.length === 0;
+
+    console.log(`👤 Admin: ${AdminBranch.name} (Role: ${AdminBranch.role})`);
+    console.log(`🔐 Allowed location codes: ${isGlobalAdmin ? 'ALL (Super Admin)' : allowedLocCodes.join(', ')}`);
+
+    const upstream = 'https://rootments.in/api/employee_range';
+    const { data } = await axios.post(
+      upstream,
+      { startEmpId, endEmpId },
+      {
+        timeout: 30000,
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Authorization': `Bearer ${ROOTMENTS_API_TOKEN}`,
+        },
+      }
+    );
+
+    let filteredData = data?.data || [];
+    
+    // Always exclude "No Store" employees for all admins
+    filteredData = filteredData.filter(emp => {
+        const storeName = emp?.store_name?.toUpperCase();
+        return !(storeName === 'NO STORE' || !storeName || storeName === '');
+    });
+    
+    // Filter by allowed branches if not global admin
+    if (!isGlobalAdmin && allowedLocCodes.length > 0) {
+      filteredData = filteredData.filter(emp => {
+        const storeName = emp?.store_name?.toUpperCase();
+        
+        // Store name to locCode mapping
+        const storeNameToLocCode = {
+          'GROOMS TRIVANDRUM': '5',
+          'GROOMS KOCHI': '2',
+          'GROOMS EDAPPALLY': '3',
+          'GROOMS CALICUT': '4',
+          'GROOMS KANNUR': '5',
+          'GROOMS THALASSERY': '6',
+          'GROOMS KOTTAYAM': '9',
+          'GROOMS PERUMBAVOOR': '10',
+          'GROOMS THRISSUR': '11',
+          'GROOMS CHAVAKKAD': '12',
+          'GROOMS EDAPPAL': '15',
+          'GROOMS VATAKARA': '14',
+          'GROOMS PERINTHALMANNA': '16',
+          'GROOMS MANJERY': '18',
+          'GROOMS KOTTAKKAL': '17',
+          'SUITOR GUY KOTTAKKAL': '17',
+          'GROOMS KOZHIKODE': '13',
+          'GROOMS CALICUT': '13',
+          'GROOMS KANNUR': '21',
+          'GROOMS KALPETTA': '20',
+          'ZORUCCI EDAPPAL': '6',
+          'ZORUCCI KOTTAKKAL': '8',
+          'ZORUCCI PERINTHALMANNA': '7',
+          'ZORUCCI EDAPPALLY': '1',
+          'SUITOR GUY TRIVANDRUM': '5',
+          'SUITOR GUY PALAKKAD': '19',
+          'SUITOR GUY EDAPPALLY': '3',
+          'SUITOR GUY KOTTAYAM': '9',
+          'SUITOR GUY PERUMBAVOOR': '10',
+          'SUITOR GUY THRISSUR': '11',
+          'SUITOR GUY CHAVAKKAD': '12',
+          'SUITOR GUY EDAPPAL': '15',
+          'SUITOR GUY VATAKARA': '14',
+          'SUITOR GUY PERINTHALMANNA': '16',
+          'SUITOR GUY MANJERI': '18',
+          'SUITOR GUY KOTTAKKAL': '17',
+          'SUITOR GUY CALICUT': '13',
+          'SUITOR GUY KALPETTA': '20',
+          'SUITOR GUY KANNUR': '21'
+        };
+        
+        const mappedLocCode = storeNameToLocCode[storeName];
+        
+        if (mappedLocCode && allowedLocCodes.includes(mappedLocCode)) {
+          return true;
+        }
+        
+        const empLocCode = emp?.store_code || emp?.locCode;
+        return allowedLocCodes.includes(empLocCode);
+      });
+    }
+
+    console.log('↘️  /employee_range/filtered items:',
+      `${filteredData.length} (from ${data?.data?.length || 0} total)`
+    );
+    
+    return res.status(200).json({
+      status: "success",
+      data: filteredData
+    });
+  } catch (err) {
+    const status = err?.response?.status || 500;
+    const payload = err?.response?.data || { message: err.message || 'Proxy failed' };
+    console.error('❌ /api/employee_range/filtered error:', status, payload);
     return res.status(status).json(payload);
   }
 });
@@ -377,6 +492,7 @@ app.use('/api/user/assessment', FutterAssessment)
 app.use('/zoho', Whatsapprouter)
 app.use('/api/employee', EmployeeRouter)
 app.use('/api/debug', DebugRouter)
+app.use('/api/training', TrainingRouter)
 
 // User Login Tracking Routes
 import UserLoginRouter from './routes/UserLoginRoute.js';
@@ -385,6 +501,10 @@ app.use('/api/user-login', UserLoginRouter)
 // LMS Website Login Tracking Routes
 import LMSLoginRouter from './routes/LMSLoginRoute.js';
 app.use('/api/lms-login', LMSLoginRouter)
+
+// Google Form Management Routes
+import GoogleFormRouter from './routes/GoogleFormRoute.js';
+app.use('/api/google-form', GoogleFormRouter)
 
 console.log(new Date());
 

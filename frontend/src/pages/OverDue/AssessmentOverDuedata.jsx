@@ -188,7 +188,7 @@ const AssessmentOverDuedata = () => {
                         employee.overdueAssessments.map((assessment, idx) => (
                           <div key={idx} className="flex flex-col">
                             <div className="text-left">
-                              {assessment.assessmentId.title} (Due: {new Date(assessment.deadline).toLocaleDateString()})
+                              {assessment.assessmentId.title} (Due: {assessment.deadline ? new Date(assessment.deadline).toLocaleDateString() : 'No deadline'})
                             </div>
                             {idx < employee.overdueAssessments.length - 1 && (
                               <div className="border-t border-black w-full my-2"></div>

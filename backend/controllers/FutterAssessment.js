@@ -196,10 +196,10 @@ const assignMandatoryTrainingsToUser = async (user) => {
             return;
         }
         
-        const deadlineDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // Default 30-day deadline
-        
         // Create TrainingProgress for each mandatory training
         const trainingAssignments = mandatoryTraining.map(async (training) => {
+            // Use the training's actual deadline instead of hardcoded 30 days
+            const deadlineDate = new Date(Date.now() + training.deadline * 24 * 60 * 60 * 1000);
             // Check if this user already has this training assigned
             const existingProgress = await TrainingProgress.findOne({
                 userId: user._id,

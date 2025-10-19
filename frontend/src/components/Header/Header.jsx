@@ -1,26 +1,35 @@
 import { IoIosSearch } from "react-icons/io";
 import { GoBell } from "react-icons/go";
 import { Link, useNavigate, useLocation } from "react-router-dom";
-import { useSelector } from "react-redux";
+import { useSelector, useDispatch } from "react-redux";
 import { useState, useEffect } from "react";
 import baseUrl from "../../api/api.js";
 import { IoPersonCircleSharp } from "react-icons/io5";
+import LogoutConfirmation from "../LogoutConfirmation/LogoutConfirmation";
+import { logout } from "../../features/auth/authSlice";
 
 
 const Header = () => {
     const location = useLocation();
     const isActive = (path) => location.pathname === path;
     const navigate = useNavigate();
+    const dispatch = useDispatch();
     const [search, setSearch] = useState('');
     const [searchResults, setSearchResults] = useState([]);
     const [searchuser, setSearchuser] = useState([]);
+    const [showLogoutConfirmation, setShowLogoutConfirmation] = useState(false);
 
     const [isSearching, setIsSearching] = useState(false);
     const user = useSelector((state) => state.auth.user);
     const token = localStorage.getItem('token');
 
-    const handleLogout = () => {
+    const handleLogoutClick = () => {
+        setShowLogoutConfirmation(true);
+    };
+
+    const handleLogoutConfirm = () => {
         localStorage.removeItem('token');
+        dispatch(logout());
         navigate('/login');
     };
 
@@ -128,11 +137,18 @@ const Header = () => {
                         <ul tabIndex={0} className="menu menu-sm dropdown-content rounded-box mt-3 w-52 p-2 shadow z-10 text-[#016E5B] bg-white">
                             <li><Link to={'/admin/profile'}>Profile</Link></li>
                             {user?.role === 'super_admin' && <li><Link to={'/settings'}>Settings</Link></li>}
-                            <li><a onClick={handleLogout}>Logout</a></li>
+                            <li><a onClick={handleLogoutClick}>Logout</a></li>
                         </ul>
                     </div>
                 </div>
             </div>
+
+            {/* Logout Confirmation Modal */}
+            <LogoutConfirmation
+                isOpen={showLogoutConfirmation}
+                onClose={() => setShowLogoutConfirmation(false)}
+                onConfirm={handleLogoutConfirm}
+            />
         </div>
     );
 };
