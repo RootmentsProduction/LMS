@@ -4,9 +4,19 @@ import dotenv from 'dotenv';
 // Load environment variables
 dotenv.config();
 // 1. Twilio Credentials
-const accountSid = process.env.TWILIO_ACCOUNT_SID || "YOUR_TWILIO_ACCOUNT_SID";
-const authToken = process.env.TWILIO_AUTH_TOKEN || "YOUR_TWILIO_AUTH_TOKEN";
-const client = twilio(accountSid, authToken);
+const accountSid = process.env.TWILIO_ACCOUNT_SID;
+const authToken = process.env.TWILIO_AUTH_TOKEN;
+
+let client = null;
+if (accountSid && accountSid.startsWith("AC") && authToken) {
+  try {
+    client = twilio(accountSid, authToken);
+  } catch (err) {
+    console.error("Failed to initialize Twilio client:", err.message);
+  }
+} else {
+  console.warn("Twilio credentials (TWILIO_ACCOUNT_SID/TWILIO_AUTH_TOKEN) not set or invalid. Twilio WhatsApp integration will be disabled.");
+}
 
 
 const TWILIO_WHATSAPP_FROM = "whatsapp:+14155238886";
@@ -34,6 +44,11 @@ export const WhatsAppZoho = async (req, res) => {
         customerPhone = `whatsapp:${customerPhone.startsWith("+") ? customerPhone : `+${customerPhone}`}`;
 
         // (D) Send a Text Message via Twilio WhatsApp
+        if (!client) {
+            console.error("Cannot send Twilio message: Twilio client is not initialized.");
+            return res.status(500).send("Twilio is not configured on this server");
+        }
+
         const textMessage = await client.messages.create({
 
             body: `hello ${name}\nYour invoice ${invoiceId} has been created in Zoho Books! this i your url ${InvoiceUrl}`,
