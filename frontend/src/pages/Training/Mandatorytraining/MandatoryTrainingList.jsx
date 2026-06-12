@@ -3,7 +3,6 @@ import { useEffect, useState } from "react";
 import { FaTrashAlt, FaPlus } from "react-icons/fa";
 import { CiFilter } from "react-icons/ci";
 import baseUrl from "../../../api/api";
-import Header from "../../../components/Header/Header";
 import SideNav from "../../../components/SideNav/SideNav";
 import RoundProgressBar from "../../../components/RoundBar/RoundBar";
 import Card from "../../../components/Skeleton/Card";
@@ -81,7 +80,6 @@ const MandatoryTrainingList = () => {
                 alert(`Successfully deleted ${selectedTrainings.size} training(s)`);
             }
         } catch (error) {
-            console.error('Error deleting trainings:', error);
             alert('An error occurred while deleting trainings. Please try again.');
         } finally {
             setIsDeleting(false);
@@ -93,7 +91,11 @@ const MandatoryTrainingList = () => {
             setLoading(true);
             try {
                 // Fetch mandatory trainings using the dedicated API
-                const response = await fetch(`${baseUrl.baseUrl}api/get/mandatory/allusertraining`);
+                const response = await fetch(`${baseUrl.baseUrl}api/get/mandatory/allusertraining`, {
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('token')}`
+                    }
+                });
                 if (!response.ok) {
                     throw new Error("Failed to fetch data");
                 }
@@ -119,7 +121,6 @@ const MandatoryTrainingList = () => {
                 setData(mandatoryTrainings);
                 setFilteredData(mandatoryTrainings);
             } catch (error) {
-                console.error("Error fetching data:", error);
             } finally {
                 setLoading(false);
             }
@@ -207,11 +208,8 @@ const MandatoryTrainingList = () => {
     return (
         <>
             <div className="mb-[70px] w-full h-full bg-white">
-                <div>
-                    <Header name="Mandatory Training List" />
-                </div>
                 <SideNav />
-                <div className="md:ml-[100px] mt-[100px]">
+                <div className="md:ml-[120px]">
                     <div>
                         <div className="flex justify-end mr-20">
                             <Link to={"/training"}>
@@ -395,7 +393,11 @@ const MandatoryTrainingList = () => {
                                         if (confirm('Are you absolutely sure you want to delete ALL mandatory trainings? This action cannot be undone!')) {
                                                                 try {
                       // Fetch all mandatory trainings first
-                      const response = await fetch(`${baseUrl.baseUrl}api/get/mandatory/allusertraining`);
+                      const response = await fetch(`${baseUrl.baseUrl}api/get/mandatory/allusertraining`, {
+                          headers: {
+                              'Authorization': `Bearer ${localStorage.getItem('token')}`
+                          }
+                      });
                       if (!response.ok) throw new Error("Failed to fetch trainings");
                       
                       const result = await response.json();
@@ -429,7 +431,6 @@ const MandatoryTrainingList = () => {
                                                     window.location.reload(); // Refresh to show updated data
                                                 }
                                             } catch (error) {
-                                                console.error('Error deleting all trainings:', error);
                                                 alert('An error occurred while deleting all trainings. Please try again.');
                                             }
                                         }

@@ -1,225 +1,288 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import baseUrl from "../../../api/api";
 import Select from "react-select";
 import { useParams } from "react-router-dom";
-import Header from "../../../components/Header/Header";
-import SideNav from '../../../components/SideNav/SideNav';
-// Users options
+import SideNav from "../../../components/SideNav/SideNav";
+import ModileNav from "../../../components/SideNav/ModileNav";
 
 const ReassignData = () => {
-    const { id } = useParams(); // Get training ID from URL params
+    const { id } = useParams();
     const [training, setTraining] = useState(null);
-    const [assignedTo, setAssignedTo] = useState([]); // Multi-select values
+    const [assignedTo, setAssignedTo] = useState([]);
     const [users, setUsers] = useState([]);
-    const [allUsers, setAllUsers] = useState([]); // Store all users for filtering
-    const [selectedRole, setSelectedRole] = useState(""); // Role filter
-    const [availableRoles, setAvailableRoles] = useState([]); // Available roles
-    const token = localStorage.getItem('token');
+    const [allUsers, setAllUsers] = useState([]);
+    const [selectedRole, setSelectedRole] = useState("");
+    const [availableRoles, setAvailableRoles] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [submitting, setSubmitting] = useState(false);
+    const [error, setError] = useState("");
+    const [userError, setUserError] = useState("");
+    const token = localStorage.getItem("token");
 
     useEffect(() => {
         const fetchTrainingDetails = async () => {
             try {
                 const response = await fetch(`${baseUrl.baseUrl}api/trainings/${id}`);
-                if (!response.ok) {
-                    throw new Error('Failed to fetch training details');
-                }
+                if (!response.ok) throw new Error("Failed to fetch training details");
                 const result = await response.json();
                 setTraining(result);
-                if (training) {
-                    console.log(training)
-                }
-
             } catch (err) {
-
-                throw new Error(err)
+                setError(err?.message || "Failed to load training");
             }
         };
+
         const fetchUsers = async () => {
             try {
-                // Fetch from external employee API
-                const response = await fetch(`${baseUrl.baseUrl}api/employee_range`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    credentials: "include",
-                    body: JSON.stringify({ startEmpId: "EMP1", endEmpId: "EMP9999" }),
+                const params = new URLSearchParams({
+                    page: "1",
+                    limit: "500",
+                    search: "",
+                    store: "All",
+                    role: "All",
                 });
 
-                if (!response.ok) {
-                    throw new Error(`Error: ${response.statusText}`);
-                }
+                const response = await fetch(
+                    `${baseUrl.baseUrl}api/employee/app-users?${params}`,
+                    {
+                        headers: {
+                            "Content-Type": "application/json",
+                            Authorization: `Bearer ${token}`,
+                        },
+                    }
+                );
+
+                if (!response.ok) throw new Error(`Error: ${response.statusText}`);
 
                 const data = await response.json();
-                console.log('External employee data:', data);
+                const employees = Array.isArray(data?.data) ? data.data : [];
+                const options = employees.map((employee) => ({
+                    value: employee.empID || employee.emp_code || "",
+                    label: `EmpId: ${employee.empID || employee.emp_code || "N/A"} | Name: ${employee.username || employee.name || "N/A"} | Role: ${employee.designation || employee.role_name || "N/A"}`,
+                    role: employee.designation || employee.role_name || "",
+                    empID: employee.empID || employee.emp_code || "",
+                    username: employee.username || employee.name || "",
+                    branch: employee.workingBranch || employee.store_name || "",
+                    email: employee.email || "",
+                })).filter((employee) => employee.value);
 
-                // Map external employee data to options required by react-select
-                const options = (data?.data || []).map((employee) => ({
-                    value: employee.emp_code, // Use emp_code as the value
-                    label: `EmpId: ${employee.emp_code || 'N/A'} | Name: ${employee.name || 'N/A'} | Role: ${employee.role_name || 'N/A'}`,
-                    role: employee.role_name, // Add role for filtering
-                    empID: employee.emp_code,
-                    username: employee.name,
-                    branch: employee.store_name,
-                    email: employee.email
-                }));
-                
                 setAllUsers(options);
                 setUsers(options);
-                
-                // Extract unique roles for filtering
-                const roles = [...new Set((data?.data || []).map(emp => emp.role_name).filter(Boolean))];
-                setAvailableRoles(roles);
-
-            } catch (error) {
-                console.error("Failed to fetch users:", error.message);
+                setAvailableRoles([...new Set(employees.map((emp) => emp.designation || emp.role_name).filter(Boolean))]);
+            } catch (err) {
+                setUserError(err?.message || "Failed to load users");
             }
         };
-        fetchTrainingDetails();
-        fetchUsers()
 
-
-
+        Promise.all([fetchTrainingDetails(), fetchUsers()]).finally(() => setLoading(false));
     }, [id]);
 
-    // Filter users by role
+    const modules = training?.data?.modules || [];
+    const trainingMeta = useMemo(() => {
+        return [
+            { label: "Modules", value: training?.data?.numberOfModules ?? 0 },
+            { label: "Users", value: training?.users?.length ?? 0 },
+            { label: "Type", value: training?.data?.Trainingtype || "-" },
+        ];
+    }, [training]);
+
     const handleRoleFilter = (role) => {
         setSelectedRole(role);
-        if (role === "") {
-            setUsers(allUsers);
-        } else {
-            const filteredUsers = allUsers.filter(user => user.role === role);
-            setUsers(filteredUsers);
-        }
-        // Clear selected users when filter changes
+        setUsers(role ? allUsers.filter((user) => user.role === role) : allUsers);
         setAssignedTo([]);
     };
 
-    // Quick select all users of a specific role
-    const handleSelectAllByRole = (role) => {
-        const roleUsers = allUsers.filter(user => user.role === role);
-        setAssignedTo(roleUsers);
+    const handleSelectAllByRole = () => {
+        setAssignedTo(allUsers.filter((user) => user.role === selectedRole));
     };
 
     const HandleSubmit = async (e) => {
-        e.preventDefault()
-        console.log(assignedTo, id);
-        // setAssignedTo({ ...assignedTo, id: id })
-
+        e.preventDefault();
         try {
-            const request = await fetch(baseUrl.baseUrl + 'api/user/reassign/training', {
+            setSubmitting(true);
+            const request = await fetch(`${baseUrl.baseUrl}api/user/reassign/training`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ assignedTo: assignedTo.map(user => user.value), trainingId: id }),
+                body: JSON.stringify({
+                    assignedTo: assignedTo.map((user) => user.value),
+                    trainingId: id,
+                }),
             });
-            const response = await request.json()
-            alert(response.message)
+            const response = await request.json();
+            alert(response.message);
             window.location.reload();
-        } catch (error) {
-            throw new Error(error)
+        } catch (err) {
+            setError(err?.message || "Failed to reassign training");
+        } finally {
+            setSubmitting(false);
         }
+    };
 
-    }
-    return (
-        <div className="w-full h-full bg-white text-black">
-            <div><Header name='Reassign Training' /></div>
-            <SideNav />
-
-            <div className="md:ml-[100px] mt-[150px]">
-                <div className="text-xl mt-10  ">
-                    <div className="flex justify-evenly">
-                        <p>Training Name: <span className="text-[#016E5B]">{training?.data.trainingName}</span></p>
-                        <p>Number of Modules : <span className="text-[#016E5B]">{training?.data.numberOfModules}</span></p>
-                        <p>Number of user : <span className="text-[#016E5B]">{training?.users.length}</span></p>
-                    </div>
-                </div>
-                <div className="flex mx-32 justify-between ">
-                    <div>
-                        {
-                            training?.data?.modules.map((module) => {
-                                return (
-                                    <div className="text-xl mt-5 " key={module._id}>
-                                        Module {module.moduleName} has {module.videos.length} videos
-                                        <ul className="text-[16px] text-[#016E5B]">
-                                            {module.videos.map((video) => {
-                                                return (
-                                                    <li key={video._id} title={video.title}>
-                                                        {video.title.length < 20 ? video.title : video.title.slice(0, 20) + "..."}
-                                                    </li>
-                                                );
-                                            })}
-                                        </ul>
-                                    </div>
-                                );
-                            })
-                        }
-                    </div>
-                    <div className="mt-5 flex justify-start items-center">
-                        <form action="" onSubmit={HandleSubmit} className="flex flex-col gap-5">
-                            {/* Role Filter Section */}
-                            <div className="w-96">
-                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                    Filter by Role:
-                                </label>
-                                <select 
-                                    value={selectedRole} 
-                                    onChange={(e) => handleRoleFilter(e.target.value)}
-                                    className="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#016E5B]"
-                                >
-                                    <option value="">All Roles</option>
-                                    {availableRoles.map((role, index) => (
-                                        <option key={index} value={role}>{role}</option>
-                                    ))}
-                                </select>
-                            </div>
-
-                            {/* Quick Select Buttons */}
-                            {selectedRole && (
-                                <div className="w-96">
-                                    <button 
-                                        type="button"
-                                        onClick={() => handleSelectAllByRole(selectedRole)}
-                                        className="px-4 py-2 bg-[#016E5B] text-white rounded-md hover:bg-[#014C3F] text-sm"
-                                    >
-                                        Select All {selectedRole}s
-                                    </button>
-                                </div>
-                            )}
-
-                            <div className="mt-5 flex justify-start items-center">
-                                <div className="w-96">
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                                        Select Users:
-                                    </label>
-                                    <Select
-                                        placeholder="Select or search users"
-                                        options={users}
-                                        isMulti
-                                        value={assignedTo}
-                                        onChange={setAssignedTo} // Updates state
-                                        className="w-full"
-                                        isSearchable={true}
-                                        maxMenuHeight={200}
-                                    />
-                                </div>
-                            </div>
-                            
-                            {/* Selected Users Count */}
-                            {assignedTo.length > 0 && (
-                                <div className="text-sm text-gray-600">
-                                    Selected: {assignedTo.length} user{assignedTo.length !== 1 ? 's' : ''}
-                                </div>
-                            )}
-
-                            <button type="submit" className="btn text-white btn-accent">
-                                Reassign Training ({assignedTo.length} users)
-                            </button>
-                        </form>
+    if (loading) {
+        return (
+            <div className="min-h-screen bg-white">
+                <SideNav />
+                <div className="md:ml-[120px] px-4 sm:px-6 lg:px-8 py-8">
+                    <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">
+                        Loading training details...
                     </div>
                 </div>
             </div>
+        );
+    }
 
+    return (
+        <div className="min-h-screen bg-white text-black">
+            <div className="md:hidden sm:block">
+                <ModileNav />
+            </div>
 
-        </div >
-    )
-}
+            <div className="hidden md:block">
+                <SideNav />
+            </div>
 
-export default ReassignData
+            <div className="md:ml-[120px] px-4 sm:px-6 lg:px-8 py-5 sm:py-7">
+                {error ? (
+                    <div className="mb-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                        {error}
+                    </div>
+                ) : null}
+                {userError ? (
+                    <div className="mb-5 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+                        {userError}
+                    </div>
+                ) : null}
+
+                <div className="flex items-center justify-between">
+                    <div>
+                        <h1 className="text-2xl font-semibold text-slate-950">
+                            {training?.data?.trainingName || "Training"}
+                        </h1>
+                        <p className="mt-1 text-sm text-slate-500">Reassign this training to more employees.</p>
+                    </div>
+                </div>
+
+                <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-[1.4fr_1fr]">
+                    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                        <div className="flex flex-wrap gap-3">
+                            {trainingMeta.map((item) => (
+                                <div key={item.label} className="rounded-xl bg-slate-50 px-4 py-3">
+                                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                                        {item.label}
+                                    </p>
+                                    <p className="mt-1 text-xl font-semibold text-slate-950">{item.value}</p>
+                                </div>
+                            ))}
+                        </div>
+
+                        <div className="mt-6">
+                            <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">
+                                Modules
+                            </h2>
+
+                            <div className="mt-4 space-y-3">
+                                {modules.length > 0 ? (
+                                    modules.map((module) => (
+                                        <div
+                                            key={module._id}
+                                            className="rounded-xl border border-slate-200 bg-white px-4 py-3"
+                                        >
+                                            <div className="flex items-start justify-between gap-3">
+                                                <div>
+                                                    <p className="font-medium text-slate-950">{module.moduleName}</p>
+                                                    <p className="mt-1 text-sm text-slate-500">
+                                                        {module.videos.length} videos
+                                                    </p>
+                                                </div>
+                                                <div className="text-right text-sm text-slate-500">
+                                                    {module.videos.map((video) => (
+                                                        <p key={video._id} title={video.title} className="max-w-[220px] truncate">
+                                                            {video.title}
+                                                        </p>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))
+                                ) : (
+                                    <div className="rounded-xl border border-dashed border-slate-300 px-4 py-6 text-sm text-slate-500">
+                                        No modules found.
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
+                    <form onSubmit={HandleSubmit} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                        <h2 className="text-lg font-semibold text-slate-950">Assign users</h2>
+                        <p className="mt-1 text-sm text-slate-500">Filter by role, then choose employees to reassign.</p>
+
+                        <div className="mt-5">
+                            <label className="mb-2 block text-sm font-medium text-slate-700">Filter by Role</label>
+                            <select
+                                value={selectedRole}
+                                onChange={(e) => handleRoleFilter(e.target.value)}
+                                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none focus:border-[#016E5B]"
+                            >
+                                <option value="">All Roles</option>
+                                {availableRoles.map((role) => (
+                                    <option key={role} value={role}>
+                                        {role}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+
+                        {selectedRole ? (
+                            <button
+                                type="button"
+                                onClick={handleSelectAllByRole}
+                                className="mt-4 inline-flex rounded-xl bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-200"
+                            >
+                                Select all {selectedRole}
+                            </button>
+                        ) : null}
+
+                        <div className="mt-5">
+                            <label className="mb-2 block text-sm font-medium text-slate-700">Select Users</label>
+                            <Select
+                                placeholder="Select or search users"
+                                options={users}
+                                isMulti
+                                value={assignedTo}
+                                onChange={setAssignedTo}
+                                className="w-full"
+                                isSearchable
+                                maxMenuHeight={220}
+                                styles={{
+                                    control: (base) => ({
+                                        ...base,
+                                        minHeight: "48px",
+                                        borderRadius: "12px",
+                                        borderColor: "#d1d5db",
+                                        boxShadow: "none",
+                                    }),
+                                }}
+                            />
+                        </div>
+
+                        {assignedTo.length > 0 ? (
+                            <p className="mt-3 text-sm text-slate-500">
+                                Selected: {assignedTo.length} user{assignedTo.length !== 1 ? "s" : ""}
+                            </p>
+                        ) : null}
+
+                        <button
+                            type="submit"
+                            disabled={submitting}
+                            className="mt-6 inline-flex w-full items-center justify-center rounded-xl bg-[#016E5B] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#014C3F] disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                            {submitting ? "Reassigning..." : `Reassign Training (${assignedTo.length} users)`}
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+export default ReassignData;

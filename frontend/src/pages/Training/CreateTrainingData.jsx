@@ -1,212 +1,265 @@
-import { Link } from "react-router-dom";
-import RoundProgressBar from "../../components/RoundBar/RoundBar";
-import Header from "../../components/Header/Header";
-import { FaPlus } from "react-icons/fa";
-import { CiFilter } from "react-icons/ci";
 import { useEffect, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { FiSearch, FiClock, FiBook, FiUsers, FiCheckCircle, FiPlus } from "react-icons/fi";
+import { HiOutlineBookOpen } from "react-icons/hi";
+import { FaRegEdit } from "react-icons/fa";
 import baseUrl from "../../api/api";
-import Card from "../../components/Skeleton/Card";
 import SideNav from "../../components/SideNav/SideNav";
-import { useSelector } from "react-redux";
+import Card from "../../components/Skeleton/Card";
+
+const FILTER_OPTIONS = [
+  { label: "All", value: "" },
+  { label: "0 – 25%", value: "0-25" },
+  { label: "26 – 51%", value: "26-51" },
+  { label: "52 – 77%", value: "52-77" },
+  { label: "78 – 100%", value: "78-100" },
+];
+
+const TAB_OPTIONS = [
+  { label: "All Trainings", value: "all" },
+  { label: "Assigned Trainings", value: "Assigned" },
+];
 
 const CreateTrainingData = () => {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState([]);
-  const [filteredData, setFilteredData] = useState([]);
-  const [filterRange, setFilterRange] = useState("");
-  const [selectedUniqueItem, setSelectedUniqueItem] = useState("");
-  const [dropdownStates, setDropdownStates] = useState({ range: false, role: false });
-  const user = useSelector((state) => state.auth.user);
-
-  const [uniqueItems, setUniqueItems] = useState([]);
-  const toggleDropdown = (key) => {
-    setDropdownStates((prev) => ({ ...prev, [key]: !prev[key] }));
-  };
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState("");
+  const [tab, setTab] = useState("all");
+  const [filterOpen, setFilterOpen] = useState(false);
 
   useEffect(() => {
+    setLoading(true);
     const fetchData = async () => {
-      setLoading(true);
       try {
-        const response = await fetch(`${baseUrl.baseUrl}api/get/mandatory/allusertraining`);
-        if (!response.ok) throw new Error("Failed to fetch data");
-        const result = await response.json();
-        setData(result.data);
-        const items = new Set();
-        result.data.forEach((training) => {
-          training.uniqueItems.forEach((item) => items.add(item));
+        const res = await fetch(`${baseUrl.baseUrl}api/get/allusertraining`, {
+          headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
         });
-
-        setUniqueItems([...items]);
-        console.log(":hi" + uniqueItems);
-
-        setFilteredData(result.data);
-
-      } catch (error) {
-        console.error("Error fetching data:", error);
-      } finally {
-        setLoading(false);
-      }
+        if (!res.ok) throw new Error("Failed to fetch");
+        const result = await res.json();
+        setData(result.data || []);
+      } catch (_) {}
+      finally { setLoading(false); }
     };
-
     fetchData();
   }, []);
 
-  const applyFilters = (range, role) => {
-    let filtered = [...data];
+  const filtered = data.filter((item) => {
+    const pct = item?.averageCompletionPercentage ?? 0;
 
-    if (range) {
-      const [min, max] = range.split("-").map(Number);
-      filtered = filtered.filter(
-        (item) => item.averageCompletionPercentage >= min && item.averageCompletionPercentage <= max
-      );
-    }
+    const trainingType = item?.Trainingtype || item?.trainingType;
+    if (tab === "Assigned" && trainingType !== "Assigned") return false;
+    if (search && !item?.trainingName?.toLowerCase().includes(search.toLowerCase())) return false;
 
-    if (role) {
-      filtered = filtered.filter((item) => item?.uniqueItems.includes(role));
-    }
+    if (filter === "0-25"   && !(pct >= 0  && pct <= 25))  return false;
+    if (filter === "26-51"  && !(pct >= 26 && pct <= 51))  return false;
+    if (filter === "52-77"  && !(pct >= 52 && pct <= 77))  return false;
+    if (filter === "78-100" && !(pct >= 78 && pct <= 100)) return false;
 
-    setFilteredData(filtered);
-  };
+    return true;
+  });
 
-  const handleFilterChange = (range) => {
-    setFilterRange(range);
-    toggleDropdown("range");
-    applyFilters(range, selectedUniqueItem);
-  };
-
-  const handleUniqueItemChange = (role) => {
-    setSelectedUniqueItem(role);
-    toggleDropdown("role");
-    applyFilters(filterRange, role);
-  };
+  const activeFilterLabel =
+    FILTER_OPTIONS.find((o) => o.value === filter)?.label ?? "All";
 
   return (
-    <div className="w-full mb-[70px] h-full bg-white">
-      <Header name="Mandatory Training" />
+    <div className="flex min-h-screen bg-[#f5f5f5]">
       <SideNav />
-      <div className="md:ml-[100px] mt-[100px]">
-        {/* Header Section */}
-        <div className="flex justify-end mr-20">
-          <Link to="/Alltraining">
-            <div className="flex w-56 mt-5 border-2 justify-center items-center py-2 ml-10 cursor-pointer">
-              <h4 className="text-black">Show All Training</h4>
-            </div>
-          </Link>
-        </div>
 
-        {/* Filter Section */}
-        <div className="flex text-black ml-10 gap-5 text-xl w-auto">
-          <h4 className="border-b-[3px] border-[#016E5B] text-[#016E5B]">Mandatory Trainings</h4>
-          <Link to="/AssigData">
-            <h4 className="cursor-pointer">Assigned Trainings</h4>
-          </Link>
-        </div>
-        <hr className="mx-10 mt-[-1px] border-[#016E5B]" />
-
-        <div className="flex md:mx-10 md:justify-between mt-10 sm:justify-start">
-          {user?.role === 'super_admin' ? <div className="flex w-56 border-2 justify-evenly items-center py-2 ml-10 cursor-pointer">
-            <FaPlus className="text-[#016E5B]" />
-            <Link to="/create/Mandatorytraining">
-              <h4 className="text-black sm:text-sm">Create Mandatory Training</h4>
-            </Link>
-          </div> : null}
-
-
-          {/* Dropdowns */}
+      <div className="flex-1 md:ml-[120px] p-6">
+        {/* Page header */}
+        <div className="flex items-start justify-between mb-6">
           <div>
-            {["range", "role"].map((key) => (
-              <div className="relative hidden md:inline-block text-left w-36 mr-10" key={key}>
-                <button
-                  type="button"
-                  className="flex justify-between items-center w-full border-2 py-2 px-4 bg-white text-black rounded-md hover:bg-gray-200 focus:outline-none"
-                  onClick={() => toggleDropdown(key)}
-                  aria-expanded={dropdownStates[key] ? "true" : "false"}
-                  aria-controls={`${key}-dropdown`}
-                >
-                  <h4>
-                    {key === "range"
-                      ? filterRange
-                        ? `${filterRange}%`
-                        : "Range"
-                      : selectedUniqueItem || "Role"}
-                  </h4>
-                  <CiFilter className="text-[#016E5B]" />
-                </button>
-                {dropdownStates[key] && (
-                  <div
-                    id={`${key}-dropdown`}
-                    className="absolute right-0 mt-2 w-full rounded-md shadow-lg bg-white z-10"
-                  >
-                    <div className="py-1">
-                      {key === "range"
-                        ? ["", "0-25", "26-51", "52-77", "78-100"].map((range, index) => (
-                          <a
-                            key={index}
-                            href="#"
-                            className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              handleFilterChange(range);
-                            }}
-                          >
-                            {range ? `${range}%` : "All"}
-                          </a>
-                        ))
-                        : [
-                          <a
-                            key="all-roles"
-                            href="#"
-                            className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              handleUniqueItemChange("");
-                            }}
-                          >
-                            All
-                          </a>,
-                          ...uniqueItems.map((role, index) => (
-                            <a
-                              key={index}
-                              href="#"
-                              className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                              onClick={(e) => {
-                                e.preventDefault();
-                                handleUniqueItemChange(role);
-                              }}
-                            >
-                              {role}
-                            </a>
-                          )),
-                        ]}
-                    </div>
-                  </div>
-                )}
-              </div>
-            ))}
+            <h1 className="text-[22px] font-bold leading-tight text-gray-900">Training Management</h1>
+            <p className="text-sm text-gray-500 mt-0.5">
+              Create, assign, and monitor training programs across your organization
+            </p>
+          </div>
+          <button
+            onClick={() => navigate("/createnewtraining")}
+            className="flex items-center gap-2 bg-gray-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-700 transition"
+          >
+            <FiPlus size={16} />
+              New Training
+          </button>
+        </div>
 
+        {/* Toolbar */}
+        <div className="bg-white rounded-2xl px-4 py-3 shadow-sm flex flex-wrap items-center gap-3 mb-5">
+          {/* Tabs */}
+          <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
+            {TAB_OPTIONS.map((t) => (
+              <button
+                key={t.value}
+                onClick={() => setTab(t.value)}
+                className={`px-4 py-1.5 rounded-md text-sm font-medium transition ${
+                  tab === t.value
+                    ? "bg-gray-900 text-white shadow"
+                    : "text-gray-600 hover:text-gray-900"
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Search */}
+          <div className="flex-1 min-w-[180px] relative">
+            <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={15} />
+            <input
+              type="text"
+              placeholder="Search by Training"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-300"
+            />
+          </div>
+
+          {/* Filter dropdown */}
+          <div className="relative">
+            <button
+              onClick={() => setFilterOpen((p) => !p)}
+              className="flex items-center gap-2 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition"
+            >
+              Training : {activeFilterLabel}
+              <svg className="w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            {filterOpen && (
+              <div className="absolute right-0 mt-1 w-40 bg-white border border-gray-200 rounded-xl shadow-lg z-20 py-1">
+                {FILTER_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => { setFilter(opt.value); setFilterOpen(false); }}
+                    className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 transition ${
+                      filter === opt.value ? "font-semibold text-gray-900" : "text-gray-600"
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Training Cards */}
-        <div className="mt-10 ml-10 flex flex-wrap gap-3">
-          {loading
-            ? Array(4)
-              .fill(null)
-              .map((_, i) => <Card key={i} />)
-            : filteredData.map((item, index) => (
-              <Link key={item._id || `training-${index}`} to={`/AssigTraining/${item?.trainingId}`}>
-                <RoundProgressBar
-                  initialProgress={item?.averageCompletionPercentage || 0}
-                  title={item?.trainingName}
-                  Module={`No. of Modules: ${item?.numberOfModules || 0}`}
-                  duration={`No. of users: ${item?.totalUsers || 0}`}
-                  complete={`Completion Rate: ${item?.averageCompletionPercentage || 0}%`}
-                />
-              </Link>
+        {/* Cards grid */}
+        {loading ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <Card /><Card /><Card /><Card /><Card /><Card />
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-24 text-gray-400">
+            <HiOutlineBookOpen size={48} className="mb-3 opacity-40" />
+            <p className="text-sm">No trainings found</p>
+          </div>
+        ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filtered.map((item, index) => (
+              <TrainingCard
+                key={item?._id || item?.trainingId || item?.trainingName || index}
+                item={item}
+                onEdit={() => navigate(`/createnewtraining/${item?.trainingId}`)}
+              />
             ))}
-        </div>
+          </div>
+        )}
       </div>
     </div>
+  );
+};
+
+/* ── Individual training card ── */
+const TrainingCard = ({ item, onEdit }) => {
+  const pct     = Math.round(item?.averageCompletionPercentage ?? 0);
+  const modules = item?.numberOfModules ?? 0;
+  const videos  = item?.totalVideos ?? 0;
+  const staffs  = item?.totalAssignedUsers ?? item?.totalUsers ?? 0;
+  const totalMins = item?.durationMinutes ?? 0;
+  const hrs  = Math.floor(totalMins / 60).toString().padStart(2, "0");
+  const mins = (totalMins % 60).toString().padStart(2, "0");
+  const trainingType = item?.Trainingtype || item?.trainingType || "Assigned";
+
+  return (
+    <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 hover:shadow-md transition h-full">
+        {/* Icon + title */}
+        <div className="flex items-start gap-3 mb-4">
+          <div className="w-10 h-10 rounded-xl bg-purple-100 flex items-center justify-center flex-shrink-0">
+            <HiOutlineBookOpen size={20} className="text-purple-500" />
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <h3 className="font-semibold text-gray-900 text-sm leading-snug truncate">
+                {item?.trainingName}
+              </h3>
+              <span
+                className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                  trainingType === "Mandatory"
+                    ? "bg-rose-100 text-rose-700"
+                    : "bg-slate-100 text-slate-700"
+                }`}
+              >
+                {trainingType}
+              </span>
+            </div>
+            <p className="text-xs text-gray-400 mt-0.5">
+              {modules} Modules | {videos} Videos
+            </p>
+          </div>
+        </div>
+
+        {/* Progress bar */}
+        <div className="mb-4">
+          <div className="flex justify-between items-center mb-1">
+            <span className="text-xs text-gray-500">Progress</span>
+            <span className="text-xs font-semibold text-gray-800">{pct}%</span>
+          </div>
+          <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-gray-900 rounded-full transition-all"
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+        </div>
+
+        {/* Stats */}
+        <div className="grid grid-cols-2 gap-y-2 gap-x-3 text-xs text-gray-500">
+          <span className="flex items-center gap-1.5">
+            <FiClock size={12} className="flex-shrink-0" />
+            {hrs} hr {mins} mins
+          </span>
+          <span className="flex items-center gap-1.5">
+            <FiBook size={12} className="flex-shrink-0" />
+            {modules} Modules
+          </span>
+          <span className="flex items-center gap-1.5">
+            <FiUsers size={12} className="flex-shrink-0" />
+            {staffs} Staffs
+          </span>
+          <span className="flex items-center gap-1.5">
+            <FiCheckCircle size={12} className="flex-shrink-0" />
+            {pct}% Completed
+          </span>
+        </div>
+        <div className="mt-4 flex items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={onEdit}
+            className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition"
+          >
+            <FaRegEdit size={12} />
+            Edit
+          </button>
+          <Link
+            to={`/AssigTraining/${item?.trainingId}`}
+            className="inline-flex items-center gap-2 rounded-lg bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-700 transition"
+          >
+            View
+          </Link>
+        </div>
+      </div>
   );
 };
 

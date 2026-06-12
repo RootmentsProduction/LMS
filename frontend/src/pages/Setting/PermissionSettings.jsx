@@ -43,52 +43,53 @@ const PermissionSettings = () => {
 
         const result = await fetchData.json();
 
-        if (!result.data || result.data.length < 3) {
+        if (!result.data || !Array.isArray(result.data)) {
           throw new Error("Invalid permission data received");
         }
-        console.log(result.data);
 
+        const superAdminDoc = result.data.find(d => d.role === "super_admin" || d.role === "admin");
+        const clusterAdminDoc = result.data.find(d => d.role === "cluster_admin");
+        const storeAdminDoc = result.data.find(d => d.role === "store_admin");
 
         setPermissions({
           admin: {
             training: [
-              result.data[0]?.permissions.canCreateTraining || false,
-              result.data[0]?.permissions.canReassignTraining || false,
-              result.data[0]?.permissions.canDeleteTraining || false,
+              superAdminDoc?.permissions?.canCreateTraining || false,
+              superAdminDoc?.permissions?.canReassignTraining || false,
+              superAdminDoc?.permissions?.canDeleteTraining || false,
             ],
             assessment: [
-              result.data[0]?.permissions.canCreateAssessment || false,
-              result.data[0]?.permissions.canReassignAssessment || false,
-              result.data[0]?.permissions.canDeleteAssessment || false,
+              superAdminDoc?.permissions?.canCreateAssessment || false,
+              superAdminDoc?.permissions?.canReassignAssessment || false,
+              superAdminDoc?.permissions?.canDeleteAssessment || false,
             ],
           },
           clusterManager: {
             training: [
-              result.data[1]?.permissions.canCreateTraining || false,
-              result.data[1]?.permissions.canReassignTraining || false,
-              result.data[1]?.permissions.canDeleteTraining || false,
+              clusterAdminDoc?.permissions?.canCreateTraining || false,
+              clusterAdminDoc?.permissions?.canReassignTraining || false,
+              clusterAdminDoc?.permissions?.canDeleteTraining || false,
             ],
             assessment: [
-              result.data[1]?.permissions.canCreateAssessment || false,
-              result.data[1]?.permissions.canReassignAssessment || false,
-              result.data[1]?.permissions.canDeleteAssessment || false,
+              clusterAdminDoc?.permissions?.canCreateAssessment || false,
+              clusterAdminDoc?.permissions?.canReassignAssessment || false,
+              clusterAdminDoc?.permissions?.canDeleteAssessment || false,
             ],
           },
           storeManager: {
             training: [
-              result.data[2]?.permissions.canCreateTraining || false,
-              result.data[2]?.permissions.canReassignTraining || false,
-              result.data[2]?.permissions.canDeleteTraining || false,
+              storeAdminDoc?.permissions?.canCreateTraining || false,
+              storeAdminDoc?.permissions?.canReassignTraining || false,
+              storeAdminDoc?.permissions?.canDeleteTraining || false,
             ],
             assessment: [
-              result.data[2]?.permissions.canCreateAssessment || false,
-              result.data[2]?.permissions.canReassignAssessment || false,
-              result.data[2]?.permissions.canDeleteAssessment || false,
+              storeAdminDoc?.permissions?.canCreateAssessment || false,
+              storeAdminDoc?.permissions?.canReassignAssessment || false,
+              storeAdminDoc?.permissions?.canDeleteAssessment || false,
             ],
           },
         });
       } catch (error) {
-        console.error("Error fetching permissions:", error);
         toast.error("Failed to load permissions");
       }
     };
@@ -104,9 +105,6 @@ const PermissionSettings = () => {
       };
       return acc;
     }, {});
-
-    console.log("Formatted Permissions:", formattedPermissions);
-
     try {
       const response = await fetch(`${baseUrl.baseUrl}api/admin/permission/controller`, {
         method: "POST",
@@ -124,14 +122,13 @@ const PermissionSettings = () => {
 
       toast.success("Permissions successfully updated!");
     } catch (error) {
-      console.error("Error saving permissions:", error);
       toast.error("Failed to save permissions");
     }
   };
 
   return (
-    <div className="p-6 bg-gray-50 min-h-screen w-full text-black">
-      <h1 className="text-2xl font-bold mb-6">Permission Settings</h1>
+    <div className="p-4 sm:p-6 bg-gray-50 min-h-[calc(100vh-160px)] w-full text-black">
+      <h1 className="text-2xl font-extrabold mb-6">Permission Settings</h1>
       <div className="bg-white p-6 rounded-lg shadow">
         <h2 className="text-lg font-bold mb-4">Role-Based Permissions</h2>
         <div className="overflow-x-auto">

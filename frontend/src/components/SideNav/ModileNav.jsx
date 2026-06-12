@@ -1,92 +1,71 @@
 import { useLocation, Link } from "react-router-dom";
-import { MdModelTraining, MdOutlineStoreMallDirectory, MdOutlineAssessment } from "react-icons/md";
-// import { IoIosLogOut } from "react-icons/io";
-import { FaRegIdCard } from "react-icons/fa";
-import { IoSettingsOutline } from "react-icons/io5";
 import { useSelector } from "react-redux";
 
-const SideNav = () => {
-    const location = useLocation(); // Get the current route path
-    const user = useSelector((state) => state.auth.user);
-    // Helper function to check if the link is active
-    const isActive = (path) => location.pathname === path;
+const Icon = ({ d, size = 22 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+    stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    {Array.isArray(d) ? d.map((p, i) => <path key={i} d={p} />) : <path d={d} />}
+  </svg>
+);
 
-    return (
-        <div className=" h-[70px] z-10 bg-[#F4F4F4] flex items-center fixed bottom-0 left-0 right-0 px-4 w-auto shadow-md">
-            {/* Navigation Links */}
-            <div className="flex justify-between w-full text-md text-black space-x-4">
-                {/* Dashboard Section */}
-                <Link to={'/'}>
-                    <div className={`flex flex-col items-center space-y-1 transition-all duration-200 
-                        ${isActive('/') ? 'text-[#016E5B]' : ''}`}>
-                        <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            width="24"
-                            height="24"
-                            viewBox="0 0 24 24"
-                        >
-                            <path
-                                fill="none"
-                                stroke="currentColor"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth="2"
-                                d="M5 4h4a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1m0 12h4a1 1 0 0 1 1 1v2a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-2a1 1 0 0 1 1-1m10-4h4a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1v-6a1 1 0 0 1 1-1m0-8h4a1 1 0 0 1 1 1v2a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1"
-                            />
-                        </svg>
-                    </div>
-                </Link>
-
-                {/* Employee Section */}
-                <Link to={'/employee'}>
-                    <div className={`flex flex-col items-center space-y-1 transition-all duration-200 
-                        ${isActive('/employee') ? 'text-[#016E5B]' : ''}`}>
-                        <FaRegIdCard className="text-xl" />
-                    </div>
-                </Link>
-
-                {/* Trainings Section */}
-                <Link to={'/training'}>
-                    <div className={`flex flex-col items-center space-y-1 transition-all duration-200 
-                        ${isActive('/training') ? 'text-[#016E5B]' : ''}`}>
-                        <MdModelTraining className="text-2xl" />
-                    </div>
-                </Link>
-
-                {/* Assessments Section */}
-                <Link to={'/assessments'}>
-                    <div className={`flex flex-col items-center space-y-1 transition-all duration-200 
-                        ${isActive('/assessments') ? 'text-[#016E5B]' : ''}`}>
-                        <MdOutlineAssessment className="text-xl" />
-                    </div>
-                </Link>
-
-                {/* Module Section */}
-
-
-                {/* Branch Section */}
-                <Link to={'/branch'}>
-                    <div className={`flex flex-col items-center space-y-1 transition-all duration-200 
-                        ${isActive('/branch') ? 'text-[#016E5B]' : ''}`}>
-                        <MdOutlineStoreMallDirectory className="text-xl" />
-
-                    </div>
-                </Link>
-                {user?.role === 'super_admin' ? <Link to={'/settings'}>
-                    <div className={`flex flex-col items-center space-y-1 transition-all duration-200 
-                        ${isActive('/settings') ? 'text-[#016E5B]' : ''}`}>
-                        <IoSettingsOutline className="text-xl" />
-                    </div>
-                </Link> : null}
-
-                {/* Settings Section */}
-
-
-                {/* Logout Section */}
-
-            </div>
-        </div>
-    );
+const ICONS = {
+  dashboard: "M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z M9 22V12h6v10",
+  walkin: ["M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"],
+  employee: ["M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2", "M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"],
+  training: ["M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z", "M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"],
+  assessment: ["M9 11l3 3L22 4", "M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"],
+  branch: ["M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z", "M9 22V12h6v10"],
+  settings: ["M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"],
 };
 
-export default SideNav;
+const MobileNavItem = ({ to, icon, label, active }) => (
+  <Link to={to} className="flex flex-col items-center gap-1 flex-1 flex-shrink-0 min-w-[72px]">
+    <div className={`flex flex-col items-center gap-1 py-1.5 px-2 rounded-xl transition-all duration-200 w-full
+      ${active ? 'text-white bg-white/10' : 'text-gray-500'}`}>
+      <Icon d={ICONS[icon]} size={20} />
+      <span className="text-[9px] font-semibold tracking-wide text-center truncate w-full">{label}</span>
+    </div>
+  </Link>
+);
+
+const ModileNav = () => {
+  const location = useLocation();
+  const user = useSelector((s) => s.auth.user);
+  const is = (path) => location.pathname === path;
+  const isWalkin = is('/walkin/list') || is('/walkin/report');
+
+  return (
+    <>
+      <div
+        className="fixed bottom-0 left-0 right-0 z-50 flex items-center px-2 py-1 md:hidden overflow-x-auto scrollbar-none"
+        style={{
+          backgroundColor: '#1a1a1a',
+          height: '64px',
+          scrollbarWidth: 'none',
+          msOverflowStyle: 'none'
+        }}
+      >
+        <MobileNavItem to="/" icon="dashboard" label="Dashboard" active={is('/')} />
+        <MobileNavItem to="/walkin/list" icon="walkin" label="WalkIn" active={isWalkin} />
+        <MobileNavItem to="/employee" icon="employee" label="Employees" active={is('/employee')} />
+        {user?.role !== 'store_admin' && (
+          <MobileNavItem to="/training" icon="training" label="Trainings" active={is('/training')} />
+        )}
+        {user?.role !== 'store_admin' && (
+          <MobileNavItem to="/assessments" icon="assessment" label="Assessments" active={is('/assessments')} />
+        )}
+        <MobileNavItem to="/branch" icon="branch" label="Branches" active={is('/branch')} />
+        {(user?.role === 'super_admin' || user?.role === 'admin' || user?.role === 'hr_admin' || user?.role === 'cluster_admin') && (
+          <MobileNavItem to="/settings/users" icon="settings" label="Settings" active={location.pathname.startsWith('/settings')} />
+        )}
+      </div>
+      <style>{`
+        .scrollbar-none::-webkit-scrollbar {
+          display: none;
+        }
+      `}</style>
+    </>
+  );
+};
+
+export default ModileNav;

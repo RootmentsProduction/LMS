@@ -7,11 +7,9 @@ const assessmentQuestionSchema = new mongoose.Schema({
   correctAnswer: { type: String, required: true }, // Correct answer text
 });
 
-// Define schema for assessment
 const assessmentSchema = new mongoose.Schema({
-  title: { type: String, required: true }, // Title of the assessment
-  // Br  // description: { type: Number, required: true },ief description of the assessment
-  questions: [assessmentQuestionSchema], // Array of questions
+  title: { type: String, required: true },
+  questions: [assessmentQuestionSchema],
   duration: { type: Number, require: true },
   deadline: { type: Number, require: true },
   createBy: { type: String, default: "admin" },
@@ -19,11 +17,15 @@ const assessmentSchema = new mongoose.Schema({
     type: String,
     enum: ['Pending', 'Processing', 'Completed'],
     default: 'Pending'
-  }, // Current state of the assessment
-  createdAt: { type: Date, default: Date.now }, // Timestamp when the assessment was created
-  updatedAt: { type: Date, default: Date.now }, // Timestamp when the assessment was last updated
+  },
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now },
 });
 
-// Export the model
+// Filter assessments by state
+assessmentSchema.index({ state: 1 });
+// Sort/filter by creation date
+assessmentSchema.index({ createdAt: -1 });
+
 const Assessment = mongoose.model('Assessment', assessmentSchema);
 export default Assessment;

@@ -1,167 +1,242 @@
 import { useState } from "react";
-import Header from "../../components/Header/Header";
+import { useNavigate } from "react-router-dom";
 import SideNav from "../../components/SideNav/SideNav";
 import baseUrl from "../../api/api";
 import { toast } from "react-toastify";
 
+/* ── Field component ─────────────────────────────────────────────────────── */
+const Field = ({ label, required, children }) => (
+  <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+    <label style={{ fontSize: "11px", fontWeight: 600, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+      {label}{required && <span style={{ color: "#ef4444", marginLeft: 2 }}>*</span>}
+    </label>
+    {children}
+  </div>
+);
+
+const inputStyle = {
+  height: "40px",
+  border: "1px solid #e5e7eb",
+  borderRadius: "8px",
+  padding: "0 12px",
+  fontSize: "13px",
+  color: "#111827",
+  background: "#fff",
+  outline: "none",
+  width: "100%",
+  fontFamily: "DM Sans, sans-serif",
+  transition: "border-color 0.15s",
+};
+
 const BranchForm = () => {
-    const [branch, setBranchData] = useState({
-        address: "",
-        locCode: "",
-        location: "",
-        manager: "",
-        phoneNumber: "",
-        workingBranch: ""
-    });
-    const token = localStorage.getItem('token');
+  const navigate = useNavigate();
+  const [branch, setBranchData] = useState({
+    address: "",
+    locCode: "",
+    location: "",
+    manager: "",
+    phoneNumber: "",
+    workingBranch: "",
+  });
+  const [saving, setSaving] = useState(false);
+  const token = localStorage.getItem("token");
 
+  const handleChange = (e) => {
+    const { id, value } = e.target;
+    setBranchData((prev) => ({ ...prev, [id]: value }));
+  };
 
-    // Generalized function to handle all input changes dynamically
-    const handleChange = (e) => {
-        const { id, value } = e.target;
-        setBranchData((prev) => ({
-            ...prev,
-            [id]: value
-        }));
-    };
+  const handleFormSubmit = async () => {
+    if (!branch.locCode || !branch.workingBranch) {
+      toast.error("Branch ID and Branch Name are required.");
+      return;
+    }
+    setSaving(true);
+    try {
+      const response = await fetch(`${baseUrl.baseUrl}api/usercreate/create/branch`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(branch),
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        toast.error(result.message || "Failed to create branch");
+        return;
+      }
+      toast.success("Branch created successfully");
+      navigate("/branch");
+    } catch (error) {
+      toast.error("Something went wrong. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
 
-    const handleFormSubmit = async () => {
-        alert("Branch details saved!");
-        console.log(branch);
-        try {
-            const response = await fetch(`${baseUrl.baseUrl}api/usercreate/create/branch`, {
-                method: 'POST', // Assuming you use a PUT request to update the data
-                headers: {
-                    "Content-Type": "application/json",
-                    'Authorization': `Bearer ${token}`,
-                },
-                body: JSON.stringify(branch),
-            })
-            const result = await response.json();
+  return (
+    <div style={{ minHeight: "100vh", background: "#f9fafb", fontFamily: "DM Sans, sans-serif" }}>
+      <SideNav />
 
+      <div className="ml-0 md:ml-[120px]" style={{ paddingTop: "24px", paddingLeft: "24px", paddingRight: "24px", paddingBottom: "24px" }}>
 
-            if (!response.ok) {
-                toast.error(result.message || 'Failed to update data');
-                return;
-            }
-
-        } catch (error) {
-            throw new Error(error)
-        }
-
-    };
-
-    return (
-        <div className="mb-[70px]">
-            <Header name="Add Branch" />
-            <SideNav />
-            <div className="p-6 mt-[150px] mx-10 bg-gray-50 min-h-screen ml-[200px] text-[#016E5B]">
-                <button className="text-sm text-gray-500 hover:underline mb-4">Back</button>
-
-                <div className="grid grid-cols-2 gap-6">
-                    {/* Branch ID (Not controlled since no state for it) */}
-                    <div>
-                        <label htmlFor="locCode" className="block text-sm font-medium text-[#016E5B]">
-                            Branch ID
-                        </label>
-                        <input
-                            id="locCode"
-                            type="text"
-                            placeholder="Enter Branch ID"
-                            value={branch.locCode}
-                            onChange={handleChange}
-                            className="bg-white border-gray-500 h-10 mt-1 block w-[300px] rounded-[5px] border shadow-sm focus:ring-green-500 focus:border-green-500 sm:text-sm"
-                        />
-                    </div>
-
-                    {/* Branch Manager */}
-                    <div>
-                        <label htmlFor="manager" className="block text-sm font-medium text-[#016E5B]">
-                            Branch Manager
-                        </label>
-                        <input
-                            id="manager"
-                            type="text"
-                            value={branch.manager}
-                            onChange={handleChange}
-                            placeholder="Enter Branch Manager"
-                            className="bg-white border-gray-500 h-10 mt-1 block w-[300px] rounded-[5px] border shadow-sm focus:ring-green-500 focus:border-green-500 sm:text-sm"
-                        />
-                    </div>
-
-                    {/* Branch Name */}
-                    <div>
-                        <label htmlFor="workingBranch" className="block text-sm font-medium text-[#016E5B]">
-                            Branch Name
-                        </label>
-                        <input
-                            id="workingBranch"
-                            type="text"
-                            value={branch.workingBranch}
-                            onChange={handleChange}
-                            placeholder="Enter Branch Name"
-                            className="bg-white border-gray-500 h-10 mt-1 block w-[300px] rounded-[5px] border shadow-sm focus:ring-green-500 focus:border-green-500 sm:text-sm"
-                        />
-                    </div>
-
-                    {/* Phone Number */}
-                    <div>
-                        <label htmlFor="phoneNumber" className="block text-sm font-medium text-[#016E5B]">
-                            Phone Number
-                        </label>
-                        <input
-                            id="phoneNumber"
-                            type="text"
-                            value={branch.phoneNumber}
-                            onChange={handleChange}
-                            placeholder="Enter Branch Phone Number"
-                            className="bg-white border-gray-500 h-10 mt-1 block w-[300px] rounded-[5px] border shadow-sm focus:ring-green-500 focus:border-green-500 sm:text-sm"
-                        />
-                    </div>
-
-                    {/* Branch Location */}
-                    <div>
-                        <label htmlFor="location" className="block text-sm font-medium text-[#016E5B]">
-                            Branch Location
-                        </label>
-                        <input
-                            id="location"
-                            type="text"
-                            value={branch.location}
-                            onChange={handleChange}
-                            placeholder="Enter Branch Location"
-                            className="bg-white border-gray-500 h-10 mt-1 block w-[300px] rounded-[5px] border shadow-sm focus:ring-green-500 focus:border-green-500 sm:text-sm"
-                        />
-                    </div>
-
-                    {/* Branch Address */}
-                    <div className="col-span-2 w-[630px]">
-                        <label htmlFor="address" className="block text-sm font-medium text-[#016E5B]">
-                            Branch Address
-                        </label>
-                        <textarea
-                            id="address"
-                            value={branch.address}
-                            onChange={handleChange}
-                            rows={7}
-                            placeholder="Enter Branch Address"
-                            className="mt-1 block w-[250px] rounded-[5px] border shadow-sm bg-white border-gray-500 focus:ring-green-500 focus:border-green-500 sm:text-sm"
-                        ></textarea>
-                    </div>
-
-                    {/* Save Button */}
-                    <div className="mt-6">
-                        <button
-                            className="bg-green-600 text-white px-6 py-2 rounded-[5px] shadow hover:bg-green-700"
-                            onClick={handleFormSubmit}
-                        >
-                            Save Branch
-                        </button>
-                    </div>
-                </div>
-            </div>
+        {/* ── Page header ── */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "24px" }}>
+          <div>
+            <button
+              onClick={() => navigate("/branch")}
+              style={{ display: "flex", alignItems: "center", gap: "6px", background: "none", border: "none", cursor: "pointer", color: "#6b7280", fontSize: "13px", fontWeight: 500, padding: 0, marginBottom: "8px" }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="15 18 9 12 15 6" />
+              </svg>
+              Back to Branches
+            </button>
+            <h1 style={{ fontSize: "22px", fontWeight: 700, lineHeight: 1.2, color: "#111827", margin: 0 }}>Add New Branch</h1>
+            <p style={{ fontSize: "11px", color: "#9ca3af", margin: "4px 0 0" }}>Fill in the details below to register a new branch</p>
+          </div>
         </div>
-    );
+
+        {/* ── Form card ── */}
+        <div style={{ background: "#fff", borderRadius: "14px", border: "1px solid #f0f0f0", boxShadow: "0 1px 4px rgba(0,0,0,0.05)", overflow: "hidden", maxWidth: "860px" }}>
+
+          {/* Card header */}
+          <div style={{ padding: "18px 24px", borderBottom: "1px solid #f3f4f6", display: "flex", alignItems: "center", gap: "10px" }}>
+            <div style={{ width: "32px", height: "32px", borderRadius: "8px", background: "#f3f4f6", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#374151" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" />
+              </svg>
+            </div>
+            <div>
+              <p style={{ fontSize: "14px", fontWeight: 600, color: "#111827", margin: 0 }}>Branch Information</p>
+              <p style={{ fontSize: "11px", color: "#9ca3af", margin: 0 }}>Basic details about the branch</p>
+            </div>
+          </div>
+
+          {/* Form body */}
+          <div style={{ padding: "24px" }}>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5" style={{}}>
+
+              <Field label="Branch ID" required>
+                <input
+                  id="locCode"
+                  type="text"
+                  placeholder="e.g. 101"
+                  value={branch.locCode}
+                  onChange={handleChange}
+                  style={inputStyle}
+                  onFocus={e => e.target.style.borderColor = "#111827"}
+                  onBlur={e => e.target.style.borderColor = "#e5e7eb"}
+                />
+              </Field>
+
+              <Field label="Branch Name" required>
+                <input
+                  id="workingBranch"
+                  type="text"
+                  placeholder="e.g. GROOMS Thrissur"
+                  value={branch.workingBranch}
+                  onChange={handleChange}
+                  style={inputStyle}
+                  onFocus={e => e.target.style.borderColor = "#111827"}
+                  onBlur={e => e.target.style.borderColor = "#e5e7eb"}
+                />
+              </Field>
+
+              <Field label="Branch Manager">
+                <input
+                  id="manager"
+                  type="text"
+                  placeholder="Enter manager name"
+                  value={branch.manager}
+                  onChange={handleChange}
+                  style={inputStyle}
+                  onFocus={e => e.target.style.borderColor = "#111827"}
+                  onBlur={e => e.target.style.borderColor = "#e5e7eb"}
+                />
+              </Field>
+
+              <Field label="Phone Number">
+                <input
+                  id="phoneNumber"
+                  type="text"
+                  placeholder="Enter phone number"
+                  value={branch.phoneNumber}
+                  onChange={handleChange}
+                  style={inputStyle}
+                  onFocus={e => e.target.style.borderColor = "#111827"}
+                  onBlur={e => e.target.style.borderColor = "#e5e7eb"}
+                />
+              </Field>
+
+              <Field label="Location">
+                <input
+                  id="location"
+                  type="text"
+                  placeholder="e.g. Thrissur"
+                  value={branch.location}
+                  onChange={handleChange}
+                  style={inputStyle}
+                  onFocus={e => e.target.style.borderColor = "#111827"}
+                  onBlur={e => e.target.style.borderColor = "#e5e7eb"}
+                />
+              </Field>
+
+              <div className="hidden md:block" /> {/* spacer */}
+
+              <div className="col-span-1 md:col-span-2" style={{}}>
+                <Field label="Address">
+                  <textarea
+                    id="address"
+                    rows={4}
+                    placeholder="Enter full branch address"
+                    value={branch.address}
+                    onChange={handleChange}
+                    style={{ ...inputStyle, height: "auto", padding: "10px 12px", resize: "vertical", lineHeight: "1.5" }}
+                    onFocus={e => e.target.style.borderColor = "#111827"}
+                    onBlur={e => e.target.style.borderColor = "#e5e7eb"}
+                  />
+                </Field>
+              </div>
+
+            </div>
+          </div>
+
+          {/* Card footer */}
+          <div style={{ padding: "16px 24px", borderTop: "1px solid #f3f4f6", display: "flex", justifyContent: "flex-end", gap: "10px" }}>
+            <button
+              onClick={() => navigate("/branch")}
+              style={{ height: "38px", padding: "0 18px", border: "1px solid #e5e7eb", borderRadius: "8px", background: "#fff", color: "#374151", fontSize: "13px", fontWeight: 500, cursor: "pointer" }}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleFormSubmit}
+              disabled={saving}
+              style={{ height: "38px", padding: "0 20px", border: "none", borderRadius: "8px", background: saving ? "#9ca3af" : "#111827", color: "#fff", fontSize: "13px", fontWeight: 600, cursor: saving ? "not-allowed" : "pointer", display: "flex", alignItems: "center", gap: "7px" }}
+            >
+              {saving ? (
+                <>
+                  <div style={{ width: "13px", height: "13px", border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "#fff", borderRadius: "50%", animation: "ab-spin 0.7s linear infinite" }} />
+                  Saving…
+                </>
+              ) : (
+                <>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                  Save Branch
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <style>{`@keyframes ab-spin { to { transform: rotate(360deg); } }`}</style>
+    </div>
+  );
 };
 
 export default BranchForm;

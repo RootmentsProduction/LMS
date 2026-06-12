@@ -6,6 +6,8 @@ import Notification from "../model/Notification.js";
 import TrainingProgress from "../model/Trainingprocessschema.js";
 import { Training } from "../model/Traning.js";
 import User from "../model/User.js";
+import Branch from "../model/Branch.js";
+import { getAccessibleStoreIds, isFullAccessAdmin } from '../lib/permissions.js';
 
 // Helper function to convert YouTube URLs to embed format
 const convertToEmbedUrl = (url) => {
@@ -489,23 +491,36 @@ export const FindOverDueAssessment = async (req, res) => {
             return res.status(400).json({ message: "Admin ID not found" });
         }
 
-        const AdminBranch = await Admin.findById(AdminId).populate('branches').lean();
-        if (!AdminBranch || !AdminBranch.branches) {
-            return res.status(404).json({ message: "Admin branches not found" });
+        const AdminData = await Admin.findById(AdminId);
+        if (!AdminData) {
+            return res.status(404).json({ message: "Admin not found" });
         }
 
-        const allowedLocCodes = AdminBranch.branches.map(branch => branch.locCode);
+        const accessibleStoreIds = await getAccessibleStoreIds(AdminId);
+        const branches = await Branch.find({ _id: { $in: accessibleStoreIds } });
+        const allowedLocCodes = branches.map(branch => branch.locCode).filter(Boolean);
+        const branchNames = branches.map(branch => branch.branchName || branch.workingBranch).filter(Boolean);
+
         const currentDate = new Date(); // Standardized for comparison
 
-        const DueAssessment = await User.find({
-            locCode: { $in: allowedLocCodes },
+        let query = {
             assignedAssessments: {
                 $elemMatch: {
                     pass: false,
                     deadline: { $lt: currentDate } // Proper date comparison
                 }
             }
-        })
+        };
+
+        if (!isFullAccessAdmin(AdminData.role)) {
+            query.$or = [
+                { locCode: { $in: allowedLocCodes } },
+                { workingBranch: { $in: branchNames } },
+                { locCode: { $regex: branchNames.join('|'), $options: 'i' } }
+            ];
+        }
+
+        const DueAssessment = await User.find(query)
             .populate("assignedAssessments.assessmentId")
             .select("name email empID username designation workingBranch assignedAssessments")
             .lean(); // Improve performance
@@ -551,17 +566,29 @@ export const FindOverDueTraining = async (req, res) => {
         console.log("ADMIN ID ID " + AdminId);
 
         // Find admin and get branches
-        const AdminBranch = await Admin.findById(AdminId).populate('branches').lean();
-        if (!AdminBranch || !AdminBranch.branches) {
-            return res.status(404).json({ message: "Admin branches not found" });
+        const AdminData = await Admin.findById(AdminId);
+        if (!AdminData) {
+            return res.status(404).json({ message: "Admin not found" });
         }
-        console.log(AdminBranch);
 
-        const allowedLocCodes = AdminBranch.branches.map(branch => branch.locCode);
+        const accessibleStoreIds = await getAccessibleStoreIds(AdminId);
+        const branches = await Branch.find({ _id: { $in: accessibleStoreIds } });
+        const allowedLocCodes = branches.map(branch => branch.locCode).filter(Boolean);
+        const branchNames = branches.map(branch => branch.branchName || branch.workingBranch).filter(Boolean);
+
         const currentDate = new Date();
 
+        let query = {};
+        if (!isFullAccessAdmin(AdminData.role)) {
+            query.$or = [
+                { locCode: { $in: allowedLocCodes } },
+                { workingBranch: { $in: branchNames } },
+                { locCode: { $regex: branchNames.join('|'), $options: 'i' } }
+            ];
+        }
+
         // Get all users in allowed branches
-        const users = await User.find({ locCode: { $in: allowedLocCodes } });
+        const users = await User.find(query);
         console.log(`Found ${users.length} users in allowed branches`);
 
         if (users.length === 0) {
@@ -577,15 +604,24 @@ export const FindOverDueTraining = async (req, res) => {
         // 1. Assigned trainings in User.training array
         // 2. Mandatory trainings in TrainingProgress collection
         
-        const userWithOverdueTrainings = await User.find({
-            locCode: { $in: allowedLocCodes },
+        let trainingQuery = {
             training: {
                 $elemMatch: {
                     pass: false,
                     deadline: { $lt: currentDate }
                 }
             }
-        }).populate("training.trainingId").lean();
+        };
+
+        if (!isFullAccessAdmin(AdminData.role)) {
+            trainingQuery.$or = [
+                { locCode: { $in: allowedLocCodes } },
+                { workingBranch: { $in: branchNames } },
+                { locCode: { $regex: branchNames.join('|'), $options: 'i' } }
+            ];
+        }
+
+        const userWithOverdueTrainings = await User.find(trainingQuery).populate("training.trainingId").lean();
 
         // Get overdue mandatory trainings from TrainingProgress collection
         const overdueTrainingProgress = await TrainingProgress.find({

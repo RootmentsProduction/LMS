@@ -1,211 +1,239 @@
-import { Link } from "react-router-dom";
-import RoundProgressBar from "../../components/RoundBar/RoundBar";
-import Header from "../../components/Header/Header";
-import { FaPlus } from "react-icons/fa";
-import { CiFilter } from "react-icons/ci";
 import { useEffect, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { FiSearch, FiClock, FiBook, FiUsers, FiCheckCircle, FiPlus } from "react-icons/fi";
+import { HiOutlineBookOpen } from "react-icons/hi";
 import baseUrl from "../../api/api";
 import SideNav from "../../components/SideNav/SideNav";
 import Card from "../../components/Skeleton/Card";
-import { useSelector } from "react-redux";
+
+const FILTER_OPTIONS = [
+  { label: "All", value: "" },
+  { label: "0 – 25%", value: "0-25" },
+  { label: "26 – 51%", value: "26-51" },
+  { label: "52 – 77%", value: "52-77" },
+  { label: "78 – 100%", value: "78-100" },
+];
+
+const TAB_OPTIONS = [
+  { label: "All Trainings", value: "all" },
+  { label: "Assigned Trainings", value: "Assigned" },
+];
 
 const TrainingData = () => {
-    const [isOpen, setIsOpen] = useState(false);
-    const [loading, setloading] = useState(false);
-    const [data, setData] = useState([]);
-    const [filter, setFilter] = useState(""); // Added filter state
-    const user = useSelector((state) => state.auth.user); 
-    const toggleDropdown = () => {
-        setIsOpen(prev => !prev);
+  const navigate = useNavigate();
+  const [loading, setLoading] = useState(false);
+  const [data, setData] = useState([]);
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState("");
+  const [tab, setTab] = useState("all");
+  const [filterOpen, setFilterOpen] = useState(false);
+
+  useEffect(() => {
+    setLoading(true);
+    const fetchData = async () => {
+      try {
+        const res = await fetch(`${baseUrl.baseUrl}api/get/allusertraining`, {
+          headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+        });
+        if (!res.ok) throw new Error("Failed to fetch");
+        const result = await res.json();
+        setData(result.data || []);
+      } catch (_) {}
+      finally { setLoading(false); }
     };
+    fetchData();
+  }, []);
 
-    const handleFilterChange = (range) => {
-        setFilter(range);
-        setIsOpen(false); // Close the dropdown after selection
-    };
+  const filtered = data.filter((item) => {
+    const pct = item?.averageCompletionPercentage ?? 0;
 
-    useEffect(() => {
-        setloading(true);
+    // Tab filter
+    const trainingType = item?.Trainingtype || item?.trainingType;
+    if (tab === "Assigned" && trainingType !== "Assigned") return false;
 
-        const Fetchdata = async () => {
-            try {
-                const response = await fetch(`${baseUrl.baseUrl}api/get/Full/allusertraining`);
-                if (!response.ok) {
-                    throw new Error('Failed to fetch data');
-                }
-                const result = await response.json();
-                setData(result.data);
-                setloading(false);
-            } catch (error) {
-                console.error('Error fetching data:', error);
-            }
-        };
+    // Search filter
+    if (search && !item?.trainingName?.toLowerCase().includes(search.toLowerCase())) return false;
 
-        Fetchdata();
-    }, []);
+    // Progress range filter
+    if (filter === "0-25" && !(pct >= 0 && pct <= 25)) return false;
+    if (filter === "26-51" && !(pct >= 26 && pct <= 51)) return false;
+    if (filter === "52-77" && !(pct >= 52 && pct <= 77)) return false;
+    if (filter === "78-100" && !(pct >= 78 && pct <= 100)) return false;
 
-    // Filter data based on the selected percentage range
-    const filteredData = data.filter(item => {
-        if (!filter) return true;
-        const percentage = item?.averageCompletionPercentage;
-        if (filter === "0-25" && percentage >= 0 && percentage <= 25) return true;
-        if (filter === "26-51" && percentage >= 26 && percentage <= 51) return true;
-        if (filter === "52-77" && percentage >= 52 && percentage <= 77) return true;
-        if (filter === "78-100" && percentage >= 78 && percentage <= 100) return true;
-        return false;
-    });
-    const ChangeFilter = () => {
-        setFilter("")
-        setIsOpen(false);
-    }
+    return true;
+  });
 
-    return (
-        <div className="w-full h-full bg-white mb-[70px]">
-            <div><Header name='All Training' /></div>
-            <SideNav />
-            <div className="md:ml-[100px] mt-[150px]">
-                <div>
-                    <div className="flex mx-10 justify-between mt-10">
-                        <div className="md:flex hidden">
-                            <div className="flex w-56 border-2 justify-evenly items-center py-2 ml-10 cursor-pointer">
-                                <div className="text-green-500">
-                                    <FaPlus />
-                                </div>
-                                <Link to={'/createnewtraining'}>
-                                    <h4 className="text-black">Create new Training</h4>
-                                </Link>
-                            </div>
-                            {user?.role === 'super_admin' ?<div className="flex w-56 border-2 justify-evenly items-center py-2 ml-10 cursor-pointer">
-                                <div className="text-green-500">
-                                    <FaPlus />
-                                </div>
-                                <Link to={'/create/Mandatorytraining'}>
-                                    <h4 className="text-black">Create Mandatory Training</h4>
-                                </Link>
-                            </div>:null}
-                            
-                        </div>
-                        <div className="relative hidden md:inline-block text-left w-36 mr-10">
-                            <button
-                                type="button"
-                                className="flex justify-between items-center w-full border-2 py-2 px-4 bg-white text-black rounded-md hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
-                                onClick={toggleDropdown}
-                            >
-                                <h4>{filter ? filter + "%" : "Range"}</h4>
-                                <CiFilter className="text-[#016E5B]" />
-                            </button>
+  const activeFilterLabel =
+    FILTER_OPTIONS.find((o) => o.value === filter)?.label ?? "All";
 
-                            {/* Dropdown Menu */}
-                            {isOpen && (
-                                <div
-                                    className="origin-top-right absolute right-0 mt-2 w-full rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 focus:outline-none z-10"
-                                    role="menu"
-                                    aria-orientation="vertical"
-                                >
-                                    <div className="py-1">
-                                        <a href="#" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100" onClick={() => ChangeFilter()}>ALL</a>
-                                        <a href="#" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100" onClick={() => handleFilterChange("0-25")}>0-25%</a>
-                                        <a href="#" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100" onClick={() => handleFilterChange("26-51")}>26-51%</a>
-                                        <a href="#" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100" onClick={() => handleFilterChange("52-77")}>52-77%</a>
-                                        <a href="#" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100" onClick={() => handleFilterChange("78-100")}>78-100%</a>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                </div>
+  return (
+    <div className="flex min-h-screen bg-[#f5f5f5]">
+      <SideNav />
 
-                {/* Delete All Trainings Section */}
-                <div className="mt-6 ml-10 p-4 bg-red-50 border border-red-200 rounded-lg">
-                    <h3 className="text-lg font-semibold text-red-800 mb-3">⚠️ Danger Zone</h3>
-                    <p className="text-sm text-red-700 mb-4">
-                        This action will permanently delete ALL trainings and cannot be undone.
-                    </p>
-                    <div className="flex items-center gap-3">
-                        <input
-                            type="checkbox"
-                            id="deleteAllCheckbox"
-                            className="w-4 h-4 text-red-600 bg-gray-100 border-gray-300 rounded focus:ring-red-500 focus:ring-2"
-                        />
-                        <label htmlFor="deleteAllCheckbox" className="text-sm text-red-700 font-medium">
-                            I understand this will delete ALL trainings
-                        </label>
-                    </div>
-                    <button
-                        type="button"
-                        onClick={async () => {
-                            const deleteAllCheckbox = document.getElementById('deleteAllCheckbox');
-                            if (deleteAllCheckbox && deleteAllCheckbox.checked) {
-                                if (confirm('Are you absolutely sure you want to delete ALL trainings? This action cannot be undone!')) {
-                                    try {
-                                        if (filteredData.length === 0) {
-                                            alert('No trainings found to delete.');
-                                            return;
-                                        }
-                                        
-                                        // Delete all trainings
-                                        const deletePromises = filteredData.map(training =>
-                                            fetch(`${baseUrl.baseUrl}api/user/delete/training/${training._id}`, {
-                                                method: 'DELETE',
-                                                headers: {
-                                                    'Content-Type': 'application/json',
-                                                    'Authorization': `Bearer ${localStorage.getItem('token')}`
-                                                }
-                                            })
-                                        );
-                                        
-                                        const results = await Promise.all(deletePromises);
-                                        const failedDeletes = results.filter(result => !result.ok);
-                                        
-                                        if (failedDeletes.length > 0) {
-                                            alert(`Failed to delete ${failedDeletes.length} training(s). Please try again.`);
-                                        } else {
-                                            alert(`Successfully deleted ${filteredData.length} training(s)`);
-                                            // Reset the checkbox and refresh data
-                                            deleteAllCheckbox.checked = false;
-                                            window.location.reload(); // Refresh to show updated data
-                                        }
-                                    } catch (error) {
-                                        console.error('Error deleting all trainings:', error);
-                                        alert('An error occurred while deleting all trainings. Please try again.');
-                                    }
-                                }
-                            } else {
-                                alert('Please check the confirmation checkbox to delete all trainings.');
-                            }
-                        }}
-                        className="mt-3 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:opacity-50 flex items-center gap-2"
-                    >
-                        🗑️ Delete All Trainings
-                    </button>
-                </div>
-
-                <div className="mt-10 ml-10 flex flex-wrap gap-3">
-                    {loading && (
-                        <>
-                            <Card />
-                            <Card />
-                            <Card />
-                            <Card />
-                        </>
-                    )}
-                    {
-                        filteredData.map((item) => (
-                            <Link key={item._id} to={`/AssigTraining/${item?.trainingId}`}>
-                                <RoundProgressBar
-                                    initialProgress={item?.averageCompletionPercentage}
-                                    title={item?.trainingName}
-                                    Module={`No. of Modules : ${item?.numberOfModules}`}
-                                    duration={`No. of users: ${item?.totalUsers}`}
-                                    complete={`Completion Rate : ${item?.averageCompletionPercentage}%`}
-                                />
-                            </Link>
-                        ))
-                    }
-                </div>
-            </div>
+      <div className="flex-1 md:ml-[120px] p-6">
+        {/* Page header */}
+        <div className="flex items-start justify-between mb-6">
+          <div>
+            <h1 className="text-[22px] font-bold leading-tight text-gray-900">Training Management</h1>
+            <p className="text-sm text-gray-500 mt-0.5">
+              Create, assign, and monitor training programs across your organization
+            </p>
+          </div>
+          <button
+            onClick={() => navigate("/createnewtraining")}
+            className="flex items-center gap-2 bg-gray-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-700 transition"
+          >
+            <FiPlus size={16} />
+            New Training
+          </button>
         </div>
-    );
+
+        {/* Toolbar: tabs + search + filter */}
+        <div className="bg-white rounded-2xl px-4 py-3 shadow-sm flex flex-wrap items-center gap-3 mb-5">
+          {/* Tabs */}
+          <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
+            {TAB_OPTIONS.map((t) => (
+              <button
+                key={t.value}
+                onClick={() => setTab(t.value)}
+                className={`px-4 py-1.5 rounded-md text-sm font-medium transition ${
+                  tab === t.value
+                    ? "bg-gray-900 text-white shadow"
+                    : "text-gray-600 hover:text-gray-900"
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Search */}
+          <div className="flex-1 min-w-[180px] relative">
+            <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={15} />
+            <input
+              type="text"
+              placeholder="Search by Training"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-300"
+            />
+          </div>
+
+          {/* Filter dropdown */}
+          <div className="relative">
+            <button
+              onClick={() => setFilterOpen((p) => !p)}
+              className="flex items-center gap-2 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition"
+            >
+              Training : {activeFilterLabel}
+              <svg className="w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            {filterOpen && (
+              <div className="absolute right-0 mt-1 w-40 bg-white border border-gray-200 rounded-xl shadow-lg z-20 py-1">
+                {FILTER_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => { setFilter(opt.value); setFilterOpen(false); }}
+                    className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 transition ${
+                      filter === opt.value ? "font-semibold text-gray-900" : "text-gray-600"
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Cards grid */}
+        {loading ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <Card /><Card /><Card /><Card /><Card /><Card />
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-24 text-gray-400">
+            <HiOutlineBookOpen size={48} className="mb-3 opacity-40" />
+            <p className="text-sm">No trainings found</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filtered.map((item, index) => (
+              <TrainingCard key={item?._id || item?.trainingId || item?.trainingName || index} item={item} />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+/* ── Individual training card ── */
+const TrainingCard = ({ item }) => {
+  const pct = Math.round(item?.averageCompletionPercentage ?? 0);
+  const modules = item?.numberOfModules ?? 0;
+  const videos = item?.totalVideos ?? 0;
+  const staffs = item?.totalAssignedUsers ?? item?.totalUsers ?? 0;
+  const totalMins = item?.durationMinutes ?? 0;
+  const hrs = Math.floor(totalMins / 60).toString().padStart(2, "0");
+  const mins = (totalMins % 60).toString().padStart(2, "0");
+
+  return (
+    <Link to={`/AssigTraining/${item?.trainingId}`}>
+      <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 hover:shadow-md transition cursor-pointer h-full">
+        {/* Icon + title */}
+        <div className="flex items-start gap-3 mb-4">
+          <div className="w-10 h-10 rounded-xl bg-purple-100 flex items-center justify-center flex-shrink-0">
+            <HiOutlineBookOpen size={20} className="text-purple-500" />
+          </div>
+          <div className="min-w-0">
+            <h3 className="font-semibold text-gray-900 text-sm leading-snug truncate">
+              {item?.trainingName}
+            </h3>
+            <p className="text-xs text-gray-400 mt-0.5">
+              {modules} Modules | {videos} Videos
+            </p>
+          </div>
+        </div>
+
+        {/* Progress bar */}
+        <div className="mb-4">
+          <div className="flex justify-between items-center mb-1">
+            <span className="text-xs text-gray-500">Progress</span>
+            <span className="text-xs font-semibold text-gray-800">{pct}%</span>
+          </div>
+          <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-gray-900 rounded-full transition-all"
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+        </div>
+
+        {/* Stats grid */}
+        <div className="grid grid-cols-2 gap-y-2 gap-x-3 text-xs text-gray-500">
+          <span className="flex items-center gap-1.5">
+            <FiClock size={12} className="flex-shrink-0" />
+            {hrs} hr {mins} mins
+          </span>
+          <span className="flex items-center gap-1.5">
+            <FiBook size={12} className="flex-shrink-0" />
+            {modules} Modules
+          </span>
+          <span className="flex items-center gap-1.5">
+            <FiUsers size={12} className="flex-shrink-0" />
+            {staffs} Staffs
+          </span>
+          <span className="flex items-center gap-1.5">
+            <FiCheckCircle size={12} className="flex-shrink-0" />
+            {pct}% Completed
+          </span>
+        </div>
+      </div>
+    </Link>
+  );
 };
 
 export default TrainingData;

@@ -1,5 +1,4 @@
-
-
+// Triggering nodemon restart for MONGODB_URI update
 import dotenv from 'dotenv';
 dotenv.config();
 
@@ -9,6 +8,8 @@ import express from 'express';
 import cookieParser from 'cookie-parser';
 import axios from 'axios';                           // ✅ needed
 import mongoose from 'mongoose';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 import connectMongoDB from './db/database.js';
 import ModuleRouter from './routes/ModuleRoute.js';
@@ -19,11 +20,16 @@ import AdminData from './routes/AdminRoute.js'
 import FutterAssessment from './routes/FutterAssessment.js'
 import Whatsapprouter from './routes/WhatsappRouteZoho.js'
 import EmployeeRouter from './routes/EmployeeRoute.js'
-import DebugRouter from './routes/DebugRoute.js'
 import TrainingRouter from './routes/TrainingRoute.js'
+import WalkinRouter from './routes/WalkinRoute.js'
+import TaskRouter from './routes/TaskRoute.js'
+import AutoTaskRouter from './routes/AutoTaskRoute.js'
 
 import { AlertNotification } from './lib/CornJob.js';
 import { startEmployeeAutoSync } from './lib/EmployeeAutoSync.js';
+import { startWalkinStatusSyncCron } from './cron/walkinStatusSyncCron.js';
+import { startAutoTaskCron } from './cron/autoTaskCron.js';
+import { refreshExternalEmployees } from './lib/employeeCache.js';
 import setupSwagger from './swagger.js';
 import { MiddilWare } from './lib/middilWare.js';
 import Admin from './model/Admin.js';
@@ -35,9 +41,13 @@ const port = process.env.PORT || 7000;
 // ✅ Hardcode the upstream token EXACTLY as provided
 const ROOTMENTS_API_TOKEN = 'RootX-production-9d17d9485eb772e79df8564004d4a4d4';
 
-app.use(express.json());
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+app.use(express.json({ limit: '50mb' }));
 app.use(cookieParser());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Enhanced CORS configuration for better preflight handling
 app.use(
@@ -92,54 +102,55 @@ app.use(
   })
 );
 
+/**
+ * @swagger
+ * /api/health:
+ *   get:
+ *     tags: [System]
+ *     summary: Health check endpoint
+ *     description: Returns server status. Used to keep Render instance awake and monitor service health.
+ *     responses:
+ *       200:
+ *         description: Server is healthy
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 timestamp:
+ *                   type: string
+ *                   format: date-time
+ *                 uptime:
+ *                   type: number
+ *                   description: Server uptime in seconds
+ *                 database:
+ *                   type: string
+ *                   enum: [connected, disconnected]
+ */
+app.get('/api/health', (req, res) => {
+  const mongooseConnected = mongoose.connection.readyState === 1;
+  
+  res.status(200).json({
+    success: true,
+    message: 'Server is healthy',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    database: mongooseConnected ? 'connected' : 'disconnected',
+    port: port,
+    environment: process.env.NODE_ENV || 'production'
+  });
+});
+
 app.get('/', (req, res) => {
   console.log('🌐 Root endpoint accessed from:', req.headers.origin);
   res.send('✅ API is working');
 });
 
-// Debug endpoint to check database connection
-app.get('/debug/database', async (req, res) => {
-  try {
-    const currentUri = process.env.MONGODB_URI;
-    // const fallbackUri = 'mongodb+srv://abhirambca2021_db_user:Root@cluster0.5rf3i8g.mongodb.net/Rootments?retryWrites=true&w=majority&appName=Cluster0';
-    
-    const connectionState = mongoose.connection.readyState;
-    const connectionStates = {
-      0: 'disconnected',
-      1: 'connected',
-      2: 'connecting',
-      3: 'disconnecting'
-    };
 
-    const debugInfo = {
-      environment: process.env.NODE_ENV || 'development',
-      currentMongoUri: currentUri ? currentUri.substring(0, 50) + '...' : 'NOT SET',
-      fallbackUri: fallbackUri.substring(0, 50) + '...',
-      connectionState: connectionStates[connectionState],
-      connectionReadyState: connectionState,
-      databaseName: mongoose.connection.db?.databaseName || 'Not connected',
-      host: mongoose.connection.host || 'Not connected',
-      port: mongoose.connection.port || 'Not connected',
-      timestamp: new Date().toISOString()
-    };
-
-    console.log('=== DATABASE DEBUG INFO ===');
-    console.log(debugInfo);
-    console.log('===========================');
-
-    res.status(200).json({
-      message: 'Database debug info',
-      data: debugInfo
-    });
-
-  } catch (error) {
-    console.error('Debug endpoint error:', error);
-    res.status(500).json({
-      message: 'Debug endpoint error',
-      error: error.message
-    });
-  }
-});
 
 // Handle preflight OPTIONS requests for all routes
 app.options('*', (req, res) => {
@@ -157,6 +168,44 @@ app.options('*', (req, res) => {
    -> Adds Authorization: Bearer <your token>
    Body: { startEmpId, endEmpId }
 ================================================== */
+/**
+ * @swagger
+ * /api/employee_range:
+ *   post:
+ *     tags: [Employee]
+ *     summary: Proxy employee range to external API
+ *     description: Intercepts and proxies requests to `https://rootments.in/api/employee_range` using the hardcoded authentication token.
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               startEmpId:
+ *                 type: string
+ *                 default: EMP1
+ *               endEmpId:
+ *                 type: string
+ *                 default: EMP9999
+ *     responses:
+ *       200:
+ *         description: Successfully fetched employees from external API.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *       500:
+ *         description: Proxy failed or external server error.
+ */
 app.post('/api/employee_range', async (req, res) => {
   try {
     const { startEmpId = 'EMP1', endEmpId = 'EMP9999' } = req.body || {};
@@ -189,6 +238,36 @@ app.post('/api/employee_range', async (req, res) => {
 });
 
 // New filtered employee_range endpoint with authentication and branch filtering
+/**
+ * @swagger
+ * /api/employee_range/filtered:
+ *   post:
+ *     tags: [Employee]
+ *     summary: Fetch employee range filtered by admin store bounds
+ *     description: Fetches employees from the external range API and filters them to only include those matching stores/branches accessible to the logged-in admin. Excludes employees assigned to 'No Store'.
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               startEmpId:
+ *                 type: string
+ *                 default: EMP1
+ *               endEmpId:
+ *                 type: string
+ *                 default: EMP9999
+ *     responses:
+ *       200:
+ *         description: Successfully fetched filtered employees list.
+ *       401:
+ *         description: Unauthorized.
+ *       500:
+ *         description: Proxy failed or internal server error.
+ */
 app.post('/api/employee_range/filtered', MiddilWare, async (req, res) => {
   try {
     const { startEmpId = 'EMP1', endEmpId = 'EMP9999' } = req.body || {};
@@ -198,7 +277,7 @@ app.post('/api/employee_range/filtered', MiddilWare, async (req, res) => {
     const AdminId = req.admin.userId;
     const AdminBranch = await Admin.findById(AdminId).populate('branches');
     const allowedLocCodes = AdminBranch.branches.map(branch => branch.locCode);
-    const isGlobalAdmin = AdminBranch.role === 'super_admin' || allowedLocCodes.length === 0;
+    const isGlobalAdmin = ['super_admin', 'admin'].includes(AdminBranch.role) || allowedLocCodes.length === 0;
 
     console.log(`👤 Admin: ${AdminBranch.name} (Role: ${AdminBranch.role})`);
     console.log(`🔐 Allowed location codes: ${isGlobalAdmin ? 'ALL (Super Admin)' : allowedLocCodes.join(', ')}`);
@@ -232,26 +311,25 @@ app.post('/api/employee_range/filtered', MiddilWare, async (req, res) => {
         
         // Store name to locCode mapping
         const storeNameToLocCode = {
-          'GROOMS TRIVANDRUM': '5',
-          'GROOMS KOCHI': '2',
-          'GROOMS EDAPPALLY': '3',
-          'GROOMS CALICUT': '4',
-          'GROOMS KANNUR': '5',
-          'GROOMS THALASSERY': '6',
-          'GROOMS KOTTAYAM': '9',
-          'GROOMS PERUMBAVOOR': '10',
-          'GROOMS THRISSUR': '11',
-          'GROOMS CHAVAKKAD': '12',
-          'GROOMS EDAPPAL': '15',
-          'GROOMS VATAKARA': '14',
-          'GROOMS PERINTHALMANNA': '16',
-          'GROOMS MANJERY': '18',
-          'GROOMS KOTTAKKAL': '17',
+          'SUITOR GUY TRIVANDRUM': '5',
+          'SUITOR GUY KOCHI': '2',
+          'SUITOR GUY EDAPPALLY': '3',
+          'SUITOR GUY CALICUT': '4',
+          'SUITOR GUY KANNUR': '5',
+          'SUITOR GUY THALASSERY': '6',
+          'SUITOR GUY KOTTAYAM': '9',
+          'SUITOR GUY PERUMBAVOOR': '10',
+          'SUITOR GUY THRISSUR': '11',
+          'SUITOR GUY CHAVAKKAD': '12',
+          'SUITOR GUY EDAPPAL': '15',
+          'SUITOR GUY VATAKARA': '14',
+          'SUITOR GUY PERINTHALMANNA': '16',
+          'SUITOR GUY MANJERY': '18',
           'SUITOR GUY KOTTAKKAL': '17',
-          'GROOMS KOZHIKODE': '13',
-          'GROOMS CALICUT': '13',
-          'GROOMS KANNUR': '21',
-          'GROOMS KALPETTA': '20',
+          'SUITOR GUY KOZHIKODE': '13',
+          'SUITOR GUY CALICUT': '13',
+          'SUITOR GUY KANNUR': '21',
+          'SUITOR GUY KALPETTA': '20',
           'ZORUCCI EDAPPAL': '6',
           'ZORUCCI KOTTAKKAL': '8',
           'ZORUCCI PERINTHALMANNA': '7',
@@ -306,6 +384,33 @@ app.post('/api/employee_range/filtered', MiddilWare, async (req, res) => {
    Body: { empId: "EMP123" }
    -> Uses upstream range API with start=end=empId
 ================================================== */
+/**
+ * @swagger
+ * /api/employee_detail:
+ *   post:
+ *     tags: [Employee]
+ *     summary: Fetch single employee detail proxy
+ *     description: Proxies to the external employee range API with the start and end employee ID set to the requested `empId`.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               empId:
+ *                 type: string
+ *                 description: Employee ID to fetch details for
+ *             required:
+ *               - empId
+ *     responses:
+ *       200:
+ *         description: Successfully fetched employee details.
+ *       400:
+ *         description: empId is required.
+ *       500:
+ *         description: Proxy failed.
+ */
 app.post('/api/employee_detail', async (req, res) => {
   try {
     const { empId } = req.body || {};
@@ -348,6 +453,35 @@ app.post('/api/employee_detail', async (req, res) => {
    -> Forwards to https://rootments.in/api/verify_employee
    -> Adds Authorization: Bearer <your token>
 ================================================== */
+/**
+ * @swagger
+ * /api/verify_employee:
+ *   post:
+ *     tags: [Employee]
+ *     summary: Proxy credential verification to external API
+ *     description: Proxies login credentials (employeeId, password) to `https://rootments.in/api/verify_employee` to authenticate the user externally.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               employeeId:
+ *                 type: string
+ *               password:
+ *                 type: string
+ *             required:
+ *               - employeeId
+ *               - password
+ *     responses:
+ *       200:
+ *         description: Credentials verified successfully by external server.
+ *       400:
+ *         description: employeeId and password are required.
+ *       500:
+ *         description: Proxy failed.
+ */
 app.post('/api/verify_employee', async (req, res) => {
   try {
     console.log('🌐 /api/verify_employee accessed from:', req.headers.origin);
@@ -392,6 +526,56 @@ app.post('/api/verify_employee', async (req, res) => {
    Body: { userId, trainingId, moduleId, videoId, watchTime, totalDuration, watchPercentage }
    -> Updates video watch progress in TrainingProgress collection
 ================================================== */
+/**
+ * @swagger
+ * /api/video_progress:
+ *   post:
+ *     tags: [Training]
+ *     summary: Track video watch progress
+ *     description: Updates the watch progress for a training video in the user's TrainingProgress collection. Automatically marks the video as completed if watch progress is 90% or higher.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               userId:
+ *                 type: string
+ *                 description: User ObjectId
+ *               trainingId:
+ *                 type: string
+ *                 description: Training ObjectId
+ *               moduleId:
+ *                 type: string
+ *                 description: Module ObjectId
+ *               videoId:
+ *                 type: string
+ *                 description: Video ObjectId
+ *               watchTime:
+ *                 type: number
+ *                 description: Time watched in seconds
+ *               totalDuration:
+ *                 type: number
+ *                 description: Total video duration in seconds
+ *               watchPercentage:
+ *                 type: number
+ *                 description: Watch percentage (optional, calculated if not sent)
+ *             required:
+ *               - userId
+ *               - trainingId
+ *               - moduleId
+ *               - videoId
+ *     responses:
+ *       200:
+ *         description: Video progress updated successfully.
+ *       400:
+ *         description: Missing required fields in body.
+ *       404:
+ *         description: Training progress, module, or video not found.
+ *       500:
+ *         description: Internal server error.
+ */
 app.post('/api/video_progress', async (req, res) => {
   try {
     const { userId, trainingId, moduleId, videoId, watchTime, totalDuration, watchPercentage } = req.body || {};
@@ -491,8 +675,10 @@ app.use('/api/admin', AdminData)
 app.use('/api/user/assessment', FutterAssessment)
 app.use('/zoho', Whatsapprouter)
 app.use('/api/employee', EmployeeRouter)
-app.use('/api/debug', DebugRouter)
 app.use('/api/training', TrainingRouter)
+app.use('/api/walkin', WalkinRouter)
+app.use('/api/task', TaskRouter)
+app.use('/api/auto-task', AutoTaskRouter)
 
 // User Login Tracking Routes
 import UserLoginRouter from './routes/UserLoginRoute.js';
@@ -519,14 +705,48 @@ cron.schedule("30 18 * * *", async () => {
 }, { timezone: "Asia/Kolkata" });
 
 connectMongoDB().then(() => {
-  app.listen(port, () => {
+  app.listen(port, '0.0.0.0', () => {
     console.log(`✅ Server running on port ${port}`);
     
-    // Start the employee auto-sync scheduler
-    startEmployeeAutoSync();
+    // Keep the legacy employee sync opt-in so old external API data does not
+    // overwrite app-created users or appear on the Employee page by default.
+    if (process.env.ENABLE_EMPLOYEE_AUTO_SYNC === 'true') {
+      startEmployeeAutoSync();
+    } else {
+      console.log('Employee auto-sync disabled. Set ENABLE_EMPLOYEE_AUTO_SYNC=true to enable it.');
+    }
+
+    // Warm external employee cache in background (non-blocking)
+    refreshExternalEmployees().catch(() => {});
+
+    // Start walk-in status auto-sync cron (every hour at :00)
+    startWalkinStatusSyncCron();
+    
+    // Start auto task generation cron (every hour at :05, staggered)
+    startAutoTaskCron();
     
     // Start existing notification cron job
     AlertNotification();
+    
+    // 📊 Job Health Monitor - runs every hour at :30 to check all jobs
+    cron.schedule('30 * * * *', () => {
+      const timestamp = new Date().toISOString();
+      console.log(`\n${'='.repeat(60)}`);
+      console.log(`📊 CRON JOB HEALTH CHECK - ${timestamp}`);
+      console.log(`${'='.repeat(60)}`);
+      console.log('✅ All cron jobs are running');
+      console.log('  • Walkin Status Sync: Every hour at :00');
+      console.log('  • Auto Task Generation: Every hour at :05 (staggered)');
+      console.log('  • Walkin Loss Expiry: Daily at 6:30 PM UTC');
+      console.log('  • AlertNotification: Daily at 6:30 PM UTC');
+      console.log(`${'='.repeat(60)}\n`);
+    });
+    
+    console.log('\n🕐 Cron Schedule:');
+    console.log('  • :00 min - Walkin Status Sync');
+    console.log('  • :05 min - Auto Task Generation (staggered)');
+    console.log('  • :30 min - Health Check');
+    console.log('  • 6:30 PM - AlertNotification & Loss Expiry\n');
   });
 }).catch(err => {
   console.error('❌ MongoDB connection failed:', err);

@@ -3,7 +3,6 @@
 import { BsFillSendCheckFill } from "react-icons/bs";
 
 import { useEffect, useState, useMemo } from "react";
-import Header from "../../components/Header/Header";
 import SideNav from "../../components/SideNav/SideNav";
 import { CiFilter } from "react-icons/ci";
 import baseUrl from "../../api/api";
@@ -24,8 +23,6 @@ const TraningOverDuedata = () => {
     useEffect(() => {
         const fetchEmployees = async () => {
             try {
-                console.log('🔍 Fetching overdue training data from:', `${baseUrl.baseUrl}api/admin/overdue/Training`);
-                
                 const response = await fetch(`${baseUrl.baseUrl}api/admin/overdue/Training`, {
                     method: "GET",
                     headers: {
@@ -34,26 +31,22 @@ const TraningOverDuedata = () => {
                     },
                     credentials: "include",
                 });
-
-                console.log('📊 Response status:', response.status);
-
                 if (!response.ok) {
                     throw new Error(`${response.statusText}`);
                 }
 
                 const result = await response.json();
-                console.log('📋 Overdue training API response:', result);
-                console.log('👥 Number of employees with overdue trainings:', result.data?.length || 0);
-                
                 // Log sample data for debugging
                 if (result.data && result.data.length > 0) {
-                    console.log('📝 Sample employee data:', result.data[0]);
                 }
                 
-                setData(result.data);
-                setFilteredData(result.data);
+                const formattedData = (result.data || []).map(emp => ({
+                    ...emp,
+                    workingBranch: emp.workingBranch ? (emp.workingBranch.split(',').length > 5 ? "All Stores" : emp.workingBranch) : ""
+                }));
+                setData(formattedData);
+                setFilteredData(formattedData);
             } catch (error) {
-                console.error("❌ Failed to fetch employees:", error.message);
                 setError("Failed to fetch employee data. Please try again later.");
             }
         };
@@ -110,9 +103,8 @@ const TraningOverDuedata = () => {
 
     return (
         <div className="bg-white h-[100] lg:mb-[90px]">
-            <Header name="Employee" />
-            <SideNav />
-            <div className="md:ml-[90px] lg:mt-[100px]">
+      <SideNav />
+            <div className="md:ml-[120px]">
                 <div className="flex justify-end mb-5 mt-20">
                     <div className="flex gap-4 mt-10">
                         {/* Role Dropdown */}

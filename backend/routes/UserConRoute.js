@@ -1,5 +1,5 @@
 import express from 'express';
-import { loginUser } from '../controllers/CreateUser.js'; // Import the login controller
+import { flutterLogin, loginUser } from '../controllers/CreateUser.js'; // Import the login controller
 
 const router = express.Router();
 
@@ -32,6 +32,54 @@ const router = express.Router();
  *         description: Bad request, missing parameters or incorrect data
  */
 router.post('/login', loginUser);
+/**
+ * @swagger
+ * /api/auth/flutter-login:
+ *   post:
+ *     tags: [User Management]
+ *     summary: User login for mobile app (Flutter)
+ *     description: Authenticates a user on the Flutter mobile app. Validates credentials locally, or falls back to an external HR verification API and auto-provisions the user profile locally on success.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               empID:
+ *                 type: string
+ *                 description: Employee ID (can also be email)
+ *               password:
+ *                 type: string
+ *                 description: Password
+ *             required:
+ *               - empID
+ *               - password
+ *     responses:
+ *       200:
+ *         description: Flutter login successful, returns a token and user details.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Flutter login successful
+ *                 token:
+ *                   type: string
+ *                 sessionId:
+ *                   type: string
+ *                 user:
+ *                   type: object
+ *       400:
+ *         description: Employee ID and password are required.
+ *       401:
+ *         description: Incorrect password or external authentication failed.
+ *       500:
+ *         description: Internal server error.
+ */
+router.post('/flutter-login', flutterLogin);
 
 /**
  * @swagger

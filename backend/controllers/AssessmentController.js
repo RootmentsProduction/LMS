@@ -83,26 +83,64 @@ const assignExistingMandatoryTrainingsToUser = async (user) => {
 
 export const createAssessment = async (req, res) => {
     try {
-        const assessmentData = req.body;
+        const assessmentData = req.body || {};
 
-        // Validate input
-        if (!assessmentData.title || !assessmentData.duration || !Array.isArray(assessmentData.questions) || !assessmentData.deadline) {
-            return res.status(400).json({ message: "Invalid assessment data. Ensure all required fields are present." });
+        const title = typeof assessmentData.title === 'string' ? assessmentData.title.trim() : '';
+        const duration = Number(assessmentData.duration);
+        const deadline = Number(assessmentData.deadline);
+        const questions = Array.isArray(assessmentData.questions) ? assessmentData.questions : [];
+
+        const isValidQuestion = (question) => {
+            const options = Array.isArray(question?.options) ? question.options : [];
+            const nonEmptyOptions = options.map((option) => String(option || '').trim()).filter(Boolean);
+            const correctAnswer = String(question?.correctAnswer || '').trim();
+
+            return Boolean(
+                String(question?.questionText || '').trim() &&
+                nonEmptyOptions.length >= 2 &&
+                correctAnswer &&
+                nonEmptyOptions.includes(correctAnswer)
+            );
+        };
+
+        if (!title || !Number.isFinite(duration) || duration <= 0 || !Number.isFinite(deadline) || deadline <= 0) {
+            return res.status(400).json({
+                message: "Invalid assessment data. Title, duration, and deadline are required and must be valid numbers/strings."
+            });
         }
 
-        const admin = await Admin.findById(req?.admin?.userId)
+        if (questions.length === 0 || questions.some((question) => !isValidQuestion(question))) {
+            return res.status(400).json({
+                message: "Invalid assessment questions. Each question must have text, at least two options, and a correct answer that matches one option."
+            });
+        }
 
+        const admin = req?.admin?.userId ? await Admin.findById(req.admin.userId) : null;
 
-        // Create and save the assessment
-        const newAssessment = new Assessment(assessmentData);
+        const newAssessment = new Assessment({
+            title,
+            duration,
+            deadline,
+            questions: questions.map((question) => ({
+                questionText: String(question.questionText || '').trim(),
+                options: question.options.map((option) => String(option || '').trim()).filter(Boolean),
+                correctAnswer: String(question.correctAnswer || '').trim(),
+            })),
+        });
+
         await newAssessment.save();
 
-        const newNotification = await Notification.create({
-            title: `New AssessmentData Created : ${assessmentData.title}`,
-            body: `${assessmentData.title} has been successfully created. Created by ${admin?.name}. Ready for user assignment`,
-            category: "Assessment",
-            useradmin: admin?.name, // Optional
-        });
+        try {
+            await Notification.create({
+                title: `New Assessment Created: ${title}`,
+                body: `${title} has been successfully created${admin?.name ? ` by ${admin.name}` : ''}. Ready for user assignment`,
+                category: "Assessment",
+                useradmin: admin?.name || "",
+            });
+        } catch (notificationError) {
+            console.error("Assessment notification creation failed:", notificationError);
+        }
+
         res.status(201).json({ message: "Assessment created successfully!", assessment: newAssessment });
     } catch (error) {
         console.error("Error creating assessment:", error);
@@ -148,7 +186,11 @@ const fetchEmployeeDataForTraining = async () => {
 };
 
 export const createTraining = async (req, res) => {
-    const { trainingName, modules, days, workingBranch, selectedOption } = req.body;
+    const { trainingName, modules, workingBranch } = req.body;
+    const days = Number(req.body.days ?? req.body.deadline);
+    const selectedOption = req.body.selectedOption || (
+        Array.isArray(workingBranch) && workingBranch.includes('All') ? 'all' : undefined
+    );
     const AdminID = req.admin.userId;
     const AdminData = await Admin.findById(AdminID).populate("permissions");
 
@@ -181,9 +223,12 @@ export const createTraining = async (req, res) => {
 
     try {
         // Ensure all required data is provided
-        if (!trainingName || !modules || !days || !selectedOption) {
+        if (!trainingName || !Array.isArray(modules) || modules.length === 0 || !days || !selectedOption) {
             console.log("Missing required fields:", { trainingName, modules, days, selectedOption });
-            return res.status(400).json({ message: "Training name, modules, days, and selected option are required" });
+            return res.status(400).json({
+                message: "Training name, modules, days, and selected option are required",
+                details: { trainingName: Boolean(trainingName), modules, days, selectedOption },
+            });
         }
 
         // Validate workingBranch is provided and not empty
@@ -209,9 +254,11 @@ export const createTraining = async (req, res) => {
         // Create a new training record with both deadline (days) and deadlineDate (actual date)
         const newTraining = new Training({
             trainingName,
+            description: req.body.description || "",
             modules,
             deadline: days, // Store original days input (keeping existing format)
             deadlineDate: deadlineDate, // Store actual calculated date
+            Trainingtype: req.body.Trainingtype || "Assigned",
             Assignedfor: workingBranch || [], // Set the Assignedfor field with workingBranch data
         });
 
@@ -245,324 +292,124 @@ export const createTraining = async (req, res) => {
             deadline: savedTraining.deadline
         });
 
-        // First, fetch external employee data to get the list of employees
-        console.log("Fetching employee data from local API...");
-        let externalEmployees = [];
-        
-        // Retry mechanism for external API
-        let retryCount = 0;
-        const maxRetries = 2;
-        
-        while (retryCount <= maxRetries) {
-            try {
-                console.log(`Attempt ${retryCount + 1} to fetch employee data...`);
-                
-                const response = await axios.post(`${process.env.BASE_URL || 'http://localhost:7000'}/api/employee_range`, {
-                    startEmpId: "EMP1",
-                    endEmpId: "EMP9999"
-                }, {
-                    timeout: 30000, // Increased timeout to 30 seconds
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json'
-                    }
-                });
-
-                            console.log("API response status:", response.status);
-                console.log("API response data length:", response.data?.data?.length || 0);
-
-                if (!response.data || !response.data.data) {
-                    console.error("Invalid API response:", response.data);
-                    return res.status(500).json({ message: "Failed to fetch external employee data" });
-                }
-
-                externalEmployees = response.data.data;
-                console.log(`Fetched ${externalEmployees.length} employees from API`);
-                break; // Success, exit the retry loop
-                
-            } catch (error) {
-                retryCount++;
-                console.error(`Attempt ${retryCount} failed:`, error.message);
-                
-                if (retryCount > maxRetries) {
-                    console.log("Max retries reached, proceeding with fallback...");
-                    break; // Exit retry loop and proceed to fallback
-                }
-                
-                // Wait before retrying (exponential backoff)
-                const waitTime = Math.pow(2, retryCount) * 1000; // 2s, 4s
-                console.log(`Waiting ${waitTime}ms before retry...`);
-                await new Promise(resolve => setTimeout(resolve, waitTime));
-                continue; // Try again
-            }
+        if (selectedOption === 'new') {
+            console.log("Training saved for future new employees.");
+            return res.status(201).json({ message: "Training created for new employees successfully", training: newTraining });
         }
-        
-        // If we still don't have external employees after retries, proceed to fallback
-        if (externalEmployees.length === 0) {
-            console.log("No external employee data available, attempting to work with internal users based on selection...");
-                
-                let internalUsers = [];
-                
-                if (selectedOption === 'user' && workingBranch && workingBranch.length > 0) {
-                    // For user selection: find by employee codes
-                    console.log("Looking for internal users with employee codes:", workingBranch);
-                    internalUsers = await User.find({
-                        empID: { $in: workingBranch }
-                    });
-                    
-                } else if (selectedOption === 'designation' && workingBranch && workingBranch.length > 0) {
-                    // For designation selection: find by roles
-                    console.log("Looking for internal users with designations:", workingBranch);
-                    internalUsers = await User.find({
-                        designation: { $in: workingBranch }
-                    });
-                    
-                } else if (selectedOption === 'branch' && workingBranch && workingBranch.length > 0) {
-                    // For branch selection: find by working branch
-                    console.log("Looking for internal users with branches:", workingBranch);
-                    internalUsers = await User.find({
-                        workingBranch: { $in: workingBranch }
-                    });
-                }
-                
-                if (internalUsers.length > 0) {
-                    console.log(`Found ${internalUsers.length} internal users, proceeding without external API`);
-                    
-                    // Assign training directly to internal users
-                    const updatedUsers = internalUsers.map(async (user) => {
-                        console.log(`Assigning training to internal user: ${user.username} (${user.empID}) - Role: ${user.designation} - Branch: ${user.workingBranch}`);
-                        
-                        // Add training details to user
-                        user.training.push({
-                            trainingId: newTraining._id,
-                            deadline: deadlineDate,
-                            pass: false,
-                            status: 'Pending',
-                        });
 
-                        // Create training progress for each user
-                        const trainingProgress = new TrainingProgress({
-                            userId: user._id,
-                            trainingId: newTraining._id,
-                            trainingName: trainingName,
-                            deadline: deadlineDate,
-                            pass: false,
-                            modules: moduleDetails.map(module => ({
-                                moduleId: module._id,
-                                pass: false,
-                                videos: module.videos.map(video => ({
-                                    videoId: video._id,
-                                    pass: false,
-                                })),
-                            })),
-                        });
+        // Resolve recipients from the local User collection only.
+        console.log("Resolving training recipients from local users...");
+        let usersInBranch = [];
 
-                        await trainingProgress.save();
-                        console.log(`Training progress saved for internal user: ${user.username}`);
-                        return user.save();
-                    });
-
-                    await Promise.all(updatedUsers);
-                    
-                    // Create notification based on selection type
-                    let notificationData = {
-                        title: `New training Created : ${trainingName}`,
-                        body: `${trainingName} has been successfully created. Created by ${admin?.name}. The training is scheduled to be completed in ${days} days.`,
-                        useradmin: admin?.name,
-                    };
-                    
-                    if (selectedOption === 'user') {
-                        const userObjectIds = internalUsers.map(user => user._id);
-                        notificationData.user = userObjectIds;
-                    } else if (selectedOption === 'designation') {
-                        notificationData.Role = workingBranch;
-                    } else if (selectedOption === 'branch') {
-                        notificationData.branch = workingBranch;
-                    }
-                    
-                    const newNotification = await Notification.create(notificationData);
-                    
-                    console.log("=== TRAINING CREATION COMPLETED (INTERNAL USERS ONLY) ===");
-                    return res.status(201).json({ 
-                        message: `Training created and assigned successfully to ${internalUsers.length} internal users (external API unavailable)`, 
-                        training: newTraining,
-                        assignedUsers: internalUsers.length,
-                        selectionType: selectedOption,
-                        note: "External employee API was unavailable, used internal users based on your selection criteria"
-                    });
-                }
-                
-                // If no internal users found, provide helpful error message
-                let errorMessage = "Employee API is currently unavailable and no matching internal users found.";
-                if (selectedOption === 'user') {
-                    errorMessage += ` No users found with employee codes: ${workingBranch.join(', ')}`;
-                } else if (selectedOption === 'designation') {
-                    errorMessage += ` No users found with designations: ${workingBranch.join(', ')}`;
-                } else if (selectedOption === 'branch') {
-                    errorMessage += ` No users found with branches: ${workingBranch.join(', ')}`;
-                }
-                errorMessage += ". Please try again later or check if the selected criteria match existing internal users.";
-                
-                return res.status(500).json({ 
-                    message: errorMessage,
-                    error: "API_TIMEOUT_NO_INTERNAL_USERS",
-                    selectedOption,
-                    workingBranch
-                });
-        }
-        
-        let filteredEmployees = [];
-
-        // Filter external employees based on the selectedOption
-        if (selectedOption === 'user') {
-            if (!workingBranch || workingBranch.length === 0) {
-                return res.status(400).json({ message: "User IDs are required when selectedOption is 'user'" });
-            }
-            console.log("Filtering by user IDs:", workingBranch);
-            // Filter by employee codes
-            filteredEmployees = externalEmployees.filter(emp => 
-                workingBranch.includes(emp.emp_code)
-            );
-            console.log(`Found ${filteredEmployees.length} employees matching user IDs`);
-
+        if (selectedOption === 'all') {
+            usersInBranch = await User.find({});
+        } else if (selectedOption === 'user') {
+            usersInBranch = await User.find({ empID: { $in: workingBranch } });
         } else if (selectedOption === 'designation') {
-            if (!workingBranch || workingBranch.length === 0) {
-                return res.status(400).json({ message: "Designation is required when selectedOption is 'designation'" });
-            }
-            console.log("Filtering by designations:", workingBranch);
-            // Filter by role names
-            filteredEmployees = externalEmployees.filter(emp => 
-                workingBranch.includes(emp.role_name)
-            );
-            console.log(`Found ${filteredEmployees.length} employees matching designations`);
-
+            usersInBranch = await User.find({ designation: { $in: workingBranch } });
         } else if (selectedOption === 'branch') {
-            if (!workingBranch || workingBranch.length === 0) {
-                return res.status(400).json({ message: "Working branch is required when selectedOption is 'branch'" });
-            }
-            console.log("Filtering by branches:", workingBranch);
-            // Filter by store names
-            filteredEmployees = externalEmployees.filter(emp => 
-                workingBranch.includes(emp.store_name)
-            );
-            console.log(`Found ${filteredEmployees.length} employees matching branches`);
+            const branchDocs = await Branch.find({ $or: [{ locCode: { $in: workingBranch } }, { workingBranch: { $in: workingBranch } }] })
+                .select('locCode workingBranch')
+                .lean();
+            const branchLocCodes = branchDocs.map((b) => String(b.locCode)).filter(Boolean);
+            const branchNames = branchDocs.map((b) => b.workingBranch).filter(Boolean);
+            const branchTargets = Array.from(new Set([...workingBranch, ...branchLocCodes, ...branchNames]));
 
+            usersInBranch = await User.find({
+                $or: [
+                    { workingBranch: { $in: branchTargets } },
+                    { locCode: { $in: branchTargets } },
+                ],
+            });
         } else {
             return res.status(400).json({ message: "Invalid selected option" });
         }
 
-        console.log("Filtered employees sample:", filteredEmployees.slice(0, 3));
-
-        if (filteredEmployees.length === 0) {
-            console.error("No employees found matching criteria");
-            console.error("Available employee data sample:", externalEmployees.slice(0, 3).map(emp => ({
-                emp_code: emp.emp_code,
-                role_name: emp.role_name,
-                store_name: emp.store_name
-            })));
-            return res.status(404).json({ message: "No employees found matching the criteria from external API" });
-        }
-
-        // Now find or create corresponding users in the internal database
-        let usersInBranch = [];
-        console.log("Starting user creation/update process...");
-        
-        for (const emp of filteredEmployees) {
-            console.log(`Processing employee: ${emp.emp_code} - ${emp.name}`);
-            
-            if (!emp.emp_code || !emp.email) {
-                console.log('Skipping employee with missing emp_code or email:', emp);
-                continue;
-            }
-
-            // Try to find existing user by empID or email
-            let user = await User.findOne({
-                $or: [
-                    { empID: emp.emp_code },
-                    { email: emp.email }
-                ]
-            });
-
-            if (!user) {
-                console.log(`Creating new user for employee: ${emp.emp_code}`);
-                // Create new user if doesn't exist
-                user = new User({
-                    username: emp.name || emp.emp_code || 'Unknown',
-                    email: emp.email,
-                    empID: emp.emp_code,
-                    designation: emp.role_name || 'Unknown',
-                    locCode: emp.store_name || 'Unknown',
-                    workingBranch: emp.store_name || 'Unknown',
-                    phoneNumber: emp.phone || '',
-                });
-                await user.save();
-                console.log('Created new user for employee:', emp.emp_code);
-                
-                // IMPORTANT: Assign existing mandatory trainings to new external employee
-                await assignExistingMandatoryTrainingsToUser(user);
-                console.log(`Assigned existing mandatory trainings to new external employee: ${emp.emp_code}`);
-            } else {
-                console.log(`Updating existing user for employee: ${emp.emp_code}`);
-                // Update existing user with latest info from external API
-                user.username = emp.name || user.username;
-                user.designation = emp.role_name || user.designation;
-                // IMPORTANT: Don't update locCode from external API to preserve our branch mapping fix
-                // user.locCode = emp.store_name || user.locCode; // COMMENTED OUT
-                user.workingBranch = emp.store_name || user.workingBranch;
-                user.phoneNumber = emp.phone || user.phoneNumber;
-                await user.save();
-                console.log('Updated existing user for employee:', emp.emp_code);
-            }
-
-            usersInBranch.push(user);
-        }
-
-        console.log(`Total users processed: ${usersInBranch.length}`);
+        console.log(`Matched ${usersInBranch.length} local users from Employee page source`);
+        console.log("Matched users sample:", usersInBranch.slice(0, 3).map((user) => ({
+            empID: user.empID,
+            username: user.username,
+            designation: user.designation,
+            workingBranch: user.workingBranch,
+        })));
 
         if (usersInBranch.length === 0) {
-            return res.status(404).json({ message: "No users found matching the criteria" });
+            const errorMessage =
+                selectedOption === 'all'
+                    ? 'No local users found to assign this training'
+                    : selectedOption === 'user'
+                    ? `No local users found with employee IDs: ${workingBranch.join(', ')}`
+                    : selectedOption === 'designation'
+                        ? `No local users found with designations: ${workingBranch.join(', ')}`
+                        : `No local users found with branches: ${workingBranch.join(', ')}`;
+            return res.status(404).json({ message: errorMessage });
         }
 
         console.log("Starting training assignment to users...");
-        // Assign training and progress to each user
-        const updatedUsers = usersInBranch.map(async (user) => {
-            console.log(`Assigning training to user: ${user.username} (${user.empID})`);
-            
-            // Add training details to user
-            user.training.push({
-                trainingId: newTraining._id,
-                deadline: deadlineDate, // Use the fixed deadline Date object
+
+        const userTrainingEntry = {
+            trainingId: newTraining._id,
+            deadline: deadlineDate,
+            pass: false,
+            status: 'Pending',
+        };
+
+        const progressModules = moduleDetails.map(module => ({
+            moduleId: module._id,
+            pass: false,
+            videos: module.videos.map(video => ({
+                videoId: video._id,
                 pass: false,
-                status: 'Pending',
+            })),
+        }));
+
+        const userUpdates = usersInBranch.map(user => ({
+            updateOne: {
+                filter: {
+                    _id: user._id,
+                    'training.trainingId': { $ne: newTraining._id },
+                },
+                update: {
+                    $push: { training: userTrainingEntry },
+                },
+            },
+        }));
+
+        if (userUpdates.length > 0) {
+            await User.bulkWrite(userUpdates, { ordered: false });
+        }
+
+        const progressDocs = usersInBranch.map(user => ({
+            userId: user._id,
+            trainingId: newTraining._id,
+            trainingName,
+            deadline: deadlineDate,
+            pass: false,
+            modules: progressModules,
+        }));
+
+        try {
+            await TrainingProgress.insertMany(progressDocs, { ordered: false });
+        } catch (progressError) {
+            if (progressError?.code !== 11000 && progressError?.writeErrors?.some(err => err.code !== 11000)) {
+                throw progressError;
+            }
+            console.log("Skipped duplicate training progress records during assignment");
+        }
+
+        console.log("All users assigned successfully");
+
+        if (selectedOption === 'all') {
+            console.log("Creating notification for all users...");
+            await Notification.create({
+                title: `New training Created : ${trainingName}`,
+                body: `${trainingName} has been successfully created. Created by ${admin?.name}. The training is scheduled to be completed in ${days} days.`,
+                user: usersInBranch.map(user => user._id),
+                useradmin: admin?.name,
             });
+            console.log("All-user notification created successfully");
 
-            // Create training progress for each user
-            const trainingProgress = new TrainingProgress({
-                userId: user._id,
-                trainingId: newTraining._id,
-                   trainingName: trainingName,
-                deadline: deadlineDate, // Use the fixed deadline Date object
-                pass: false,
-                modules: moduleDetails.map(module => ({
-                    moduleId: module._id,
-                    pass: false,
-                    videos: module.videos.map(video => ({
-                        videoId: video._id,
-                        pass: false,
-                    })),
-                })),
-            });
-
-            await trainingProgress.save();
-            console.log(`Training progress saved for user: ${user.username}`);
-            return user.save();
-        });
-
-        console.log("Saving all users...");
-        await Promise.all(updatedUsers); // Save all users at once
-        console.log("All users saved successfully");
-
-        if (selectedOption === 'user') {
+        } else if (selectedOption === 'user') {
             if (!workingBranch || workingBranch.length === 0) {
                 return res.status(400).json({ message: "User IDs are required when selectedOption is 'user'" });
             }
@@ -600,13 +447,18 @@ export const createTraining = async (req, res) => {
                 return res.status(400).json({ message: "Working branch is required when selectedOption is 'branch'" });
             }
 
+            const branchDocs = await Branch.find({ $or: [{ locCode: { $in: workingBranch } }, { workingBranch: { $in: workingBranch } }] })
+                .select('locCode workingBranch')
+                .lean();
+            const branchLocCodes = branchDocs.map((b) => String(b.locCode)).filter(Boolean);
+            const branchNames = branchDocs.map((b) => b.workingBranch).filter(Boolean);
+
             console.log("Creating notification for branches...");
-            // Create notification for branch
-            const newNotification = await Notification.create({
+            await Notification.create({
                 title: `New training Created : ${trainingName}`,
                 body: `${trainingName} has been successfully created. Created by ${admin?.name}. The training is scheduled to be completed in ${days} days.`,
-                branch: workingBranch,  // Pass the branch here
-                useradmin: admin?.name,  // Optional
+                branch: Array.from(new Set([...workingBranch, ...branchLocCodes, ...branchNames])),
+                useradmin: admin?.name,
             });
             console.log("Branch notification created successfully");
         }
@@ -639,6 +491,65 @@ export const createTraining = async (req, res) => {
                 error: process.env.NODE_ENV === 'development' ? error.stack : undefined
             });
         }
+    }
+};
+
+export const updateTraining = async (req, res) => {
+    const { id } = req.params;
+    const { trainingName, modules, workingBranch } = req.body;
+    const days = Number(req.body.days ?? req.body.deadline);
+    const selectedOption = req.body.selectedOption || (
+        Array.isArray(workingBranch) && workingBranch.includes('All') ? 'all' : undefined
+    );
+    const AdminID = req.admin.userId;
+    const AdminData = await Admin.findById(AdminID).populate("permissions");
+
+    if (!AdminData || !AdminData.permissions.length) {
+        return res.status(403).json({ message: "No permissions found for this admin" });
+    }
+
+    if (!AdminData.permissions[0].permissions.canCreateTraining) {
+        return res.status(401).json({ message: "You have no permission" });
+    }
+
+    try {
+        if (!trainingName || !Array.isArray(modules) || modules.length === 0 || !days || !selectedOption) {
+            return res.status(400).json({
+                message: "Training name, modules, days, and selected option are required",
+            });
+        }
+
+        if (!workingBranch || !Array.isArray(workingBranch) || workingBranch.length === 0) {
+            return res.status(400).json({ message: "Working branch/designation/user selection is required" });
+        }
+
+        const training = await Training.findById(id);
+        if (!training) {
+            return res.status(404).json({ message: "Training not found" });
+        }
+
+        training.trainingName = trainingName;
+        training.description = req.body.description || "";
+        training.modules = modules;
+        training.deadline = days;
+        training.deadlineDate = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+        training.Trainingtype = req.body.Trainingtype || "Assigned";
+        training.Assignedfor = workingBranch || [];
+        training.editedDate = new Date();
+
+        await training.save();
+
+        return res.status(200).json({
+            message: "Training updated successfully",
+            training,
+        });
+    } catch (error) {
+        console.error("Error in updateTraining:", error);
+        return res.status(500).json({
+            message: "Server Error",
+            details: error.message,
+            error: process.env.NODE_ENV === 'development' ? error.stack : undefined
+        });
     }
 };
 
@@ -760,244 +671,86 @@ export const calculateProgress = async (req, res) => {
     try {
         const AdminID = req.admin.userId;
         const AdminData = await Admin.findById(AdminID).populate('branches');
-        const allowedLocCodes = AdminData.branches.map(branch => branch.locCode);
+        const isSuperAdmin = AdminData.role === 'super_admin' || AdminData.role === 'admin';
+        
+        // Super admin sees all branches
+        const allBranches = isSuperAdmin ? await Branch.find({}) : AdminData.branches;
+        const allowedLocCodes = allBranches.map(branch => branch.locCode);
         const day = new Date();
 
-        // Count documents
-        const assessmentCount = await Assessment.countDocuments();
-        const userCount = await User.find({ locCode: { $in: allowedLocCodes } });
-        console.log('Allowed location codes:', allowedLocCodes);
-
-        // Fetch external employee data to get total employee count
-        let totalEmployeeCount = userCount.length; // Default to local user count
-        let externalEmployees = [];
-        
-        try {
-            const response = await axios.post(`${process.env.BASE_URL || 'http://localhost:7000'}/api/employee_range`, {
-                startEmpId: 'EMP1',
-                endEmpId: 'EMP9999'
-            }, { timeout: 15000 });
-            
-            externalEmployees = response.data?.data || [];
-            console.log(`Fetched ${externalEmployees.length} external employees`);
-            
-            // Create mapping from store names to location codes
-            const storeNameToLocCode = {
-                'GROOMS TRIVANDRUM': '5',
-                'GROOMS PALAKKAD': '19',
-                'GROOMS EDAPALLY': '3',
-                'GROOMS KOTTAYAM': '9',
-                'GROOMS PERUMBAVOOR': '10',
-                'GROOMS THRISSUR': '11',
-                'GROOMS CHAVAKKAD': '12',
-                'GROOMS EDAPPAL': '15',
-                'GROOMS VATAKARA': '14',
-                'GROOMS PERINTHALMANNA': '16',
-                'GROOMS MANJERY': '18',
-                'GROOMS KOTTAKKAL': '17',
-                'GROOMS KOZHIKODE': '13',
-                'GROOMS CALICUT': '13', // Map CALICUT to KOZHIKODE
-                'GROOMS KANNUR': '21',
-                'GROOMS KALPETTA': '20',
-                'ZORUCCI EDAPPAL': '6',
-                'ZORUCCI KOTTAKKAL': '8',
-                'ZORUCCI PERINTHALMANNA': '7',
-                'ZORUCCI EDAPPALLY': '1',
-                // Map SUITOR GUY stores to GROOMS equivalents
-                'SUITOR GUY TRIVANDRUM': '5',
-                'SUITOR GUY PALAKKAD': '19',
-                'SUITOR GUY EDAPPALLY': '3',
-                'SUITOR GUY KOTTAYAM': '9',
-                'SUITOR GUY PERUMBAVOOR': '10',
-                'SUITOR GUY THRISSUR': '11',
-                'SUITOR GUY CHAVAKKAD': '12',
-                'SUITOR GUY EDAPPAL': '15',
-                'SUITOR GUY VATAKARA': '14',
-                'SUITOR GUY PERINTHALMANNA': '16',
-                'SUITOR GUY MANJERI': '18',
-                'SUITOR GUY KOTTAKKAL': '17',
-                'SUITOR GUY CALICUT': '13',
-                'SUITOR GUY KALPETTA': '20', // Add missing mappings
-                'SUITOR GUY KANNUR': '21'
-            };
-            
-            // Filter external employees by allowed location codes using store name mapping
-            const filteredExternalEmployees = externalEmployees.filter(emp => {
-                const storeName = emp?.store_name?.toUpperCase();
-                const mappedLocCode = storeNameToLocCode[storeName];
-                
-                if (mappedLocCode && allowedLocCodes.includes(mappedLocCode)) {
-                    return true;
-                }
-                
-                // Also check direct location code if available
-                const empLocCode = emp?.store_code || emp?.locCode;
-                return allowedLocCodes.includes(empLocCode);
-            });
-            
-            totalEmployeeCount = filteredExternalEmployees.length;
-            console.log(`Filtered external employees for allowed locations: ${totalEmployeeCount}`);
-            console.log(`External employees breakdown by store:`);
-            
-            // Log breakdown by store
-            const storeBreakdown = {};
-            filteredExternalEmployees.forEach(emp => {
-                const storeName = emp?.store_name?.toUpperCase();
-                storeBreakdown[storeName] = (storeBreakdown[storeName] || 0) + 1;
-            });
-            
-            Object.entries(storeBreakdown).forEach(([store, count]) => {
-                const locCode = storeNameToLocCode[store] || 'Unknown';
-                console.log(`   - ${store} (${locCode}): ${count} employees`);
-            });
-            
-        } catch (error) {
-            console.error('Error fetching external employee data:', error.message);
-            // Continue with local user count
-        }
-
-        // Fetch users once instead of multiple times
+        // Single user fetch (removed duplicate query)
         const users = await User.find({ locCode: { $in: allowedLocCodes } });
-        const userID = users.map(id => id._id)
+        const userID = users.map(id => id._id);
+        const totalEmployeeCount = users.length;
 
-        // Calculate average progress from both user.training records AND mandatory trainings (TrainingProgress)
-        let totalUserTrainings = 0;
-        let completedUserTrainings = 0;
-        
-        // Pre-fetch all training progress records for these users
-        const allTrainingProgress = await TrainingProgress.find({ 
-            userId: { $in: userID } 
-        });
-        
-        // Create a map of userId -> training progress records
+        // Pre-fetch all training progress records in bulk
+        const allTrainingProgress = await TrainingProgress.find({ userId: { $in: userID } });
         const trainingProgressMap = new Map();
         allTrainingProgress.forEach(progress => {
-            const userId = progress.userId.toString();
-            if (!trainingProgressMap.has(userId)) {
-                trainingProgressMap.set(userId, []);
-            }
-            trainingProgressMap.get(userId).push(progress);
+            const key = progress.userId.toString();
+            if (!trainingProgressMap.has(key)) trainingProgressMap.set(key, []);
+            trainingProgressMap.get(key).push(progress);
         });
-        
-        users.forEach(user => {
-            // Count assigned trainings from user.training array
-            if (user.training && Array.isArray(user.training)) {
-                totalUserTrainings += user.training.length;
-                completedUserTrainings += user.training.filter(training => training.pass).length;
-            }
-            
-            // Count mandatory trainings from TrainingProgress collection (avoid duplicates)
-            const userTrainingProgress = trainingProgressMap.get(user._id.toString()) || [];
-            
-            // Get assigned training IDs to avoid duplicates
-            const assignedTrainingIds = user.training ? 
-                user.training.map(t => t.trainingId.toString()) : [];
-            
-            // Filter out mandatory trainings that are already in assigned trainings
-            const uniqueMandatoryTrainings = userTrainingProgress.filter(tp => 
-                !assignedTrainingIds.includes(tp.trainingId.toString())
-            );
-            
-            totalUserTrainings += uniqueMandatoryTrainings.length;
-            completedUserTrainings += uniqueMandatoryTrainings.filter(tp => tp.pass).length;
-        });
-        
-        // Calculate average progress from user training records
-        const averageProgress = totalUserTrainings > 0 ? (completedUserTrainings / totalUserTrainings) * 100 : 0;
-        
-        console.log(`🔍 Dashboard calculation debug:`);
-        console.log(`   - Admin allowed branches: ${allowedLocCodes.length}`);
-        console.log(`   - Users in allowed branches: ${users.length}`);
-        console.log(`   - Total user trainings: ${totalUserTrainings}`);
-        console.log(`   - Completed user trainings: ${completedUserTrainings}`);
-        console.log(`   - Average progress: ${averageProgress.toFixed(2)}%`);
-        
-        const finalAverageProgress = parseFloat(averageProgress.toFixed(2));
 
-        // Calculate assessment progress
+        let totalUserTrainings = 0;
+        let completedUserTrainings = 0;
         let totalAssessments = 0;
         let passedAssessments = 0;
         let trainingpend = 0;
 
         users.forEach(user => {
+            const assignedTrainingIds = user.training ? user.training.map(t => t.trainingId.toString()) : [];
+            const userTrainingProgress = trainingProgressMap.get(user._id.toString()) || [];
+            const uniqueMandatoryTrainings = userTrainingProgress.filter(tp => !assignedTrainingIds.includes(tp.trainingId.toString()));
+
+            if (user.training && Array.isArray(user.training)) {
+                totalUserTrainings += user.training.length;
+                completedUserTrainings += user.training.filter(t => t.pass).length;
+                trainingpend += user.training.filter(t => day > t.deadline && !t.pass).length;
+            }
+
+            totalUserTrainings += uniqueMandatoryTrainings.length;
+            completedUserTrainings += uniqueMandatoryTrainings.filter(tp => tp.pass).length;
+            trainingpend += uniqueMandatoryTrainings.filter(tp => day > tp.deadline && !tp.pass).length;
+
             if (Array.isArray(user.assignedAssessments)) {
                 totalAssessments += user.assignedAssessments.length;
-                passedAssessments += user.assignedAssessments.filter(
-                    item => day > item.deadline && item.pass === false
-                ).length;
+                passedAssessments += user.assignedAssessments.filter(a => day > a.deadline && !a.pass).length;
             }
-
-            // Count overdue assigned trainings from user.training array
-            if (Array.isArray(user.training)) {
-                trainingpend += user.training.filter(
-                    item => day > item.deadline && item.pass === false
-                ).length;
-            }
-            
-            // Count overdue mandatory trainings from TrainingProgress collection (avoid duplicates)
-            const userTrainingProgress = trainingProgressMap.get(user._id.toString()) || [];
-            
-            // Get assigned training IDs to avoid duplicates
-            const assignedTrainingIds = user.training ? 
-                user.training.map(t => t.trainingId.toString()) : [];
-            
-            // Filter out mandatory trainings that are already in assigned trainings
-            const uniqueMandatoryTrainings = userTrainingProgress.filter(tp => 
-                !assignedTrainingIds.includes(tp.trainingId.toString())
-            );
-            
-            trainingpend += uniqueMandatoryTrainings.filter(tp => 
-                day > tp.deadline && tp.pass === false
-            ).length;
         });
 
-        // Get login statistics
-        const uniqueLoginUsers = await UserLoginSession.distinct('userId');
-        const uniqueLoginUserCount = uniqueLoginUsers.length;
-        const totalLogins = await UserLoginSession.countDocuments();
-        
-        // Get device breakdown
-        const deviceStats = await UserLoginSession.aggregate([
-            { $group: { _id: '$deviceOS', count: { $sum: 1 } } },
-            { $sort: { count: -1 } }
+        const averageProgress = totalUserTrainings > 0 ? (completedUserTrainings / totalUserTrainings) * 100 : 0;
+        const finalAverageProgress = parseFloat(averageProgress.toFixed(2));
+
+        // Login stats
+        const [uniqueLoginUsers, totalLogins, deviceStats] = await Promise.all([
+            UserLoginSession.distinct('userId'),
+            UserLoginSession.countDocuments(),
+            UserLoginSession.aggregate([{ $group: { _id: '$deviceOS', count: { $sum: 1 } } }, { $sort: { count: -1 } }]),
         ]);
-        
-        // Calculate login percentage based on total employee count
-        const loginPercentage = totalEmployeeCount > 0 ? Math.round((uniqueLoginUserCount / totalEmployeeCount) * 100) : 0;
-        
-        // Return results with proper structure
+        const loginPercentage = totalEmployeeCount > 0 ? Math.round((uniqueLoginUsers.length / totalEmployeeCount) * 100) : 0;
+
         res.status(200).json({
             success: true,
             data: {
-                assessmentCount,
-                branchCount: AdminData.branches.length,
-                userCount: totalEmployeeCount, // Use total employee count from external API
-                localUserCount: userCount.length, // Keep local user count for reference
+                assessmentCount: await Assessment.countDocuments(),
+                branchCount: allBranches.length,
+                userCount: totalEmployeeCount,
+                localUserCount: totalEmployeeCount,
                 averageProgress: finalAverageProgress,
                 assessmentProgress: passedAssessments,
                 trainingPending: trainingpend,
-                // Login statistics
-                uniqueLoginUserCount,
+                uniqueLoginUserCount: uniqueLoginUsers.length,
                 totalLogins,
                 loginPercentage,
                 deviceStats,
-                // Additional info for debugging
-                externalEmployeesFetched: externalEmployees.length,
-                allowedLocCodes: allowedLocCodes
+                allowedLocCodes,
             },
         });
     } catch (error) {
-        console.error('Error calculating progress:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Internal Server Error',
-            error: error.message,
-        });
+        res.status(500).json({ success: false, message: 'Internal Server Error', error: error.message });
     }
 };
-
-
-
 
 export const createMandatoryTraining = async (req, res) => {
     const { trainingName, modules, days, workingBranch } = req.body;
@@ -1204,6 +957,7 @@ export const createMandatoryTraining = async (req, res) => {
                         locCode: emp.store_code || '1', // Default to '1' if no store_code
                         designation: emp.role_name || '',
                         workingBranch: emp.store_name || 'DEFAULT',
+                        source: 'external-sync',
                     });
                     await user.save();
                     console.log(`Created new user: ${user.username} with designation: ${user.designation}`);

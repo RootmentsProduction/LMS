@@ -1,0 +1,137 @@
+.create-task-toggle {
+  position: relative;
+  display: inline-flex;
+  background: #f3f4f6;
+  border-radius: 999px;
+  padding: 4px;
+}
+
+.create-task-toggle__pill {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 0;
+  border-radius: 999px;
+  background: #111827;
+  transition:
+    transform 0.32s cubic-bezier(0.4, 0, 0.2, 1),
+    width 0.32s cubic-bezier(0.4, 0, 0.2, 1);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.create-task-toggle__btn {
+  position: relative;
+  z-index: 1;
+  padding: 8px 20px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  background: transparent;
+  color: #6b7280;
+  transition: color 0.28s ease;
+  white-space: nowrap;
+}
+
+.create-task-toggle__btn:disabled {
+  cursor: default;
+}
+
+.create-task-toggle__btn--active {
+  color: #fff;
+}
+
+.premium-input {
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 9px 12px;
+  font-size: 13px;
+  color: #374151;
+  outline: none;
+  background: #fff;
+  width: 100%;
+  height: 40px;
+  box-sizing: border-box;
+  font-family: "DM Sans", sans-serif;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.premium-input:focus {
+  border-color: #111827;
+  box-shadow: 0 0 0 3px rgba(17, 24, 39, 0.05);
+}
+
+.premium-textarea {
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 12px;
+  font-size: 13px;
+  color: #374151;
+  outline: none;
+  background: #fff;
+  width: 100%;
+  box-sizing: border-box;
+  font-family: "DM Sans", sans-serif;
+  resize: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.premium-textarea:focus {
+  border-color: #111827;
+  box-shadow: 0 0 0 3px rgba(17, 24, 39, 0.05);
+}
+
+
+.create-task-form-body {
+  overflow: hidden;
+  transition: height 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.create-task-form-panel {
+  transition:
+    opacity 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+    transform 0.32s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.create-task-form-panel--enter {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.create-task-form-panel--exit {
+  opacity: 0;
+  transform: translateY(10px);
+  pointer-events: none;
+}
+
+.create-task-save-btn {
+  transition:
+    opacity 0.22s ease,
+    transform 0.22s ease;
+}
+
+.create-task-save-btn--exit {
+  opacity: 0;
+  transform: translateY(4px);
+}
+
+.create-task-file-field {
+  height: 40px;
+  min-height: 40px;
+  box-sizing: border-box;
+}
+
+.custom-date-container input[type="date"]::-webkit-calendar-picker-indicator {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+

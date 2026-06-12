@@ -6,7 +6,12 @@
   "main": "server.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "nodemon server.js"
+    "start": "nodemon server.js",
+    "import:legacy-walkins": "node scripts/importLegacyWalkins.js",
+    "import:legacy-walkins:dry-run": "node scripts/importLegacyWalkins.js --dry-run",
+    "sync:walkin-indexes": "node scripts/syncWalkinIndexes.js",
+    "normalize:walkin-stores": "node scripts/normalizeWalkinStores.js",
+    "import:legacy-users": "node scripts/importLegacyUsers.js"
   },
   "author": "",
   "license": "ISC",

@@ -1,7 +1,5 @@
 
 import { useEffect, useState } from "react";
-import Header from "../../components/Header/Header";
-
 import SideNav from "../../components/SideNav/SideNav";
 import baseUrl from "../../api/api";
 
@@ -16,8 +14,13 @@ const NotificationData = () => {
     useEffect(() => {
         const fetchNotifications = async () => {
             try {
-                // Replace with your API endpoint
-                const response = await fetch(baseUrl.baseUrl + "api/admin/home/AllNotification");
+                const token = localStorage.getItem("token");
+                const response = await fetch(baseUrl.baseUrl + "api/admin/home/AllNotification", {
+                    headers: {
+                        "Content-Type": "application/json",
+                        ...(token ? { "Authorization": `Bearer ${token}` } : {})
+                    }
+                });
                 const data = await response.json();
 
                 if (response.ok) {
@@ -42,14 +45,9 @@ const NotificationData = () => {
 
     return (
         <div className=" mx-0 mb-[90px]" >
-            <div>
-                <Header name="Notification" />
-            </div>
-            <div className="flex md:ml-[160px] ml-0">
-                <div>
-                    <SideNav />
-                </div>
-                <div className="flex justify-center items-center min-h-screen  mt-28">
+            <SideNav />
+            <div className="md:ml-[120px]">
+                <div className="flex justify-center items-center min-h-screen">
                     <div className="bg-white w-full  shadow-lg rounded-lg p-6">
                         <h2 className="text-lg font-semibold mb-4 text-black">Notifications</h2>
                         <ul className="space-y-4">
@@ -81,13 +79,8 @@ const NotificationData = () => {
                         </ul>
                     </div>
                 </div>
-
-
             </div>
-
-
-
-        </div >
+        </div>
     );
 };
 

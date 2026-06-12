@@ -16,15 +16,21 @@ const trainingSchema = new mongoose.Schema({
 
 // Pre-save hook to calculate number of modules, deadline date, and update edited date
 trainingSchema.pre('save', function (next) {
-  this.numberOfModules = this.modules.length; // Count the modules
+  this.numberOfModules = this.modules.length;
   
-  // Calculate deadlineDate if deadline (days) is provided but deadlineDate is not set
   if (this.deadline && !this.deadlineDate) {
     this.deadlineDate = new Date(Date.now() + this.deadline * 24 * 60 * 60 * 1000);
   }
   
-  this.editedDate = new Date(); // Update edited date whenever saved
+  this.editedDate = new Date();
   next();
 });
+
+// Queried by type to separate mandatory vs assigned trainings
+trainingSchema.index({ Trainingtype: 1 });
+// Queried by Assignedfor (designation-based mandatory training lookup)
+trainingSchema.index({ Assignedfor: 1 });
+// Compound: type + assignedfor — the core mandatory training filter
+trainingSchema.index({ Trainingtype: 1, Assignedfor: 1 });
 
 export const Training = mongoose.model('Training', trainingSchema);

@@ -15,7 +15,7 @@ const options = {
         },
         servers: [
             {
-                url: "https://lms-testenv-test.onrender.com/",
+                url: "https://lms-testenv-v0w5.onrender.com/",
                 description: "Live Development Server",
             },
             {
@@ -85,10 +85,14 @@ const options = {
             {
                 name: "WhatsApp Integration",
                 description: "WhatsApp webhook and Zoho integration APIs"
+            },
+            {
+                name: "Auto Tasks",
+                description: "Auto Task Templates — recurring schedules that generate real Task documents automatically"
             }
         ]
     },
-    apis: ["./routes/*.js"], // Scan all route files for Swagger documentation
+    apis: ["./routes/*.js", "./server.js"], // Scan route files and server.js for Swagger documentation
 };
 
 const swaggerSpec = swaggerJsdoc(options);

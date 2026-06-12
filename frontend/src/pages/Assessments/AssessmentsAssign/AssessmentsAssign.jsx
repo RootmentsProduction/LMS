@@ -1,6 +1,5 @@
 import ModileNav from "../../../components/SideNav/ModileNav";
-
-import AssessmentsAssignData from "./AssessmentsAssignData";
+import AssessmentDetailsData from "../AssessmentDetails/AssessmentDetailsData";
 
 const AssessmentsAssign = () => {
     return (
@@ -14,7 +13,7 @@ const AssessmentsAssign = () => {
                     <ModileNav />
                 </div>
                 <div style={styles.middle} className="">
-                    <AssessmentsAssignData />
+                    <AssessmentDetailsData />
                 </div>
 
 

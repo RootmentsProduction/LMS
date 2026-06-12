@@ -4,6 +4,7 @@ import Module from '../model/Module.js'
 import Notification from '../model/Notification.js';
 import TrainingProgress from '../model/Trainingprocessschema.js';
 import User from '../model/User.js';
+import Employee from '../model/Employee.js';
 import Visibility from '../model/Visibility.js';
 import jwt from 'jsonwebtoken'
 import bcrypt from 'bcrypt'
@@ -13,6 +14,22 @@ import EscalationLevel from '../model/EscalationLevel.js';
 export const createModule = async (req, res) => {
     try {
         const moduleData = req.body;
+        moduleData.createdBy = moduleData.createdBy || 'Super Admin';
+
+        const isValidQuestion = (question) => {
+            const options = Array.isArray(question?.options) ? question.options : [];
+            const trimmedOptions = options.map((option) => String(option || '').trim());
+            const questionText = String(question?.questionText || '').trim();
+            const correctAnswer = String(question?.correctAnswer || '').trim();
+            const filledOptions = trimmedOptions.filter(Boolean);
+
+            return Boolean(
+                questionText &&
+                filledOptions.length >= 2 &&
+                correctAnswer &&
+                filledOptions.includes(correctAnswer)
+            );
+        };
 
         // Validation for the required fields in videos
         if (!moduleData.moduleName || !moduleData.videos || !Array.isArray(moduleData.videos)) {
@@ -35,25 +52,11 @@ export const createModule = async (req, res) => {
                 video.questions = [];
             }
 
-            // Check if the questions array contains incomplete questions
-            let hasIncompleteQuestion = false;
-            for (let questionIndex = 0; questionIndex < video.questions.length; questionIndex++) {
-                const question = video.questions[questionIndex];
-
-                if (
-                    !question.questionText ||
-                    !question.correctAnswer ||
-                    !question.options ||
-                    question.options.length < 4
-                ) {
-                    hasIncompleteQuestion = true;
-                    break; // Exit the loop if any question is incomplete
-                }
-            }
-
-            // If incomplete question exists, set questions array to null
-            if (hasIncompleteQuestion) {
-                video.questions = null;
+            const invalidQuestionIndex = video.questions.findIndex((question) => !isValidQuestion(question));
+            if (invalidQuestionIndex !== -1) {
+                return res.status(400).json({
+                    message: `Incomplete quiz found in video ${videoIndex + 1}. Please fill question text, add at least two options, and select a correct answer before saving.`,
+                });
             }
         }
 
@@ -66,6 +69,77 @@ export const createModule = async (req, res) => {
         console.error("Error creating module:", error);
         if (!res.headersSent) {
             res.status(500).json({ message: "An error occurred while creating the module.", error: error.message });
+        }
+    }
+};
+
+export const updateModule = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const moduleData = req.body;
+
+        const isValidQuestion = (question) => {
+            const options = Array.isArray(question?.options) ? question.options : [];
+            const trimmedOptions = options.map((option) => String(option || '').trim());
+            const questionText = String(question?.questionText || '').trim();
+            const correctAnswer = String(question?.correctAnswer || '').trim();
+            const filledOptions = trimmedOptions.filter(Boolean);
+
+            return Boolean(
+                questionText &&
+                filledOptions.length >= 2 &&
+                correctAnswer &&
+                filledOptions.includes(correctAnswer)
+            );
+        };
+
+        if (!moduleData.moduleName || !moduleData.videos || !Array.isArray(moduleData.videos)) {
+            return res.status(400).json({ message: "Invalid module data. Ensure all required fields are present." });
+        }
+
+        for (let videoIndex = 0; videoIndex < moduleData.videos.length; videoIndex++) {
+            const video = moduleData.videos[videoIndex];
+
+            if (!video.title || !video.videoUri) {
+                return res.status(400).json({
+                    message: `Missing required fields in video ${videoIndex + 1}: title or videoUri is missing.`
+                });
+            }
+
+            if (!video.questions || !Array.isArray(video.questions)) {
+                video.questions = [];
+            }
+
+            const invalidQuestionIndex = video.questions.findIndex((question) => !isValidQuestion(question));
+            if (invalidQuestionIndex !== -1) {
+                return res.status(400).json({
+                    message: `Incomplete quiz found in video ${videoIndex + 1}. Please fill question text, add at least two options, and select a correct answer before saving.`,
+                });
+            }
+        }
+
+        const updatedModule = await Module.findByIdAndUpdate(
+            id,
+            {
+                ...moduleData,
+                editedBy: moduleData.editedBy || moduleData.createdBy || 'Super Admin',
+                editedAt: new Date(),
+            },
+            { new: true, runValidators: true }
+        );
+
+        if (!updatedModule) {
+            return res.status(404).json({ message: 'Module not found' });
+        }
+
+        return res.status(200).json({
+            message: 'Module updated successfully!',
+            module: updatedModule,
+        });
+    } catch (error) {
+        console.error("Error updating module:", error);
+        if (!res.headersSent) {
+            res.status(500).json({ message: "An error occurred while updating the module.", error: error.message });
         }
     }
 };
@@ -88,27 +162,33 @@ export const getModules = async (req, res) => {
         // Fetch training progress
         const trainingProgress = await TrainingProgress.find();
 
-        // Calculate completion percentage for each module
+        // Calculate completion percentage only from users actually assigned this module.
         const moduleProgress = modules.map((module) => {
-            const usersProgress = trainingProgress.map((progress) => {
+            const usersProgress = trainingProgress.flatMap((progress) => {
                 const moduleProgress = progress.modules.find((m) => m.moduleId.toString() === module._id.toString());
-                if (!moduleProgress) return 0; // If module not found, 0% progress
+                if (!moduleProgress) return [];
 
                 const completedVideos = moduleProgress.videos.filter((v) => v.pass).length;
                 const totalVideos = moduleProgress.videos.length;
                 const percentage = totalVideos > 0 ? (completedVideos / totalVideos) * 100 : 0;
-                return percentage;
+                return [percentage];
             });
 
+            const completedCount = usersProgress.filter((percentage) => percentage >= 100).length;
+            const assignedCount = usersProgress.length;
             const overallPercentage =
-                usersProgress.reduce((acc, curr) => acc + curr, 0) / usersProgress.length || 0;
+                assignedCount > 0 ? usersProgress.reduce((acc, curr) => acc + curr, 0) / assignedCount : 0;
 
             // Include videos array
             return {
                 moduleId: module._id,
                 moduleName: module.moduleName,
+                description: module.description,
                 videos: module.videos, // Add videos here
-                overallCompletionPercentage: overallPercentage.toFixed(2),
+                completedCount,
+                assignedCount,
+                totalCount: assignedCount,
+                overallCompletionPercentage: Number(overallPercentage.toFixed(2)),
             };
         });
 
@@ -230,29 +310,55 @@ export const getVisibility = async (req, res) => {
 };
 
 export const AdminLogin = async (req, res) => {
-    const { EmpId, email } = req.body;
-    console.log('Login Attempt:', { EmpId, email });
+    const { EmpId, email, role } = req.body;
+    console.log('🔓 [LOGIN] Attempt:', { identifier: email, role: role || 'not specified' });
 
     try {
-        // Find user by email
-        const user = await Admin.findOne({ email });
+        // Validate required fields
+        if (!email || !EmpId) {
+            console.log('❌ [LOGIN] Missing required fields');
+            return res.status(400).json({ message: 'Employee ID or email and password are required' });
+        }
+
+        const loginIdentifier = String(email).trim();
+
+        // Find user by EmpId (Employee ID) first
+        let user = await Admin.findOne({
+            EmpId: { $regex: `^${loginIdentifier.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' }
+        });
+
+        // Fallback to finding by email if not found
         if (!user) {
+            user = await Admin.findOne({ email: loginIdentifier.toLowerCase() });
+        }
+        
+        if (!user) {
+            console.log('❌ [LOGIN] Admin not found:', loginIdentifier);
             return res.status(400).json({ message: 'User not found' });
         }
 
-        console.log('User Found:', user);
+        console.log('✅ [LOGIN] Admin found:', user.name);
+
+        // Verify role against database if role is provided
+        if (role && user.role !== role) {
+            console.log('❌ [LOGIN] Role mismatch - expected:', user.role, 'got:', role);
+            return res.status(403).json({ message: `Role mismatch: Cannot log in as ${role}` });
+        }
 
         // Compare entered EmpId (as password) with the stored hashed password
         if (!user.password) {
+            console.log('❌ [LOGIN] Password not set in database for:', email);
             return res.status(500).json({ message: 'User password is not set in the database.' });
         }
 
         const isPasswordValid = await bcrypt.compare(EmpId, user.password);
-        console.log('Password Validation:', isPasswordValid);
 
         if (!isPasswordValid) {
+            console.log('❌ [LOGIN] Invalid password for:', email);
             return res.status(401).json({ message: 'Invalid credentials' });
         }
+
+        console.log('✅ [LOGIN] Password valid for:', email);
 
         // Create payload for the JWT
         const payload = {
@@ -263,11 +369,12 @@ export const AdminLogin = async (req, res) => {
 
         // Sign the JWT token with secret key
         const token = jwt.sign(payload, process.env.JWT_SECRET);
+        console.log('✅ [LOGIN] Token generated for:', email);
 
         // Send the token in the response
         res.json({ token, user: payload });
     } catch (err) {
-        console.error('Error during login:', err);
+        console.error('❌ [LOGIN] Server error:', err.message);
         res.status(500).json({ message: 'Server error', error: err.message });
     }
 };
@@ -278,35 +385,126 @@ export const AdminLogin = async (req, res) => {
 // Fetch first three notifications
 export const getNotifications = async (req, res) => {
     try {
+        if (!req.admin) {
+            return res.status(401).json({ message: 'Unauthorized' });
+        }
+
+        const userId = req.admin.userId;
+        const userRole = req.admin.role;
+
+        let query = {};
+
+        // If not a full access admin (super_admin or hr_admin), filter by scope
+        if (userRole !== 'super_admin' && userRole !== 'admin' && userRole !== 'hr_admin') {
+            const admin = await Admin.findById(userId).populate('branches');
+            if (admin) {
+                const locCodes = admin.branches?.map(b => b.locCode).filter(Boolean) || [];
+                query = {
+                    $or: [
+                        { user: { $in: [admin._id] } },
+                        { Role: { $in: [admin.role] } },
+                        { branch: { $in: locCodes } }
+                    ]
+                };
+            } else {
+                // Check if they are a regular user/employee
+                const user = await User.findById(userId);
+                if (user) {
+                    const locCodes = Array.isArray(user.locCode) ? user.locCode : [user.locCode].filter(Boolean);
+                    const userIds = [user._id];
+                    
+                    // Look up employee record to map notifications assigned directly to Employee schema
+                    const employee = await Employee.findOne({
+                        $or: [
+                            { userId: user._id },
+                            { employeeId: { $regex: `^${user.empID}$`, $options: 'i' } }
+                        ]
+                    });
+                    if (employee) {
+                        userIds.push(employee._id);
+                    }
+
+                    query = {
+                        $or: [
+                            { user: { $in: userIds } },
+                            { Role: { $in: [user.designation] } },
+                            { branch: { $in: locCodes } }
+                        ]
+                    };
+                }
+            }
+        }
+
         // Fetch the first three notifications, sorted by createdAt in descending order (latest first)
-        const notifications = await Notification.find()
+        const notifications = await Notification.find(query)
             .sort({ createdAt: -1 })  // Sort by 'createdAt' field in descending order
             .limit(3);  // Limit the result to 3 notifications
 
-        if (!notifications || notifications.length === 0) {
-            return res.status(404).json({ message: 'No notifications found' });
-        }
-
-        // Send the notifications as a response
-        res.status(200).json({ notifications });
+        // Send the notifications as a response (return empty array instead of 404 to prevent client crash)
+        res.status(200).json({ notifications: notifications || [] });
     } catch (error) {
         console.error(error);
         res.status(500).json({ message: 'Server Error' });
     }
 };
+
 export const getAllNotifications = async (req, res) => {
     try {
-        // Fetch the first three notifications, sorted by createdAt in descending order (latest first)
-        const notifications = await Notification.find()
-            .sort({ createdAt: -1 })  // Sort by 'createdAt' field in descending order
-        // Limit the result to 3 notifications
-
-        if (!notifications || notifications.length === 0) {
-            return res.status(404).json({ message: 'No notifications found' });
+        if (!req.admin) {
+            return res.status(401).json({ message: 'Unauthorized' });
         }
 
-        // Send the notifications as a response
-        res.status(200).json({ notifications });
+        const userId = req.admin.userId;
+        const userRole = req.admin.role;
+
+        let query = {};
+
+        // If not a full access admin, filter by scope
+        if (userRole !== 'super_admin' && userRole !== 'admin' && userRole !== 'hr_admin') {
+            const admin = await Admin.findById(userId).populate('branches');
+            if (admin) {
+                const locCodes = admin.branches?.map(b => b.locCode).filter(Boolean) || [];
+                query = {
+                    $or: [
+                        { user: { $in: [admin._id] } },
+                        { Role: { $in: [admin.role] } },
+                        { branch: { $in: locCodes } }
+                    ]
+                };
+            } else {
+                const user = await User.findById(userId);
+                if (user) {
+                    const locCodes = Array.isArray(user.locCode) ? user.locCode : [user.locCode].filter(Boolean);
+                    const userIds = [user._id];
+                    
+                    // Look up employee record to map notifications assigned directly to Employee schema
+                    const employee = await Employee.findOne({
+                        $or: [
+                            { userId: user._id },
+                            { employeeId: { $regex: `^${user.empID}$`, $options: 'i' } }
+                        ]
+                    });
+                    if (employee) {
+                        userIds.push(employee._id);
+                    }
+
+                    query = {
+                        $or: [
+                            { user: { $in: userIds } },
+                            { Role: { $in: [user.designation] } },
+                            { branch: { $in: locCodes } }
+                        ]
+                    };
+                }
+            }
+        }
+
+        // Fetch the notifications, sorted by createdAt in descending order (latest first)
+        const notifications = await Notification.find(query)
+            .sort({ createdAt: -1 });  // Sort by 'createdAt' field in descending order
+
+        // Send the notifications as a response (return empty array instead of 404 to prevent client crash)
+        res.status(200).json({ notifications: notifications || [] });
     } catch (error) {
         console.error(error);
         res.status(500).json({ message: 'Server Error' });

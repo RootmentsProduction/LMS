@@ -37,9 +37,8 @@ const CreateUser = () => {
     // Assign role based on selected option
     const userRole =
       selectedOption === "user" ? "super_admin" :
-        selectedOption === "designation" ? "cluster_admin" : "store_admin";
-    console.log(assignedTo);
-
+        selectedOption === "admin" ? "admin" :
+          selectedOption === "designation" ? "cluster_admin" : "store_admin";
     const updatedForm = {
       ...form,
       userRole,
@@ -55,9 +54,6 @@ const CreateUser = () => {
       toast.warning("Please fill in all required fields.");
       return;
     }
-
-    console.log("User Form Data:", updatedForm);
-
     try {
       const response = await fetch(`${baseUrl.baseUrl}api/admin/admin/createadmin`, {
         method: "POST",
@@ -72,9 +68,7 @@ const CreateUser = () => {
 
       const result = await response.json();
       toast.success("User created successfully!");
-      console.log("Response from backend:", result);
     } catch (error) {
-      console.error("Error saving user:", error.message);
       toast.error("An error occurred while saving the user. Please try again.");
     }
   };
@@ -100,7 +94,6 @@ const CreateUser = () => {
           }))
         );
       } catch (error) {
-        console.error("Error fetching branches:", error.message);
         toast.error("Failed to fetch branch data.");
       }
     };
@@ -109,12 +102,8 @@ const CreateUser = () => {
       try {
         const response = await fetch(`${baseUrl.baseUrl}api/admin/getSubrole`)
         if (response.ok) {
-          console.log("subrole find")
+          // subrole fetch placeholder
         }
-        const data = await response.json()
-        GetSubRole(data.subrole)
-        console.log(Subrole);
-
       } catch (error) {
         throw new Error(error)
       }
@@ -125,9 +114,9 @@ const CreateUser = () => {
   }, []); // Ensure this only runs on component mount
 
   return (
-    <div className="p-6 bg-gray-50 min-h-screen flex text-black justify-center items-center">
+    <div className="p-4 sm:p-6 bg-gray-50 min-h-[calc(100vh-160px)] flex text-black justify-center items-center">
       <div className="bg-white p-6 rounded-lg shadow-lg w-full max-w-2xl">
-        <h1 className="text-2xl font-bold mb-6">Create User/Admin</h1>
+        <h1 className="text-2xl font-extrabold mb-6">Create User/Admin</h1>
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* User ID */}
           <div>
@@ -215,6 +204,15 @@ const CreateUser = () => {
               <label>
                 <input
                   type="radio"
+                  value="admin"
+                  checked={selectedOption === "admin"}
+                  onChange={() => setSelectedOption("admin")}
+                />{" "}
+                Admin
+              </label>
+              <label>
+                <input
+                  type="radio"
                   value="designation"
                   checked={selectedOption === "designation"}
                   onChange={() => setSelectedOption("designation")}
@@ -232,7 +230,7 @@ const CreateUser = () => {
               </label>
             </div>
 
-            {selectedOption === "user" && (
+            {(selectedOption === "user" || selectedOption === "admin") && (
               <div>
                 <label htmlFor="subRole" className="block text-sm font-semibold text-gray-700">
                   Sub Role

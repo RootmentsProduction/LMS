@@ -15,43 +15,33 @@ const RoundModule = ({ initialProgress, title, Module, complete }) => {
     // };
 
     return (
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:shadow-md">
+            <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                    <div className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                        Module
+                    </div>
+                    <h4 className="mt-3 truncate text-lg font-semibold text-slate-950">{title}</h4>
+                    <p className="mt-2 text-sm text-slate-600">{Module}</p>
+                    <p className="mt-1 text-sm text-slate-500">{complete}</p>
+                </div>
 
-
-        <div className="card w-[360px] h-40 border border-gray-300 shadow-md flex justify-center items-center cursor-pointer mt-10 ml-2 rounded-lg">
-            <div className="flex justify-center items-center flex-col">
-                <div className="flex">
-                    <div className="flex flex-row mx-1 gap-10 items-center space-y-4">
-                        <div className="m-3">
-                            <h4 className="text-xl md:text2xl text-black font-semibold ">{title}</h4>
-                            <p className="text-gray-600">{Module}</p>
-
-                            <p className="text-gray-600">{complete}</p>
-
-                            {/* View Details Button */}
-                            {/* <div className="flex w-32 border mt-4 border-[#016E5B] justify-evenly items-center py-1 rounded-lg cursor-pointer hover:bg-green-100 transition duration-200 ease-in-out">
-                                <h4 className="text-black text-sm">View Details</h4>
-                            </div> */}
-                        </div>
-
-                        {/* Circular progress bar */}
-                        <div style={{ width: 80, height: 80 }}>
-                            <CircularProgressbar
-                                value={progress}
-                                text={`${progress}%`}
-                                styles={buildStyles({
-                                    pathColor: "#016E5B",    // Green color for the path
-                                    textColor: "#333",     // Text color
-                                    trailColor: "#e2e8f0", // Light gray for the trail
-                                    strokeWidth: 8,        // Path thickness
-                                })}
-                            />
-                        </div>
+                <div className="shrink-0">
+                    <div className="flex h-16 w-16 items-center justify-center rounded-full bg-slate-50">
+                        <CircularProgressbar
+                            value={progress}
+                            text={`${progress}%`}
+                            styles={buildStyles({
+                                pathColor: "#016E5B",
+                                textColor: "#111827",
+                                trailColor: "#e2e8f0",
+                                strokeWidth: 8,
+                            })}
+                        />
                     </div>
                 </div>
             </div>
         </div>
-
-
     );
 };
 

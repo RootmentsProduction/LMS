@@ -1,12 +1,14 @@
 import User from '../model/User.js';
 import dotenv from 'dotenv';
 import jwt from 'jsonwebtoken';
+import bcrypt from 'bcrypt';
 import Branch from '../model/Branch.js';
 import TrainingProgress from '../model/Trainingprocessschema.js';
 import Module from '../model/Module.js';
 import { Training } from '../model/Traning.js';
 import Admin from '../model/Admin.js';
 import { sendCompletionEmail } from '../utils/sendEmail.js';
+import { sendNotification } from '../utils/notificationHelper.js';
 dotenv.config()
 
 // Adjust the path to your TrainingProgress model
@@ -17,10 +19,12 @@ export const createUser = async (req, res) => {
       username,
       email,
       empID,
+      password,
       locCode,
       designation,
       location,
       workingBranch,
+      phoneNumber,
     } = req.body;
 
     // Check if the username or email already exists
@@ -29,15 +33,25 @@ export const createUser = async (req, res) => {
       return res.status(400).json({ message: 'Username or email already exists.' });
     }
 
+    let processedLocCode = locCode;
+    if (typeof locCode === 'string') {
+      if (locCode.includes(',')) {
+        processedLocCode = locCode.split(',').map(s => s.trim());
+      }
+    }
+
     // Create a new user
     const newUser = new User({
       username,
       email,
       empID,
+      password: password ? await bcrypt.hash(String(password).trim(), 10) : "",
       location,
-      locCode,
+      locCode: processedLocCode,
       designation,
       workingBranch,
+      phoneNumber: phoneNumber || "",
+      source: 'app',
     });
 
 
@@ -131,7 +145,7 @@ export const createUser = async (req, res) => {
     // Wait for all training assignments to complete
     await Promise.all(trainingAssignments);
 
-    // Save the new user
+    // Save the new LMS user (for Flutter app access)
     await newUser.save();
 
     res.status(201).json({
@@ -149,24 +163,35 @@ export const createUser = async (req, res) => {
 };
 
 
+
 export const loginUser = async (req, res) => {
-  const { email, empID } = req.body;
+  const { email, empID, password } = req.body;
 
   try {
+    const loginIdentifier = String(empID || email || '').trim();
+    const normalizedPassword = String(password || '').trim();
+
     // Input validation
-    if (!email || !empID) {
-      return res.status(400).json({ message: 'Email and Employee ID are required' });
+    if (!loginIdentifier || !normalizedPassword) {
+      return res.status(400).json({ message: 'Employee ID or email and password are required' });
     }
 
-    // Check if user exists
-    const user = await User.findOne({ email });
+    // Check if user exists by empID first
+    let user = await User.findOne({
+      empID: { $regex: `^${loginIdentifier.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' }
+    });
+
+    // Fallback to checking by email if not found
     if (!user) {
-      return res.status(401).json({ message: 'Invalid credentials' });
+      user = await User.findOne({ email: loginIdentifier.toLowerCase() });
     }
 
-    // Compare empID (Consider hashing for better security)
-    const isMatch = empID === user.empID;
-    if (!isMatch) {
+    if (!user) {
+      return res.status(401).json({ message: 'Employee not found' });
+    }
+
+    const isPasswordMatch = user.password ? await bcrypt.compare(normalizedPassword, user.password) : false;
+    if (!isPasswordMatch) {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
@@ -217,6 +242,7 @@ export const loginUser = async (req, res) => {
         sessionId, // Include session ID for logout tracking
         user: {
           username: user.username,
+          name: user.username,
           email: user.email,
           empID: user.empID,
           location: user.location,
@@ -231,6 +257,7 @@ export const loginUser = async (req, res) => {
         token,
         user: {
           username: user.username,
+          name: user.username,
           email: user.email,
           empID: user.empID,
           location: user.location,
@@ -244,15 +271,331 @@ export const loginUser = async (req, res) => {
   }
 };
 
+export const flutterLogin = async (req, res) => {
+  const { empID, password, email } = req.body;
+
+  try {
+    const rawEmpID = String(empID || email || '').trim();
+    const normalizedEmpID = rawEmpID.toLowerCase();
+    const normalizedPassword = String(password || '').trim();
+
+    if (!normalizedEmpID || !normalizedPassword) {
+      return res.status(400).json({ message: 'Employee ID and password are required' });
+    }
+
+    // 1. Check if the user is an Admin
+    const adminQuery = {
+      $or: [
+        { EmpId: { $regex: `^${rawEmpID.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' } },
+        { email: { $regex: `^${rawEmpID.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' } }
+      ]
+    };
+
+    let adminUser = await Admin.findOne(adminQuery).populate('branches');
+    let isMatchingAdmin = false;
+
+    if (adminUser) {
+      if (adminUser.password) {
+        // Admin exists and has a password
+        const isPasswordMatch = await bcrypt.compare(normalizedPassword, adminUser.password);
+        if (isPasswordMatch) {
+          isMatchingAdmin = true;
+        } else {
+          return res.status(401).json({ message: 'Incorrect password' });
+        }
+      } else {
+        // Admin exists but has no password, verify with external API
+        const axios = (await import('axios')).default;
+        const ROOTMENTS_API_TOKEN = 'RootX-production-9d17d9485eb772e79df8564004d4a4d4';
+        try {
+          const verifyRes = await axios.post(
+            'https://rootments.in/api/verify_employee',
+            { employeeId: rawEmpID, password: normalizedPassword },
+            {
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${ROOTMENTS_API_TOKEN}`,
+              },
+            }
+          );
+          if (verifyRes.data && verifyRes.data.status === 'success') {
+            // Save hashed password for future normal logins
+            adminUser.password = await bcrypt.hash(normalizedPassword, 10);
+            await adminUser.save();
+            isMatchingAdmin = true;
+          } else {
+            return res.status(401).json({ message: 'Incorrect password' });
+          }
+        } catch (err) {
+          console.error('External admin auth error:', err.message);
+          return res.status(401).json({ message: 'Authentication failed (external service error)' });
+        }
+      }
+    }
+
+    if (isMatchingAdmin && adminUser) {
+      if (!process.env.JWT_SECRET) {
+        throw new Error('JWT secret is not defined in environment variables');
+      }
+
+      const token = jwt.sign(
+        { userId: adminUser._id, email: adminUser.email, empID: adminUser.EmpId, role: adminUser.role },
+        process.env.JWT_SECRET,
+        { expiresIn: '30d' }
+      );
+
+      try {
+        const { detectDeviceInfo, getLocationFromIP } = await import('../utils/deviceDetection.js');
+        const userAgent = req.headers['user-agent'] || 'Unknown';
+        const ipAddress = req.ip || req.connection.remoteAddress || req.headers['x-forwarded-for'] || 'Unknown';
+        const deviceInfo = detectDeviceInfo(userAgent, ipAddress);
+        const location = await getLocationFromIP(ipAddress);
+        const UserLoginSession = (await import('../model/UserLoginSession.js')).default;
+
+        const loginSession = new UserLoginSession({
+          userId: adminUser._id,
+          username: adminUser.name,
+          email: adminUser.email,
+          ...deviceInfo,
+          location,
+          ipAddress,
+          loginSource: 'flutter-app-admin',
+        });
+
+        await loginSession.save();
+
+        return res.status(200).json({
+          message: 'Flutter login successful',
+          token,
+          sessionId: loginSession._id,
+          user: {
+            id: adminUser._id,
+            username: adminUser.name,
+            name: adminUser.name,
+            email: adminUser.email,
+            empID: adminUser.EmpId,
+            designation: adminUser.role,
+            workingBranch: adminUser.branches?.[0]?.workingBranch || 'All Stores',
+            source: 'admin',
+          },
+        });
+      } catch (trackingError) {
+        console.error('Error tracking flutter admin login:', trackingError);
+        return res.status(200).json({
+          message: 'Flutter login successful',
+          token,
+          user: {
+            id: adminUser._id,
+            username: adminUser.name,
+            name: adminUser.name,
+            email: adminUser.email,
+            empID: adminUser.EmpId,
+            designation: adminUser.role,
+            workingBranch: adminUser.branches?.[0]?.workingBranch || 'All Stores',
+            source: 'admin',
+          },
+        });
+      }
+    }
+
+    // 2. Fallback to standard User/Employee authentication
+    const query = {
+      empID: { $regex: `^${rawEmpID.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' }
+    };
+
+    let user = await User.findOne(query);
+    let isAuthenticated = false;
+
+    if (!user || !user.password) {
+      // User doesn't exist locally, OR doesn't have a password. Fallback to external API.
+      const axios = (await import('axios')).default;
+      const ROOTMENTS_API_TOKEN = 'RootX-production-9d17d9485eb772e79df8564004d4a4d4';
+      
+      try {
+        // 1. Verify credentials with external API
+        const verifyRes = await axios.post(
+          'https://rootments.in/api/verify_employee',
+          { employeeId: rawEmpID, password: normalizedPassword },
+          {
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${ROOTMENTS_API_TOKEN}`,
+            },
+          }
+        );
+
+        if (verifyRes.data && verifyRes.data.status === 'success') {
+          isAuthenticated = true;
+          
+          if (!user) {
+            const verifyData = verifyRes.data.data || {};
+            const storeNameToLocCode = {
+              'Z-EDAPALLY1': '144',
+              'G-EDAPPALLY': '702',
+              'SG-TRIVANDRUM': '700',
+              'Z- EDAPPAL': '100',
+              'Z.PERINTHALMANNA': '133',
+              'Z.KOTTAKKAL': '122',
+              'G.KOTTAYAM': '701',
+              'G.PERUMBAVOOR': '703',
+              'G.THRISSUR': '704',
+              'G.CHAVAKKAD': '706',
+              'G.CALICUT': '712',
+              'G.VADAKARA': '708',
+              'G.EDAPPAL': '707',
+              'G.PERINTHALMANNA': '709',
+              'G.KOTTAKKAL': '711',
+              'G.MANJERI': '710',
+              'G.PALAKKAD': '705',
+              'G.KALPETTA': '717',
+              'G.KANNUR': '716',
+              'G.MG ROAD': '718',
+              'DAPPR SQUAD': '555',
+              'OFFICE': '102',
+              'PRODUCTION': '101',
+              'WAREHOUSE': '103',
+              'NO STORE': '102' // Assigning telecallers/no store to office
+            };
+
+            const storeName = (verifyData.Store || '').toUpperCase();
+            let locCode = storeNameToLocCode[storeName] || '1';
+
+            let email = `${rawEmpID.toLowerCase()}@company.com`;
+            let phone = '';
+
+            // Attempt to get additional details like email/phone, but don't fail if it doesn't work
+            try {
+              const detailsRes = await axios.post(
+                'https://rootments.in/api/employee_range',
+                { startEmpId: rawEmpID, endEmpId: rawEmpID },
+                {
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${ROOTMENTS_API_TOKEN}`,
+                  },
+                }
+              );
+              const extEmp = detailsRes.data?.data?.[0];
+              if (extEmp) {
+                if (extEmp.email) email = extEmp.email;
+                if (extEmp.phone) phone = extEmp.phone;
+                if (extEmp.store_code) locCode = extEmp.store_code;
+              }
+            } catch (e) {
+              console.log("Could not fetch extra details, using verify response data");
+            }
+
+            // Create the user with lowercase empID and 'app' source
+            user = new User({
+              username: verifyData.name || rawEmpID,
+              email: email,
+              empID: rawEmpID.toLowerCase(), // Ensure it is lowercase
+              designation: verifyData.role || '',
+              workingBranch: verifyData.Store || 'No Store',
+              locCode: locCode,
+              phoneNumber: phone,
+              source: 'app', // Set to 'app' so it shows up in Admin dashboard
+              password: await bcrypt.hash(normalizedPassword, 10),
+            });
+            await user.save();
+          } else {
+            // User exists locally but didn't have a password. Save it for next time.
+            user.password = await bcrypt.hash(normalizedPassword, 10);
+            await user.save();
+          }
+        } else {
+          return res.status(401).json({ message: 'Incorrect password' });
+        }
+      } catch (err) {
+        console.error('External authentication error:', err.message);
+        return res.status(401).json({ message: 'Authentication failed (external service error)' });
+      }
+    } else {
+      // User exists locally and HAS a password. Verify normally.
+      const isPasswordMatch = await bcrypt.compare(normalizedPassword, user.password);
+      if (!isPasswordMatch) {
+        return res.status(401).json({ message: 'Incorrect password' });
+      }
+      isAuthenticated = true;
+    }
+
+    if (!isAuthenticated || !user) {
+      return res.status(401).json({ message: 'Authentication failed' });
+    }
+
+    if (!process.env.JWT_SECRET) {
+      throw new Error('JWT secret is not defined in environment variables');
+    }
+
+    const token = jwt.sign(
+      { userId: user._id, email: user.email, empID: user.empID, role: user.role || 'user' },
+      process.env.JWT_SECRET,
+      { expiresIn: '30d' }
+    );
+
+    try {
+      const { detectDeviceInfo, getLocationFromIP } = await import('../utils/deviceDetection.js');
+      const userAgent = req.headers['user-agent'] || 'Unknown';
+      const ipAddress = req.ip || req.connection.remoteAddress || req.headers['x-forwarded-for'] || 'Unknown';
+      const deviceInfo = detectDeviceInfo(userAgent, ipAddress);
+      const location = await getLocationFromIP(ipAddress);
+      const UserLoginSession = (await import('../model/UserLoginSession.js')).default;
+
+      const loginSession = new UserLoginSession({
+        userId: user._id,
+        username: user.username,
+        email: user.email,
+        ...deviceInfo,
+        location,
+        ipAddress,
+        loginSource: 'flutter-app',
+      });
+
+      await loginSession.save();
+
+      return res.status(200).json({
+        message: 'Flutter login successful',
+        token,
+        sessionId: loginSession._id,
+        user: {
+          id: user._id,
+          username: user.username,
+          name: user.username,
+          email: user.email,
+          empID: user.empID,
+          designation: user.designation,
+          workingBranch: user.workingBranch,
+          source: user.source,
+        },
+      });
+    } catch (trackingError) {
+      console.error('Error tracking flutter login:', trackingError);
+      return res.status(200).json({
+        message: 'Flutter login successful',
+        token,
+        user: {
+          id: user._id,
+          username: user.username,
+          name: user.username,
+          email: user.email,
+          empID: user.empID,
+          designation: user.designation,
+          workingBranch: user.workingBranch,
+          source: user.source,
+        },
+      });
+    }
+  } catch (error) {
+    console.error('Flutter login error:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
 export const GetAllUser = async (req, res) => {
   try {
-    const AdminId = req.admin.userId
-    const AdminBranch = await Admin.findById(AdminId).populate('branches')
-    // Fetch users with populated training, assessments, and modules
-
-    console.log(AdminBranch);
-    const allowedLocCodes = AdminBranch.branches.map(branch => branch.locCode);
-    const response = await User.find({ locCode: { $in: allowedLocCodes } });
+    // Return all employees for assessment assignment.
+    // The frontend already handles the dropdown display and selection.
+    const response = await User.find({});
 
     // Check if no users were found
     if (response.length === 0) {
@@ -332,8 +675,8 @@ export const createBranch = async (req, res) => {
     const savedBranch = await newBranch.save();
 
     if (savedBranch) {
-      // Fetch all super_admins from Admin collection
-      const superAdmins = await Admin.find({ role: "super_admin" });
+      // Fetch all super_admins and admins from Admin collection
+      const superAdmins = await Admin.find({ role: { $in: ["super_admin", "admin"] } });
 
       // Update each super_admin by adding the new branch _id to their branches array
       await Promise.all(
@@ -354,168 +697,84 @@ export const createBranch = async (req, res) => {
 
 export const GetBranch = async (req, res) => {
   try {
-    const AdminId = req.admin?.userId;
-    console.log("🔍 GetBranch called - Admin ID:", AdminId);
-    
-    if (!AdminId) {
-      console.log("❌ No Admin ID found in request");
-      return res.status(400).json({ message: "Admin ID not found in request" });
+    // Public access (no token) — return all branches for signup dropdown
+    if (!req.admin?.userId) {
+      const allBranches = await Branch.find({}).select('locCode workingBranch location').lean();
+      return res.status(200).json({ message: 'Data found', data: allBranches });
     }
 
-    // Find admin and get branches
-    console.log("🔍 Looking for admin with ID:", AdminId);
+    const AdminId = req.admin.userId;
     const AdminBranch = await Admin.findById(AdminId).populate('branches').lean();
-    
+
     if (!AdminBranch) {
-      console.log("❌ Admin not found in database");
       return res.status(404).json({ message: "Admin not found" });
     }
-    
-    console.log("✅ Admin found:", {
-      id: AdminBranch._id,
-      name: AdminBranch.name,
-      role: AdminBranch.role,
-      branchesCount: AdminBranch.branches?.length || 0
-    });
 
-    // Check if admin has branches
-    if (!AdminBranch.branches || AdminBranch.branches.length === 0) {
-      console.log("⚠️ Admin has no branches assigned");
-      
-      // For super_admin, get all branches
-      if (AdminBranch.role === 'super_admin') {
-        console.log("🔄 Super admin detected, fetching all branches");
-        const allBranches = await Branch.find({});
-        
-        if (allBranches.length === 0) {
-          return res.status(404).json({ 
-            message: "No branches exist in the system",
-            debug: { adminRole: AdminBranch.role }
-          });
-        }
+    // Super admin, admin, or admin with no branches assigned — return all branches
+    if (!AdminBranch.branches || AdminBranch.branches.length === 0 || ['super_admin', 'admin'].includes(AdminBranch.role)) {
+      const allBranches = await Branch.find({});
 
-        // Calculate counts for all branches
-        const branchesWithCounts = await Promise.all(allBranches.map(async (branch) => {
-          // Convert branch.locCode to string for consistent matching with User collection
-          // (User collection stores locCode as string, Branch might store as number)
-          const branchLocCode = String(branch.locCode);
-          const userCount = await User.countDocuments({ locCode: branchLocCode });
-          const usersInBranch = await User.find({ locCode: branchLocCode });
-
-          let totalTrainingCount = 0;
-          let totalAssessmentCount = 0;
-          
-          for (let user of usersInBranch) {
-            totalTrainingCount += user.training.length;
-            totalAssessmentCount += user.assignedAssessments.length;
-          }
-
-          return {
-            ...branch.toObject(),
-            userCount,
-            totalTrainingCount,
-            totalAssessmentCount
-          };
-        }));
-
-        console.log("✅ Returning all branches for super_admin:", branchesWithCounts.length);
-        return res.status(200).json({
-          message: "Data found (all branches for super_admin)",
-          data: branchesWithCounts
-        });
-      }
-      
-      return res.status(404).json({ 
-        message: "Admin has no branches assigned",
-        debug: { adminRole: AdminBranch.role, adminId: AdminId }
-      });
-    }
-
-    const allowedLocCodes = AdminBranch.branches.map(branch => branch.locCode);
-    console.log("🔍 Allowed location codes:", allowedLocCodes);
-
-    // Convert location codes to both strings and numbers for proper matching
-    // (Branch.locCode might be stored as number or string in database)
-    const allowedLocCodesAsStrings = allowedLocCodes.map(code => String(code));
-    const allowedLocCodesAsNumbers = allowedLocCodes.map(code => Number(code)).filter(code => !isNaN(code));
-    const allowedLocCodesBoth = [...allowedLocCodesAsStrings, ...allowedLocCodesAsNumbers];
-    
-    console.log("🔍 Allowed location codes as strings:", allowedLocCodesAsStrings);
-    console.log("🔍 Allowed location codes as numbers:", allowedLocCodesAsNumbers);
-
-    // Debug: Test a simple query first
-    const totalBranchCount = await Branch.countDocuments({});
-    console.log("🔍 Total branches in database:", totalBranchCount);
-    
-    // Fetch branches based on allowed location codes (both string and number formats)
-    const branches = await Branch.find({ locCode: { $in: allowedLocCodesBoth } });
-    console.log("✅ Found branches:", branches.length);
-    
-    if (branches.length === 0) {
-      // Debug: Check what's in the database vs what we're searching for
-      console.log("🔍 DEBUG: No branches found, investigating...");
-      const allBranchesInDb = await Branch.find({}).select('locCode workingBranch');
-      console.log("🔍 All branches in DB:", allBranchesInDb.map(b => `${b.workingBranch}(${b.locCode})`));
-      console.log("🔍 Searching for locCodes:", allowedLocCodesAsStrings);
-      
-      // Test individual queries
-      console.log("🔍 Testing individual locCode queries:");
-      for (const locCode of allowedLocCodesAsStrings.slice(0, 3)) {
-        const testBranch = await Branch.findOne({ locCode: locCode });
-        console.log(`  - locCode "${locCode}": ${testBranch ? `Found ${testBranch.workingBranch}` : 'Not found'}`);
-      }
-    }
-
-    if (branches.length > 0) {
-      const branchesWithUserAndTrainingCount = await Promise.all(branches.map(async (branch) => {
-        // Convert branch.locCode to string for consistent matching with User collection
-        // (User collection stores locCode as string, Branch might store as number)
+      const branchesWithCounts = await Promise.all(allBranches.map(async (branch) => {
         const branchLocCode = String(branch.locCode);
-        
-        // Count users based on locCode for each branch
-        const userCount = await User.countDocuments({ locCode: branchLocCode });
-
-        // Fetch all users for the current branch to count their training modules
-        const usersInBranch = await User.find({ locCode: branchLocCode });
-
-        // Count total training modules for each user
+        const query = {
+          $or: [
+            { locCode: branchLocCode },
+            { locCode: "All" },
+            { locCode: { $regex: new RegExp(`(^|,\\s*)${branchLocCode}(,|\\s*$)`) } }
+          ]
+        };
+        const userCount = await User.countDocuments(query);
+        const usersInBranch = await User.find(query);
         let totalTrainingCount = 0;
-        for (let user of usersInBranch) {
-          totalTrainingCount += user.training.length;
-        }
         let totalAssessmentCount = 0;
-        for (let user of usersInBranch) {
+        for (const user of usersInBranch) {
+          totalTrainingCount += user.training.length;
           totalAssessmentCount += user.assignedAssessments.length;
         }
-
-        return {
-          ...branch.toObject(), // Include all branch data
-          userCount, // Add the user count based on locCode
-          totalTrainingCount, // Add the total training count for users in this branch
-          totalAssessmentCount
-        };
+        return { ...branch.toObject(), userCount, totalTrainingCount, totalAssessmentCount };
       }));
 
-      console.log("✅ Returning branches with counts:", branchesWithUserAndTrainingCount.length);
-      res.status(200).json({
-        message: "Data found",
-        data: branchesWithUserAndTrainingCount
-      });
-    } else {
-      console.log("❌ No branches found matching location codes");
-      res.status(404).json({ 
-        message: "No branches found matching admin's location codes",
-        debug: { allowedLocCodes }
-      });
+      return res.status(200).json({ message: "Data found", data: branchesWithCounts });
     }
+
+    // Filtered admin — only their assigned branches
+    const allowedLocCodes = AdminBranch.branches.map(b => b.locCode);
+    const allowedBoth = [
+      ...allowedLocCodes.map(c => String(c)),
+      ...allowedLocCodes.map(c => Number(c)).filter(c => !isNaN(c))
+    ];
+
+    const branches = await Branch.find({ locCode: { $in: allowedBoth } });
+
+    if (branches.length === 0) {
+      return res.status(404).json({ message: "No branches found matching admin's location codes" });
+    }
+
+    const branchesWithCounts = await Promise.all(branches.map(async (branch) => {
+      const branchLocCode = String(branch.locCode);
+      const query = {
+        $or: [
+          { locCode: branchLocCode },
+          { locCode: "All" },
+          { locCode: { $regex: new RegExp(`(^|,\\s*)${branchLocCode}(,|\\s*$)`) } }
+        ]
+      };
+      const userCount = await User.countDocuments(query);
+      const usersInBranch = await User.find(query);
+      let totalTrainingCount = 0;
+      let totalAssessmentCount = 0;
+      for (const user of usersInBranch) {
+        totalTrainingCount += user.training.length;
+        totalAssessmentCount += user.assignedAssessments.length;
+      }
+      return { ...branch.toObject(), userCount, totalTrainingCount, totalAssessmentCount };
+    }));
+
+    return res.status(200).json({ message: "Data found", data: branchesWithCounts });
 
   } catch (error) {
     console.error('❌ Error in GetBranch:', error);
-    res.status(500).json({ 
-      message: "Internal server error", 
-      error: error.message,
-      debug: process.env.NODE_ENV === 'development' ? error.stack : undefined
-    });
+    res.status(500).json({ message: "Internal server error", error: error.message });
   }
 };
 
@@ -837,6 +1096,7 @@ export const UpdateuserTrainingprocess = async (req, res) => {
 
     // Update training status
     const allModulesPassed = trainingProgress.modules.every(mod => mod.pass === true);
+    const wasAlreadyPassed = trainingProgress.pass === true;
 
     if (allModulesPassed) {
       trainingProgress.pass = true;
@@ -848,6 +1108,17 @@ export const UpdateuserTrainingprocess = async (req, res) => {
 
     // Save updated training progress
     await trainingProgress.save();
+
+    // Trigger notification if newly completed
+    if (allModulesPassed && !wasAlreadyPassed) {
+      await sendNotification({
+        title: 'Training Completed',
+        body: `Congratulations! You have completed the training program: "${trainingProgress.trainingName}"`,
+        userIds: [userId],
+        senderName: 'LMS System',
+        category: 'Training'
+      });
+    }
 
     // Update User Collection
     const user = await User.findById(userId);

@@ -1,68 +1,33 @@
 import { useEffect, useState } from "react";
-import baseUrl from "../../api/api";
 import { FaGlobe } from "react-icons/fa";
+import { fetchLMSStats } from "../../features/dashboard/dashboardFetch";
 
 const LMSWebsiteLoginStats = () => {
-    const [lmsStats, setLmsStats] = useState({
+    const [responseData, setResponseData] = useState(null);
+    const [loading, setLoading] = useState(true);
+    useEffect(() => {
+        let mounted = true;
+        const load = async () => {
+            setLoading(true);
+            try {
+                const json = await fetchLMSStats();
+                if (!mounted) return;
+                setResponseData(json);
+            } finally {
+                if (mounted) setLoading(false);
+            }
+        };
+        load();
+        return () => {
+            mounted = false;
+        };
+    }, []);
+    const lmsStats = responseData?.data || {
         uniqueLMSUserCount: 0,
         totalLMSLogins: 0,
         activeLMSSessions: 0,
         recentLMSLogins: 0
-    });
-    const [loading, setLoading] = useState(true);
-
-    useEffect(() => {
-        const fetchLMSStats = async () => {
-            try {
-                console.log('Fetching LMS website login stats from:', baseUrl.baseUrl + 'api/lms-login/count-simple');
-                
-                const response = await fetch(baseUrl.baseUrl + 'api/lms-login/count-simple', {
-                    method: "GET",
-                    headers: {
-                        "Content-Type": "application/json"
-                    },
-                    credentials: "include",
-                });
-                
-                console.log('LMS stats response status:', response.status);
-                
-                if (!response.ok) {
-                    const errorText = await response.text();
-                    console.error('LMS stats response not ok:', response.status, errorText);
-                    throw new Error(`HTTP ${response.status}: ${errorText}`);
-                }
-                
-                const result = await response.json();
-                console.log('LMS stats response:', result);
-                
-                if (result.success && result.data) {
-                    setLmsStats(result.data);
-                    console.log('LMS stats fetched successfully:', result.data);
-                } else {
-                    console.error('LMS stats response structure unexpected:', result);
-                    setLmsStats({
-                        uniqueLMSUserCount: 0,
-                        totalLMSLogins: 0,
-                        activeLMSSessions: 0,
-                        recentLMSLogins: 0
-                    });
-                }
-                
-                setLoading(false);
-            } catch (error) {
-                console.error('Failed to fetch LMS website login stats:', error.message);
-                setLmsStats({
-                    uniqueLMSUserCount: 0,
-                    totalLMSLogins: 0,
-                    activeLMSSessions: 0,
-                    recentLMSLogins: 0
-                });
-                setLoading(false);
-            }
-        };
-
-        fetchLMSStats();
-    }, []);
+    };
 
     if (loading) {
         return (

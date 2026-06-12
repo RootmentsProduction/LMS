@@ -1,18 +1,106 @@
 import express from 'express';
 import mongoose from 'mongoose';
-import { handlePermissions, CreatingAdminUsers, getTopUsers, HomeBar, } from '../controllers/DestinationController.js';
+import { handlePermissions, CreatingAdminUsers, getTopUsers, HomeBar, HomeProgressSummary, getAccessibleStores, getAccessibleEmployees, getAdminUsers, updateAdminUser, deleteAdminUser } from '../controllers/DestinationController.js';
+import { createBranchAudit, getBranchAudits, getBranchAuditById } from '../controllers/BranchAuditController.js';
 import { AdminLogin, ChangeVisibility, getAllNotifications, getEscalationLevel, getNotifications, GetSubroles, getVisibility, Subroles, upsertEscalationLevel } from '../controllers/moduleController.js';
 import { VerifyToken } from '../lib/VerifyJwt.js';
 import { CreateNotification, FindOverDueAssessment, FindOverDueTraining, SendNotification, SendNotificationAssessment } from '../controllers/AssessmentReassign.js';
 import { MiddilWare } from '../lib/middilWare.js';
 import { GetAllUserDetailes, GetBranchDetailes, GetCurrentAdmin, GetPermissionController, GetSearchDataController, GetStoreManager, GetStoreManagerDueDate, PermissionController, UpdateAdminDetaile, UpdateBranchDetails, UpdateOneUserDetailes } from '../controllers/FutterAssessment.js';
+import { createCluster, getClusters } from '../controllers/ClusterController.js';
 import User from '../model/User.js';
 
 const router = express.Router();
 
+// RBAC Routes
+/**
+ * @swagger
+ * /api/admin/accessible-stores:
+ *   get:
+ *     tags: [Admin]
+ *     summary: Retrieve accessible stores for admin
+ *     description: Returns a list of stores accessible to the logged-in admin based on their role and assigned branches.
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: A list of stores
+ */
+router.get('/accessible-stores', MiddilWare, getAccessibleStores);
 
+/**
+ * @swagger
+ * /api/admin/accessible-employees:
+ *   get:
+ *     tags: [Admin]
+ *     summary: Retrieve accessible employees for admin
+ *     description: Returns a list of employees accessible to the logged-in admin based on their role and assigned branches. Admins are filtered out from this list.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: storeId
+ *         schema:
+ *           type: string
+ *         description: Optional store filter (can be storeId/ObjectId, workingBranch name, or locCode)
+ *       - in: query
+ *         name: store
+ *         schema:
+ *           type: string
+ *         description: Optional store filter alias (workingBranch name or locCode)
+ *       - in: query
+ *         name: locCode
+ *         schema:
+ *           type: string
+ *         description: Optional store filter alias (locCode)
+ *     responses:
+ *       200:
+ *         description: A list of employees
+ */
+router.get('/accessible-employees', MiddilWare, getAccessibleEmployees);
 
+/**
+ * @swagger
+ * /api/admin/cluster/create:
+ *   post:
+ *     tags: [Admin]
+ *     summary: Create a new cluster
+ *     description: Creates a new cluster and assigns stores to it. Only accessible by super_admin or hr_admin.
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               clusterName:
+ *                 type: string
+ *               stores:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *     responses:
+ *       201:
+ *         description: Cluster created successfully
+ */
+router.post('/cluster/create', MiddilWare, createCluster);
 
+/**
+ * @swagger
+ * /api/admin/cluster:
+ *   get:
+ *     tags: [Admin]
+ *     summary: Get all clusters
+ *     description: Retrieves a list of all clusters.
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: A list of clusters
+ */
+router.get('/cluster', MiddilWare, getClusters);
 /**
  * @swagger
  * /api/admin/get/bestThreeUser:
@@ -89,6 +177,9 @@ router.get('/get/bestThreeUser', MiddilWare, getTopUsers);
  *         description: Internal server error
  */
 router.get('/get/HomeProgressData', MiddilWare, HomeBar);
+router.get('/get/HomeProgressSummary', MiddilWare, HomeProgressSummary);
+router.get('/branch-audit', MiddilWare, getBranchAudits);
+router.get('/branch-audit/:id', MiddilWare, getBranchAuditById);
 
 
 
@@ -126,6 +217,109 @@ router.get('/get/HomeProgressData', MiddilWare, HomeBar);
  *         description: Internal server error.
  */
 router.post('/admin/createadmin', CreatingAdminUsers);
+/**
+ * @swagger
+ * /api/admin/admin/list:
+ *   get:
+ *     tags: [Admin]
+ *     summary: Get all admins and employees (ordinary users)
+ *     description: Retrieves a combined list of all administrators from the Admin collection and ordinary users from the User collection mapped to the admin format.
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Successfully retrieved all user and admin profiles.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *       500:
+ *         description: Internal server error.
+ */
+router.get('/admin/list', MiddilWare, getAdminUsers);
+
+/**
+ * @swagger
+ * /api/admin/admin/update/{id}:
+ *   put:
+ *     tags: [Admin]
+ *     summary: Update an admin or employee user
+ *     description: Updates details for a user or admin by ID. Supports promoting an employee to an admin role or demoting an admin to an employee role, adjusting their collection placement and permissions accordingly.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: User or Admin ID to update
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name:
+ *                 type: string
+ *               email:
+ *                 type: string
+ *               phoneNumber:
+ *                 type: string
+ *               role:
+ *                 type: string
+ *                 enum: [super_admin, hr_admin, cluster_admin, store_admin, employee]
+ *               Branch:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                 description: Array of branch ObjectIds assigned
+ *               password:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: User updated successfully.
+ *       404:
+ *         description: User or Admin not found.
+ *       500:
+ *         description: Internal server error.
+ */
+router.put('/admin/update/:id', MiddilWare, updateAdminUser);
+
+/**
+ * @swagger
+ * /api/admin/admin/delete/{id}:
+ *   delete:
+ *     tags: [Admin]
+ *     summary: Delete a user or admin
+ *     description: Deletes a user or admin account from the database by ID.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: User or Admin ID to delete
+ *     responses:
+ *       200:
+ *         description: User deleted successfully.
+ *       404:
+ *         description: User not found.
+ *       500:
+ *         description: Internal server error.
+ */
+router.delete('/admin/delete/:id', MiddilWare, deleteAdminUser);
 
 /**
  * @swagger
@@ -291,7 +485,7 @@ router.post('/admin/verifyToken', VerifyToken);
  *       500:
  *         description: Internal server error.
  */
-router.get('/home/notification', getNotifications);
+router.get('/home/notification', MiddilWare, getNotifications);
 
 /**
  * @swagger
@@ -307,7 +501,7 @@ router.get('/home/notification', getNotifications);
  *       500:
  *         description: Internal server error.
  */
-router.get('/home/AllNotification', getAllNotifications);
+router.get('/home/AllNotification', MiddilWare, getAllNotifications);
 
 /**
  * @swagger
@@ -865,6 +1059,7 @@ router.get('/get/permission/controller', MiddilWare, GetPermissionController);
 
 
 router.post('/get/searching/userORbranch', MiddilWare, GetSearchDataController);
+router.post('/branch-audit', MiddilWare, createBranchAudit);
 
 
 

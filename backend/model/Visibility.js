@@ -7,7 +7,7 @@ const visibilitySchema = new mongoose.Schema(
       {
         role: {
           type: String,
-          enum: ['super_admin', 'cluster_admin', 'store_admin'],
+          enum: ['super_admin', 'admin', 'hr_admin', 'cluster_admin', 'store_admin'],
           required: true,
         },
         visibility: {
@@ -20,7 +20,7 @@ const visibilitySchema = new mongoose.Schema(
       {
         role: {
           type: String,
-          enum: ['super_admin', 'cluster_admin', 'store_admin'],
+          enum: ['super_admin', 'admin', 'hr_admin', 'cluster_admin', 'store_admin'],
           required: true,
         },
         visibility: {

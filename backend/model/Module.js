@@ -16,14 +16,17 @@ const videoSchema = new mongoose.Schema({
     // Array of questions related to the video
 });
 
-// Define the module schema that includes multiple videos
 const moduleSchema = new mongoose.Schema({
-    moduleName: { type: String, required: true }, // Name of the module
+    moduleName: { type: String, required: true },
     description: { type: String, required: true },
-    videos: [videoSchema], // Array of video objects using videoSchema
-    createdAt: { type: Date, default: Date.now }, // Timestamp when the module was created
+    videos: [videoSchema],
+    createdBy: { type: String, default: '' },
+    createdAt: { type: Date, default: Date.now },
 });
 
+// Modules are bulk-fetched by _id array from Training.modules[]
+// _id index is automatic; add moduleName for search
+moduleSchema.index({ moduleName: 1 });
 
 const Module = mongoose.model('Module', moduleSchema)
 export default Module

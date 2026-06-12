@@ -3,8 +3,48 @@ import Assessment from '../model/Assessment.js';
 import TrainingProgress from '../model/Trainingprocessschema.js';
 import { Training } from '../model/Traning.js';
 import User from '../model/User.js';
-import axios from 'axios';
 import Module from '../model/Module.js'; // Added import for Module
+import { sendNotification } from '../utils/notificationHelper.js';
+
+const getTrainingVideoStats = (training, progressRecords = []) => {
+  const modules = Array.isArray(training?.modules) ? training.modules : [];
+  const populatedVideos = modules.reduce((total, module) => {
+    return total + (Array.isArray(module?.videos) ? module.videos.length : 0);
+  }, 0);
+
+  const populatedDuration = modules.reduce((total, module) => {
+    return total + (Array.isArray(module?.videos)
+      ? module.videos.reduce((sum, video) => sum + Number(video?.duration || video?.durationMinutes || 0), 0)
+      : 0);
+  }, 0);
+
+  if (populatedVideos > 0 || populatedDuration > 0) {
+    return { totalVideos: populatedVideos, durationMinutes: populatedDuration };
+  }
+
+  // Assigned training lists may only have module ids populated. Progress records keep the module/video shape.
+  const progressStats = progressRecords.reduce(
+    (best, record) => {
+      const stats = (record?.modules || []).reduce(
+        (acc, module) => {
+          const videos = Array.isArray(module?.videos) ? module.videos : [];
+          acc.totalVideos += videos.length;
+          acc.durationMinutes += videos.reduce(
+            (sum, video) => sum + Number(video?.totalDuration || video?.duration || video?.durationMinutes || 0),
+            0
+          );
+          return acc;
+        },
+        { totalVideos: 0, durationMinutes: 0 }
+      );
+
+      return stats.totalVideos > best.totalVideos ? stats : best;
+    },
+    { totalVideos: 0, durationMinutes: 0 }
+  );
+
+  return progressStats;
+};
 
 // Helper function to assign existing mandatory trainings to new users
 const assignExistingMandatoryTrainings = async (user) => {
@@ -139,32 +179,27 @@ export const assignAssessmentToUser = async (req, res) => {
   }
 };
 
-// Helper function to fetch employee data from external API
-const fetchEmployeeData = async () => {
-  try {
-    // Fetch directly from external API (avoid self-referencing)
-    const ROOTMENTS_API_TOKEN = 'RootX-production-9d17d9485eb772e79df8564004d4a4d4';
-    const response = await axios.post('https://rootments.in/api/employee_range', {
-      startEmpId: 'EMP1',
-      endEmpId: 'EMP9999'
-    }, { 
-      timeout: 15000,
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-        'Authorization': `Bearer ${ROOTMENTS_API_TOKEN}`,
-      }
-    });
-    
-    return response.data?.data || [];
-  } catch (error) {
-    console.error('Error fetching employee data from local API:', error);
-    return [];
-  }
-};
+import { getAccessibleStoreIds, isFullAccessAdmin } from '../lib/permissions.js';
+import Branch from "../model/Branch.js";
+import Admin from "../model/Admin.js";
 
 export const GetAllTrainingWithCompletion = async (req, res) => {
   try {
+    const AdminId = req.admin?.userId;
+    if (!AdminId) {
+        return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    const AdminData = await Admin.findById(AdminId);
+    if (!AdminData) {
+        return res.status(404).json({ message: "Admin not found" });
+    }
+
+    const accessibleStoreIds = await getAccessibleStoreIds(AdminId);
+    const branches = await Branch.find({ _id: { $in: accessibleStoreIds } });
+    const allowedLocCodes = branches.map(branch => branch.locCode).filter(Boolean);
+    const branchNames = branches.map(branch => branch.branchName || branch.workingBranch).filter(Boolean);
+
     // Fetch all trainings that have been assigned to users (have progress records)
     // We'll find trainings by looking at TrainingProgress records
     const progressRecords = await TrainingProgress.find().populate('trainingId', 'trainingName modules Trainingtype Assignedfor deadline');
@@ -188,55 +223,46 @@ export const GetAllTrainingWithCompletion = async (req, res) => {
       }
     });
 
-    // Fetch employee data directly from external API (avoid self-referencing)
-    let employeeData = [];
-    try {
-      const ROOTMENTS_API_TOKEN = 'RootX-production-9d17d9485eb772e79df8564004d4a4d4';
-      const response = await axios.post('https://rootments.in/api/employee_range', {
-        startEmpId: 'EMP1',
-        endEmpId: 'EMP9999'
-      }, {
-        timeout: 15000,
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'Authorization': `Bearer ${ROOTMENTS_API_TOKEN}`,
-        }
-      });
-      
-      employeeData = response.data?.data || [];
-      console.log('Fetched employee data from local API:', employeeData.length, 'employees');
-    } catch (error) {
-      console.error('Error fetching employee data from local API:', error.message);
-      // Continue with internal users only
-    }
+    // Use internal users instead of the external employee API.
+    const internalEmployees = await User.find(
+      {},
+      {
+        empID: 1,
+        username: 1,
+        designation: 1,
+        workingBranch: 1,
+        locCode: 1,
+        email: 1,
+      }
+    ).lean();
+
+    const employeeData = internalEmployees.map((user) => ({
+      empID: user.empID || '',
+      username: user.username || '',
+      designation: user.designation || '',
+      workingBranch: user.workingBranch || '',
+      locCode: user.locCode || '',
+      email: user.email || '',
+    }));
 
     // Create a map for quick employee lookup by empID
     const employeeMap = new Map();
     employeeData.forEach(emp => {
-      if (emp.emp_code) {
-        employeeMap.set(emp.emp_code, {
-          empID: emp.emp_code,
-          username: emp.name || '',
-          designation: emp.role_name || '',
-          workingBranch: emp.store_name || '',
-          email: emp.email || ''
+      if (emp.empID) {
+        employeeMap.set(emp.empID, {
+          empID: emp.empID,
+          username: emp.username,
+          designation: emp.designation,
+          workingBranch: emp.workingBranch,
+          locCode: emp.locCode,
+          email: emp.email,
         });
       }
           });
 
-      // Filter out mandatory trainings - only return assigned trainings
+      // Keep both assigned and mandatory trainings in the unified list.
       const filteredTrainingMap = new Map();
       Array.from(trainingMap.values()).forEach(({ training, progressRecords }) => {
-        // Check if this is a mandatory training
-        const trainingType = training.Trainingtype;
-        const isMandatory = trainingType === 'Mandatory' || trainingType === 'mandatory';
-        
-        if (isMandatory) {
-          console.log(`Skipping mandatory training "${training.trainingName}" from GetuserTraining API`);
-          return; // Skip mandatory trainings
-        }
-        
         filteredTrainingMap.set(training._id.toString(), { training, progressRecords });
       });
 
@@ -294,8 +320,20 @@ export const GetAllTrainingWithCompletion = async (req, res) => {
             username: record.userId?.username || '',
             designation: record.userId?.designation || '',
             workingBranch: record.userId?.workingBranch || '',
+            locCode: record.userId?.locCode || '',
             email: record.userId?.email || ''
           };
+
+          // Check RBAC before pushing the record
+          if (!isFullAccessAdmin(AdminData.role)) {
+              const isAccessible = allowedLocCodes.includes(finalUserData.locCode) ||
+                  branchNames.includes(finalUserData.workingBranch) ||
+                  branchNames.some(name => new RegExp(name, 'i').test(finalUserData.locCode));
+                  
+              if (!isAccessible) {
+                  return; // Skip if user is not in admin's scope
+              }
+          }
 
           // Add unique branches and designations from local API data
           if (finalUserData.workingBranch) uniqueBranches.add(finalUserData.workingBranch);
@@ -315,24 +353,29 @@ export const GetAllTrainingWithCompletion = async (req, res) => {
 
         // Also add unique branches and designations from all employees (for filtering)
         employeeData.forEach(emp => {
-          if (emp.store_name) uniqueBranches.add(emp.store_name);
-          if (emp.role_name) uniqueDesignations.add(emp.role_name);
+          if (emp.workingBranch) uniqueBranches.add(emp.workingBranch);
+          if (emp.designation) uniqueDesignations.add(emp.designation);
         });
 
         const averageCompletionPercentage = totalUsers > 0 ? (totalPercentage / totalUsers).toFixed(2) : 0;
+        const { totalVideos: totalVideosInTraining, durationMinutes } =
+          getTrainingVideoStats(training, progressRecords);
 
         return {
           trainingId: training._id,
           trainingName: training.trainingName,
           trainingTitle: training.title,
           numberOfModules: training.modules ? training.modules.length : 0,
-          totalUsers: employeeData.length, // Show total employees from local API
+          totalVideos: totalVideosInTraining,
+          durationMinutes,
+          totalUsers, // Show actually assigned users on training cards
           totalAssignedUsers: totalUsers, // Show actually assigned users
           averageCompletionPercentage,
           uniqueBranches: Array.from(uniqueBranches),
           uniqueItems: Array.from(uniqueDesignations),
           userProgress,
-          allEmployees: employeeData.length, // Total number of employees available
+          allEmployees: employeeData.length,
+          Trainingtype: training.Trainingtype || 'Assigned',
           trainingType: training.Trainingtype || 'Assigned',
           assignedFor: training.Assignedfor || []
         };
@@ -340,7 +383,7 @@ export const GetAllTrainingWithCompletion = async (req, res) => {
     );
 
           res.status(200).json({
-        message: "Assigned training data fetched successfully (mandatory trainings excluded)",
+        message: "Training data fetched successfully",
         data: trainingData
       });
   } catch (error) {
@@ -378,12 +421,12 @@ export const ReassignTraining = async (req, res) => {
       return res.status(400).json({ message: "No modules found for this training" });
     }
 
-    // Fetch employee data from external API
-    const employeeData = await fetchEmployeeData();
+    // Resolve employees from the internal users collection.
+    const selectedUsers = await User.find({ empID: { $in: assignedTo } }).lean();
     const employeeMap = new Map();
-    employeeData.forEach(emp => {
-      if (emp.emp_code) {
-        employeeMap.set(emp.emp_code, emp);
+    selectedUsers.forEach((user) => {
+      if (user.empID) {
+        employeeMap.set(user.empID, user);
       }
     });
 
@@ -394,7 +437,7 @@ export const ReassignTraining = async (req, res) => {
     for (const empCode of assignedTo) {
       const employeeInfo = employeeMap.get(empCode);
       if (!employeeInfo) {
-        console.warn(`Employee with code ${empCode} not found in external API`);
+        console.warn(`Employee with code ${empCode} not found in internal users collection`);
         continue;
       }
 
@@ -404,13 +447,14 @@ export const ReassignTraining = async (req, res) => {
       if (!user) {
         // Create new user from external employee data
         user = new User({
-          username: employeeInfo.name || '',
+          username: employeeInfo.username || '',
           email: employeeInfo.email || `${empCode}@company.com`,
-          phoneNumber: employeeInfo.phone || '',
-          locCode: employeeInfo.store_code || '1', // Default to '1' if no store_code
+          phoneNumber: employeeInfo.phoneNumber || '',
+          locCode: employeeInfo.locCode || '1',
           empID: empCode,
-          designation: employeeInfo.role_name || '',
-          workingBranch: employeeInfo.store_name || '',
+          designation: employeeInfo.designation || '',
+          workingBranch: employeeInfo.workingBranch || '',
+          source: 'internal-sync',
           assignedModules: [],
           assignedAssessments: [],
           training: []
@@ -421,9 +465,9 @@ export const ReassignTraining = async (req, res) => {
         console.log(`Assigned existing mandatory trainings to new external employee: ${empCode}`);
       } else {
         // Update existing user with latest employee data
-        user.username = employeeInfo.name || user.username;
-        user.designation = employeeInfo.role_name || user.designation;
-        user.workingBranch = employeeInfo.store_name || user.workingBranch;
+        user.username = employeeInfo.username || user.username;
+        user.designation = employeeInfo.designation || user.designation;
+        user.workingBranch = employeeInfo.workingBranch || user.workingBranch;
         user.email = employeeInfo.email || user.email;
         
         // IMPORTANT: Don't update locCode from external API to preserve our branch mapping fix
@@ -482,6 +526,17 @@ export const ReassignTraining = async (req, res) => {
       });
 
       await trainingProgress.save();
+
+      // Send notification to the user
+      const senderName = req.admin?.username || 'Admin';
+      await sendNotification({
+        title: 'New Training Assigned',
+        body: `You have been assigned a training program: "${training.trainingName}"`,
+        userIds: [user._id],
+        senderName,
+        category: 'Training'
+      });
+
       processedUsers.push(user);
     }
 
@@ -863,14 +918,43 @@ export const getUserTrainingProgress = async (req, res) => {
       });
     
     // Format the mandatory trainings to match the user.training structure
-    const mandatoryTrainings = trainingProgressRecords.map(progress => ({
-      trainingId: progress.trainingId,
-      deadline: progress.deadline,
-      status: progress.status,
-      pass: progress.pass,
-      assignedAt: progress.createdAt,
-      isMandatory: true
-    }));
+    const mandatoryTrainings = trainingProgressRecords.map(progress => {
+      let totalModules = 0;
+      let completedModules = 0;
+      let totalVideos = 0;
+      let completedVideos = 0;
+      const videoCompletionMap = new Map();
+
+      if (progress.modules) {
+        progress.modules.forEach((module) => {
+          totalModules++;
+          if (module.pass) completedModules++;
+          if (module.videos) {
+            module.videos.forEach((video) => {
+              totalVideos++;
+              if (video.pass && !videoCompletionMap.has(video.videoId.toString())) {
+                completedVideos++;
+                videoCompletionMap.set(video.videoId.toString(), true);
+              }
+            });
+          }
+        });
+      }
+
+      const moduleCompletion = totalModules > 0 ? (completedModules / totalModules) * 100 : 0;
+      const videoCompletion = totalVideos > 0 ? (completedVideos / totalVideos) * 100 : 0;
+      const progressPercentage = Math.round(moduleCompletion * 0.4 + videoCompletion * 0.6);
+
+      return {
+        trainingId: progress.trainingId,
+        deadline: progress.deadline,
+        status: progress.status,
+        pass: progress.pass,
+        assignedAt: progress.createdAt,
+        isMandatory: true,
+        progressPercentage
+      };
+    });
     
     res.status(200).json({
       message: "Training progress retrieved successfully",
@@ -893,6 +977,21 @@ export const getUserTrainingProgress = async (req, res) => {
 
 export const MandatoryGetAllTrainingWithCompletion = async (req, res) => {
   try {
+    const AdminId = req.admin?.userId;
+    if (!AdminId) {
+        return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    const AdminData = await Admin.findById(AdminId);
+    if (!AdminData) {
+        return res.status(404).json({ message: "Admin not found" });
+    }
+
+    const accessibleStoreIds = await getAccessibleStoreIds(AdminId);
+    const branches = await Branch.find({ _id: { $in: accessibleStoreIds } });
+    const allowedLocCodes = branches.map(branch => branch.locCode).filter(Boolean);
+    const branchNames = branches.map(branch => branch.branchName || branch.workingBranch).filter(Boolean);
+
     console.log("Entered");
 
     // Fetch all mandatory trainings
@@ -918,6 +1017,19 @@ export const MandatoryGetAllTrainingWithCompletion = async (req, res) => {
           if (!record.userId) {
             console.warn(`TrainingProgress record with null userId for trainingId: ${training._id}`);
             continue; // Skip this record if userId is null
+          }
+
+          // Check RBAC
+          if (!isFullAccessAdmin(AdminData.role)) {
+              const userLocCode = record.userId.locCode || '';
+              const userWorkingBranch = record.userId.workingBranch || '';
+              const isAccessible = allowedLocCodes.includes(userLocCode) ||
+                  branchNames.includes(userWorkingBranch) ||
+                  branchNames.some(name => new RegExp(name, 'i').test(userLocCode));
+                  
+              if (!isAccessible) {
+                  continue; // Skip if user is not in admin's scope
+              }
           }
 
           totalUsers++;
@@ -969,6 +1081,8 @@ export const MandatoryGetAllTrainingWithCompletion = async (req, res) => {
         const uniqueItems = [
           ...new Set(progressRecords.map((record) => record.userId?.designation || null)),
         ];
+        const { totalVideos: totalVideosInTraining, durationMinutes } =
+          getTrainingVideoStats(training, progressRecords);
 
         return {
           trainingId: training._id,
@@ -976,6 +1090,8 @@ export const MandatoryGetAllTrainingWithCompletion = async (req, res) => {
           trainingTitle: training.title,
           Trainingtype: training.Trainingtype, // Include the training type
           numberOfModules: training.modules.length,
+          totalVideos: totalVideosInTraining,
+          durationMinutes,
           totalUsers,
           averageCompletionPercentage, // The average completion percentage for all users
           userProgress,
@@ -1067,12 +1183,16 @@ export const GetAllFullTrainingWithCompletion = async (req, res) => {
 
         // Calculate average completion percentage for the training based on all users
         const averageCompletionPercentage = totalUsers > 0 ? (totalPercentage / totalUsers).toFixed(2) : 0;
+        const { totalVideos: totalVideosInTraining, durationMinutes } =
+          getTrainingVideoStats(training, progressRecords);
 
         return {
           trainingId: training._id,
           trainingName: training.trainingName,
           trainingTitle: training.title,
           numberOfModules: training.modules.length,
+          totalVideos: totalVideosInTraining,
+          durationMinutes,
           totalUsers,
           averageCompletionPercentage, // The average completion percentage for all users
           userProgress // Return the detailed user progress
@@ -1102,18 +1222,26 @@ export const GetAssessment = async (req, res) => {
     for (const assess of assessments) {
       let totalAssigned = 0;
       let totalPassed = 0;
+      const countedEmployees = new Set();
 
       for (const user of users) {
-        const assigned = user.assignedAssessments.find(
-          (assignment) => assignment.assessmentId.toString() === assess._id.toString()
-        );
+        const matchingAssignments = (user.assignedAssessments || [])
+          .filter((assignment) => assignment.assessmentId && assignment.assessmentId.toString() === assess._id.toString())
+          .sort((a, b) => new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0));
 
-        if (assigned) {
-          totalAssigned++;
+        const assigned = matchingAssignments[0];
 
-          if (assigned.pass) {
-            totalPassed++;
-          }
+        if (!assigned) continue;
+
+        // Count each employee once, even if duplicate assignment records exist.
+        const employeeKey = String(user.empID || user._id);
+        if (countedEmployees.has(employeeKey)) continue;
+        countedEmployees.add(employeeKey);
+
+        totalAssigned++;
+
+        if (assigned.pass || String(assigned.status || "").toLowerCase() === "completed") {
+          totalPassed++;
         }
       }
 

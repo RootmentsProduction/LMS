@@ -1,5 +1,6 @@
 import express from 'express';
-import { GetUserMessage, UserAssessmentGet, userAssessmentUpdate, Usergetquestions } from '../controllers/FutterAssessment.js';
+import { GetUserMessage, UserAssessmentGet, userAssessmentUpdate, Usergetquestions, GetMobileDashboard } from '../controllers/FutterAssessment.js';
+import { verifyJWT } from '../lib/JWT.js';
 const router = express.Router();
 
 
@@ -144,5 +145,79 @@ router.get('/user/get/assessment/quesions', Usergetquestions);
 router.post('/user/update/assessment', userAssessmentUpdate);
 
 
-router.get('/user/get/message/:email',GetUserMessage)
+/**
+ * @swagger
+ * /api/user/assessment/user/get/message/{id}:
+ *   get:
+ *     tags: [Assessments]
+ *     summary: Get notifications for a user or admin by email or employee ID (Flutter compatible)
+ *     description: >
+ *       Retrieves all database-backed notifications targeted at the user or admin based on their email or employee ID (empID/EmpId).
+ *       Supports both employee accounts (User collection) and manager/admin accounts (Admin collection).
+ *       Filters notifications dynamically by target user ID, designation/role, or store/branch location code,
+ *       and returns the results sorted by creation date in descending order (latest-first).
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The user's or admin's email address or employee ID (empID/EmpId)
+ *     responses:
+ *       200:
+ *         description: List of notifications retrieved successfully sorted latest-first.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 notifications:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       _id:
+ *                         type: string
+ *                         description: Notification unique ID
+ *                       title:
+ *                         type: string
+ *                         description: Title of the notification
+ *                       body:
+ *                         type: string
+ *                         description: Detailed message content
+ *                       branch:
+ *                         type: array
+ *                         items:
+ *                           type: string
+ *                         description: Targeted branch codes
+ *                       user:
+ *                         type: array
+ *                         items:
+ *                           type: string
+ *                         description: Targeted user ObjectIds
+ *                       Role:
+ *                         type: array
+ *                         items:
+ *                           type: string
+ *                         description: Targeted designation or role strings
+ *                       useradmin:
+ *                         type: string
+ *                         description: Sender's name or display label
+ *                       category:
+ *                         type: string
+ *                         enum: [Task, Training, General]
+ *                         description: Notification category
+ *                       createdAt:
+ *                         type: string
+ *                         format: date-time
+ *                         description: Timestamp when notification was created
+ *       400:
+ *         description: Identifier (id) is required.
+ *       404:
+ *         description: User or Admin not found.
+ *       500:
+ *         description: Internal server error.
+ */
+router.get('/user/get/message/:id',GetUserMessage)
+router.get('/mobile/dashboard', verifyJWT, GetMobileDashboard);
 export default router;

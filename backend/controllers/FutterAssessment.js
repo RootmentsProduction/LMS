@@ -1,12 +1,17 @@
 import Admin from "../model/Admin.js";
 import Permission from "../model/AdminPermission.js";
+import Assessment from "../model/Assessment.js";
 import AssessmentProcess from "../model/Assessmentprocessschema.js";
 import Branch from "../model/Branch.js";
 import Notification from "../model/Notification.js";
 import TrainingProgress from "../model/Trainingprocessschema.js";
 import { Training } from "../model/Traning.js";
 import User from "../model/User.js";
+import Employee from "../model/Employee.js";
+import Walkin from "../model/Walkin.js";
+import Task from "../model/Task.js";
 import mongoose from 'mongoose';
+import { getAccessibleStoreIds, isFullAccessAdmin, buildWalkinFilter, buildTaskFilter } from '../lib/permissions.js';
 
 export const UserAssessmentGet = async (req, res) => {
     try {
@@ -85,6 +90,116 @@ export const Usergetquestions = async (req, res) => {
 
     }
 }
+
+export const GetAssessmentFullDetails = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        if (!id) {
+            return res.status(400).json({ message: "Assessment ID is required" });
+        }
+
+        const assessment = await Assessment.findById(id);
+        if (!assessment) {
+            return res.status(404).json({ message: "Assessment not found" });
+        }
+
+        const assignedUsers = await User.find({ "assignedAssessments.assessmentId": id })
+            .select({
+                _id: 1,
+                username: 1,
+                email: 1,
+                empID: 1,
+                designation: 1,
+                workingBranch: 1,
+                locCode: 1,
+                assignedAssessments: { $elemMatch: { assessmentId: id } },
+            });
+
+        const assessmentProcesses = await AssessmentProcess.find({ assessmentId: id })
+            .populate({
+                path: "userId",
+                select: "_id username email empID designation workingBranch locCode",
+            });
+
+        const processMap = new Map(
+            assessmentProcesses.map((process) => [String(process.userId?._id || process.userId), process])
+        );
+
+        const users = assignedUsers.map((user) => {
+            const assignedAssessment = user.assignedAssessments?.[0] || null;
+            const process = processMap.get(String(user._id)) || null;
+
+            return {
+                _id: user._id,
+                username: user.username,
+                email: user.email,
+                empID: user.empID,
+                designation: user.designation,
+                workingBranch: user.workingBranch,
+                locCode: user.locCode,
+                assignedAssessment: assignedAssessment
+                    ? {
+                        assessmentId: assignedAssessment.assessmentId,
+                        deadline: assignedAssessment.deadline,
+                        pass: assignedAssessment.pass,
+                        status: assignedAssessment.status,
+                        complete: assignedAssessment.complete,
+                    }
+                    : null,
+                attempt: process
+                    ? {
+                        _id: process._id,
+                        status: process.status,
+                        totalMarks: process.totalMarks,
+                        passed: process.passed,
+                        answers: process.answers,
+                        createdAt: process.createdAt,
+                        updatedAt: process.updatedAt,
+                    }
+                    : null,
+            };
+        });
+
+        const totalAssigned = users.length;
+        const totalCompleted = users.filter((user) => {
+            const status = String(user.assignedAssessment?.status || "").toLowerCase();
+            return status === "completed";
+        }).length;
+        const totalPassed = users.filter((user) => Boolean(user.assignedAssessment?.pass) || Boolean(user.attempt?.passed)).length;
+        const completionPercentage = totalAssigned > 0 ? Math.round((totalCompleted / totalAssigned) * 100) : 0;
+
+        return res.status(200).json({
+            message: "Assessment full details fetched successfully",
+            data: {
+                assessment: {
+                    _id: assessment._id,
+                    title: assessment.title,
+                    duration: assessment.duration,
+                    deadline: assessment.deadline,
+                    state: assessment.state,
+                    questions: assessment.questions,
+                    createdAt: assessment.createdAt,
+                    updatedAt: assessment.updatedAt,
+                },
+                users,
+                stats: {
+                    totalAssigned,
+                    totalCompleted,
+                    totalPassed,
+                    completionPercentage,
+                    questionsCount: assessment.questions?.length || 0,
+                },
+            },
+        });
+    } catch (error) {
+        console.error("Error fetching full assessment details:", error);
+        return res.status(500).json({
+            message: "Internal server error",
+            error: error.message,
+        });
+    }
+};
 
 export const userAssessmentUpdate = async (req, res) => {
     try {
@@ -305,22 +420,22 @@ export const GetAllUserDetailes = async (req, res) => {
                 if (!locCode || locCode.trim() === '') {
                     // If no store_code, try to map from store_name
                     const storeNameToLocCode = {
-                        'GROOMS TRIVANDRUM': '5',
-                        'GROOMS PALAKKAD': '19',
-                        'GROOMS EDAPALLY': '3',
-                        'GROOMS KOTTAYAM': '9',
-                        'GROOMS PERUMBAVOOR': '10',
-                        'GROOMS THRISSUR': '11',
-                        'GROOMS CHAVAKKAD': '12',
-                        'GROOMS EDAPPAL': '15',
-                        'GROOMS VATAKARA': '14',
-                        'GROOMS PERINTHALMANNA': '16',
-                        'GROOMS MANJERY': '18',
-                        'GROOMS KOTTAKKAL': '17',
-                        'GROOMS KOZHIKODE': '13',
-                        'GROOMS CALICUT': '13',
-                        'GROOMS KANNUR': '21',
-                        'GROOMS KALPETTA': '20',
+                        'SUITOR GUY TRIVANDRUM': '5',
+                        'SUITOR GUY PALAKKAD': '19',
+                        'SUITOR GUY EDAPPALLY': '3',
+                        'SUITOR GUY KOTTAYAM': '9',
+                        'SUITOR GUY PERUMBAVOOR': '10',
+                        'SUITOR GUY THRISSUR': '11',
+                        'SUITOR GUY CHAVAKKAD': '12',
+                        'SUITOR GUY EDAPPAL': '15',
+                        'SUITOR GUY VATAKARA': '14',
+                        'SUITOR GUY PERINTHALMANNA': '16',
+                        'SUITOR GUY MANJERY': '18',
+                        'SUITOR GUY KOTTAKKAL': '17',
+                        'SUITOR GUY KOZHIKODE': '13',
+                        'SUITOR GUY CALICUT': '13',
+                        'SUITOR GUY KANNUR': '21',
+                        'SUITOR GUY KALPETTA': '20',
                         'ZORUCCI EDAPPAL': '6',
                         'ZORUCCI KOTTAKKAL': '8',
                         'ZORUCCI PERINTHALMANNA': '7',
@@ -355,6 +470,7 @@ export const GetAllUserDetailes = async (req, res) => {
                     workingBranch: externalEmployee.store_name || 'No Store',
                     locCode: locCode,
                     phoneNumber: externalEmployee.phone || '',
+                    source: 'external-sync',
                     training: [],
                     assignedAssessments: []
                 });
@@ -426,10 +542,88 @@ export const GetAllUserDetailes = async (req, res) => {
             ...mandatoryTrainingsFormatted
         ];
 
-        // Create response data with combined trainings
+        // Calculate progress percentage for all trainings
+        const calculateProgress = (tp) => {
+            let totalModules = 0;
+            let completedModules = 0;
+            let totalVideos = 0;
+            let completedVideos = 0;
+            const videoCompletionMap = new Map();
+
+            if (tp.modules) {
+                tp.modules.forEach((module) => {
+                    totalModules++;
+                    if (module.pass) completedModules++;
+                    if (module.videos) {
+                        module.videos.forEach((video) => {
+                            totalVideos++;
+                            if (video.pass && !videoCompletionMap.has(video.videoId.toString())) {
+                                completedVideos++;
+                                videoCompletionMap.set(video.videoId.toString(), true);
+                            }
+                        });
+                    }
+                });
+            }
+
+            const moduleCompletion = totalModules > 0 ? (completedModules / totalModules) * 100 : 0;
+            const videoCompletion = totalVideos > 0 ? (completedVideos / totalVideos) * 100 : 0;
+            return Math.round(moduleCompletion * 0.4 + videoCompletion * 0.6);
+        };
+
+        const allTrainingsFormatted = allTrainings.map(t => {
+            const tObj = typeof t.toObject === 'function' ? t.toObject() : t;
+            const trainingIdStr = tObj.trainingId?._id?.toString() || tObj.trainingId?.toString();
+            
+            // Find the progress record in mandatoryTrainings (which contains all TrainingProgress for the user)
+            const progressRecord = mandatoryTrainings.find(tp => tp.trainingId?._id?.toString() === trainingIdStr);
+            let progressPercentage = 0;
+            if (progressRecord) {
+                progressPercentage = calculateProgress(progressRecord);
+            } else if (tObj.pass || tObj.status === 'Completed' || tObj.status === 'COMPLETED') {
+                progressPercentage = 100;
+            }
+            
+            return {
+                ...tObj,
+                progressPercentage
+            };
+        });
+
+        // Map and enrich assessments with total questions count and correct answers count
+        const populatedAssessments = await Promise.all(
+            (userData.assignedAssessments || []).map(async (a) => {
+                const aObj = typeof a.toObject === 'function' ? a.toObject() : a;
+                if (!aObj.assessmentId) return aObj;
+                
+                const assessId = aObj.assessmentId._id || aObj.assessmentId;
+                
+                // Fetch assessment to get questions length
+                const assess = await mongoose.model('Assessment').findById(assessId).select('questions');
+                const totalQuestions = assess?.questions?.length || 0;
+                
+                // Get correct answers count from AssessmentProcess
+                const attempt = await mongoose.model('AssessmentProcess').findOne({
+                    userId: userData._id,
+                    assessmentId: assessId
+                });
+                
+                const correctAnswers = attempt ? attempt.answers.filter(ans => ans.isCorrect).length : 0;
+                
+                return {
+                    ...aObj,
+                    totalQuestions,
+                    correctAnswers,
+                    score: attempt ? attempt.totalMarks : (aObj.complete || 0)
+                };
+            })
+        );
+
+        // Create response data with combined trainings and enriched assessments
         const responseData = {
             ...userData.toObject(),
-            training: allTrainings
+            training: allTrainingsFormatted,
+            assignedAssessments: populatedAssessments
         };
 
         console.log('Successfully retrieved user details for empID:', empID);
@@ -613,8 +807,8 @@ export const GetStoreManager = async (req, res) => {
         const AdminId = req.admin.userId;
         console.log('GetStoreManager called for AdminId:', AdminId);
 
-        // Step 1: Find the Admin and populate branches
-        const AdminData = await Admin.findById(AdminId).populate('branches');
+        // Step 1: Find the Admin
+        const AdminData = await Admin.findById(AdminId);
         console.log('AdminData found:', AdminData ? 'Yes' : 'No');
 
         if (!AdminData) {
@@ -627,43 +821,33 @@ export const GetStoreManager = async (req, res) => {
             });
         }
 
-        // Step 2: Extract locCodes from the populated branches
-        const locCodes = AdminData.branches.map(branch => branch.locCode);
-        console.log('Admin branches:', AdminData.branches.length);
-        console.log('LocCodes found:', locCodes);
+        // Step 2: Use RBAC to get accessible locCodes and branchNames
+        const accessibleStoreIds = await getAccessibleStoreIds(AdminId);
+        const accessibleBranches = await Branch.find({ _id: { $in: accessibleStoreIds } });
+        const locCodes = accessibleBranches.map(branch => branch.locCode).filter(Boolean);
+        const branchNames = accessibleBranches.map(branch => branch.branchName || branch.workingBranch).filter(Boolean);
 
-        // Step 3: Find all users - always return data regardless of matching
+        console.log('Accessible branches count:', accessibleBranches.length);
+
+        // Step 3: Find all users based on RBAC
         let users = [];
         
-        if (AdminData.role === 'super_admin') {
-            // Super admin can see all users
+        if (isFullAccessAdmin(AdminData.role)) {
+            // Super admin & HR admin can see all users
             users = await User.find({});
-            console.log('Super admin - all users found:', users.length);
+            console.log('Full access admin - all users found:', users.length);
         } else {
-            // For other admin types, try to find users by branch locCodes
-            users = await User.find({ locCode: { $in: locCodes } });
-            console.log('Users found for locCodes:', users.length);
-            
-            // If no users found, try alternative matching
-            if (users.length === 0) {
-                // Try to find users by branch names or other criteria
-                const branchNames = AdminData.branches.map(branch => branch.branchName || branch.workingBranch).filter(Boolean);
-                if (branchNames.length > 0) {
-                    users = await User.find({
-                        $or: [
-                            { workingBranch: { $in: branchNames } },
-                            { locCode: { $regex: branchNames.join('|'), $options: 'i' } }
-                        ]
-                    });
-                    console.log('Users found by branch names:', users.length);
-                }
+            // Cluster/Store admin
+            if (locCodes.length > 0 || branchNames.length > 0) {
+                users = await User.find({
+                    $or: [
+                        { locCode: { $in: locCodes } },
+                        { workingBranch: { $in: branchNames } },
+                        { locCode: { $regex: branchNames.join('|'), $options: 'i' } }
+                    ]
+                });
             }
-            
-            // If still no users found, get all users for this admin type
-            if (users.length === 0) {
-                users = await User.find({});
-                console.log('Fallback - all users found:', users.length);
-            }
+            console.log('Users found for accessible locCodes/branches:', users.length);
         }
 
         // Step 4: Filter trainings for these users
@@ -717,8 +901,8 @@ export const GetStoreManagerDueDate = async (req, res) => {
         const AdminId = req.admin.userId;
         console.log('GetStoreManagerDueDate called for AdminId:', AdminId);
 
-        // Step 1: Find the Admin and populate branches
-        const AdminData = await Admin.findById(AdminId).populate("branches");
+        // Step 1: Find the Admin
+        const AdminData = await Admin.findById(AdminId);
         console.log('AdminData found:', AdminData ? 'Yes' : 'No');
 
         if (!AdminData) {
@@ -729,43 +913,33 @@ export const GetStoreManagerDueDate = async (req, res) => {
             });
         }
 
-        // Step 2: Extract locCodes from the populated branches
-        const locCodes = AdminData.branches.map((branch) => branch.locCode);
-        console.log('Admin branches:', AdminData.branches.length);
-        console.log('LocCodes found:', locCodes);
+        // Step 2: Use RBAC to get accessible locCodes and branchNames
+        const accessibleStoreIds = await getAccessibleStoreIds(AdminId);
+        const accessibleBranches = await Branch.find({ _id: { $in: accessibleStoreIds } });
+        const locCodes = accessibleBranches.map(branch => branch.locCode).filter(Boolean);
+        const branchNames = accessibleBranches.map(branch => branch.branchName || branch.workingBranch).filter(Boolean);
 
-        // Step 3: Find all users - always return data regardless of matching
+        console.log('Accessible branches count:', accessibleBranches.length);
+
+        // Step 3: Find all users based on RBAC
         let users = [];
         
-        if (AdminData.role === 'super_admin') {
-            // Super admin can see all users
+        if (isFullAccessAdmin(AdminData.role)) {
+            // Super admin & HR admin can see all users
             users = await User.find({});
-            console.log('Super admin - all users found:', users.length);
+            console.log('Full access admin - all users found:', users.length);
         } else {
-            // For other admin types, try to find users by branch locCodes
-            users = await User.find({ locCode: { $in: locCodes } });
-            console.log('Users found for locCodes:', users.length);
-            
-            // If no users found, try alternative matching
-            if (users.length === 0) {
-                // Try to find users by branch names or other criteria
-                const branchNames = AdminData.branches.map(branch => branch.branchName || branch.workingBranch).filter(Boolean);
-                if (branchNames.length > 0) {
-                    users = await User.find({
-                        $or: [
-                            { workingBranch: { $in: branchNames } },
-                            { locCode: { $regex: branchNames.join('|'), $options: 'i' } }
-                        ]
-                    });
-                    console.log('Users found by branch names:', users.length);
-                }
+            // Cluster/Store admin
+            if (locCodes.length > 0 || branchNames.length > 0) {
+                users = await User.find({
+                    $or: [
+                        { locCode: { $in: locCodes } },
+                        { workingBranch: { $in: branchNames } },
+                        { locCode: { $regex: branchNames.join('|'), $options: 'i' } }
+                    ]
+                });
             }
-            
-            // If still no users found, get all users for this admin type
-            if (users.length === 0) {
-                users = await User.find({});
-                console.log('Fallback - all users found:', users.length);
-            }
+            console.log('Users found for accessible locCodes/branches:', users.length);
         }
 
         // Step 4: Filter overdue users
@@ -837,6 +1011,22 @@ export const PermissionController = async (req, res) => {
                 },
             },
             { new: true }
+        );
+
+        // Also update the permissions for the new "admin" role
+        await Permission.findOneAndUpdate(
+            { role: "admin" },
+            {
+                $set: {
+                    "permissions.canCreateTraining": admin.training[0],
+                    "permissions.canCreateAssessment": admin.assessment[0],
+                    "permissions.canReassignTraining": admin.training[1],
+                    "permissions.canReassignAssessment": admin.assessment[1],
+                    "permissions.canDeleteTraining": admin.training[2],
+                    "permissions.canDeleteAssessment": admin.assessment[2],
+                },
+            },
+            { new: true, upsert: true }
         );
 
         // Update cluster manager permissions
@@ -986,33 +1176,305 @@ export const GetSearchDataController = async (req, res) => {
 
 export const GetUserMessage = async (req, res) => {
     try {
-        const { email } = req.params;
+        const { id } = req.params;
 
-        if (!email) {
-            return res.status(400).json({ message: "Email is required" });
+        if (!id) {
+            return res.status(400).json({ message: "Identifier (email or employee ID) is required" });
         }
 
-        const userData = await User.findOne({ email })
+        // Determine if lookup is by email or employee ID
+        const isEmail = id.includes('@');
+        const userQuery = isEmail ? { email: id } : { empID: id };
+        const adminQuery = isEmail ? { email: id } : { EmpId: id };
+
+        let userData = await User.findOne(userQuery)
             .select("username email locCode empID designation workingBranch");
 
         if (!userData) {
-            return res.status(404).json({ message: "User not found" });
+            // Fallback to Admin collection if not found in User collection
+            const adminData = await Admin.findOne(adminQuery).populate('branches');
+            if (!adminData) {
+                return res.status(404).json({ message: "User or Admin not found" });
+            }
+            userData = {
+                _id: adminData._id,
+                username: adminData.name,
+                email: adminData.email,
+                designation: adminData.role,
+                locCode: adminData.branches?.map(b => b.locCode).filter(Boolean) || []
+            };
         }
 
-        const notifications = await Notification.find({
-            $or: [
-                { Role: { $in: [userData.designation] } },
-                { user: { $in: [userData._id] } },
-                { branch: { $in: [userData.locCode] } }
-            ]
-        });
+        const userIds = [userData._id];
+        
+        // Find matching employee to include notifications assigned to their employee record
+        if (userData.empID) {
+            const employee = await Employee.findOne({
+                $or: [
+                    { userId: userData._id },
+                    { employeeId: { $regex: `^${userData.empID}$`, $options: 'i' } }
+                ]
+            });
+            if (employee) {
+                userIds.push(employee._id);
+            }
+        }
 
+        const queryOr = [
+            { user: { $in: userIds } }
+        ];
+
+        if (userData.designation) {
+            queryOr.push({ Role: { $in: [userData.designation] } });
+        }
+
+        if (userData.locCode) {
+            if (Array.isArray(userData.locCode)) {
+                queryOr.push({ branch: { $in: userData.locCode } });
+            } else {
+                queryOr.push({ branch: { $in: [userData.locCode] } });
+            }
+        }
+
+        const notifications = await Notification.find({ $or: queryOr }).sort({ createdAt: -1 });
 
         return res.status(200).json({ notifications });
 
     } catch (error) {
         return res.status(500).json({
             message: "Internal Server Error",
+            error: error.message
+        });
+    }
+};
+
+export const GetMobileDashboard = async (req, res) => {
+    try {
+        const userId = req.user.userId;
+        
+        // Find user/admin record
+        let admin = await Admin.findById(userId).populate('branches').lean();
+        let user = null;
+        let role = '';
+        let name = '';
+        let storeName = 'All Stores';
+
+        if (admin) {
+            role = admin.role;
+            name = admin.name || '';
+            storeName = admin.branches?.[0]?.workingBranch || 'All Stores';
+        } else {
+            user = await User.findById(userId).lean();
+            if (user) {
+                role = 'employee';
+                name = user.username || '';
+                storeName = user.workingBranch || 'No Store';
+            } else {
+                return res.status(404).json({ success: false, message: 'User or Admin not found' });
+            }
+        }
+
+        const activeUser = admin || user;
+
+        // 1. Walkins stats
+        let totalWalkins = 0;
+        let walkinsToday = 0;
+        let walkinsYesterday = 0;
+
+        // Calculate local start of today, yesterday, and the current month in Asia/Kolkata timezone (UTC+5:30)
+        const now = new Date();
+        const formatter = new Intl.DateTimeFormat('en-US', {
+            timeZone: 'Asia/Kolkata',
+            year: 'numeric',
+            month: 'numeric',
+            day: 'numeric'
+        });
+        const parts = formatter.formatToParts(now);
+        const dateObj = {};
+        parts.forEach(p => { dateObj[p.type] = p.value; });
+        
+        // Midnight of today IST
+        const todayStart = new Date(Date.UTC(
+            parseInt(dateObj.year, 10),
+            parseInt(dateObj.month, 10) - 1,
+            parseInt(dateObj.day, 10),
+            0, 0, 0, 0
+        ));
+        todayStart.setTime(todayStart.getTime() - (5.5 * 60 * 60 * 1000));
+        
+        const yesterdayStart = new Date(todayStart);
+        yesterdayStart.setDate(yesterdayStart.getDate() - 1);
+
+        // Day 1 of the current month IST
+        const monthStart = new Date(Date.UTC(
+            parseInt(dateObj.year, 10),
+            parseInt(dateObj.month, 10) - 1,
+            1, // Day 1
+            0, 0, 0, 0
+        ));
+        monthStart.setTime(monthStart.getTime() - (5.5 * 60 * 60 * 1000));
+
+        let baseFilter = {};
+
+        if (['super_admin', 'admin', 'hr_admin'].includes(role)) {
+            // Full Admin overall - all walkins
+            baseFilter = {};
+        } else if (role === 'cluster_admin') {
+            // Cluster Admin - all stores under them
+            const accessibleStoreIds = await getAccessibleStoreIds(activeUser._id);
+            const branches = await Branch.find({ _id: { $in: accessibleStoreIds } }).lean();
+            const locCodes = branches.map(b => b.locCode);
+            const workingBranches = branches.map(b => b.workingBranch);
+            
+            baseFilter = {
+                $or: [
+                    { storeId: { $in: accessibleStoreIds } },
+                    { store: { $in: [...locCodes, ...workingBranches] } }
+                ]
+            };
+        } else if (role === 'store_admin') {
+            // Store Admin - walkins in their store
+            const accessibleStoreIds = await getAccessibleStoreIds(activeUser._id);
+            const branches = await Branch.find({ _id: { $in: accessibleStoreIds } }).lean();
+            const locCodes = branches.map(b => b.locCode);
+            const workingBranches = branches.map(b => b.workingBranch);
+            
+            baseFilter = {
+                $or: [
+                    { storeId: { $in: accessibleStoreIds } },
+                    { store: { $in: [...locCodes, ...workingBranches] } }
+                ]
+            };
+        } else {
+            // Employee - only walkins created by them
+            baseFilter = { createdBy: activeUser._id };
+        }
+
+        totalWalkins = await Walkin.countDocuments({ ...baseFilter, createdAt: { $gte: monthStart } });
+        walkinsToday = await Walkin.countDocuments({ ...baseFilter, createdAt: { $gte: todayStart } });
+        walkinsYesterday = await Walkin.countDocuments({ ...baseFilter, createdAt: { $gte: yesterdayStart, $lt: todayStart } });
+
+        let growthText = "0% from yesterday";
+        if (walkinsYesterday > 0) {
+            const pct = Math.round(((walkinsToday - walkinsYesterday) / walkinsYesterday) * 100);
+            growthText = `${pct >= 0 ? '+' : ''}${pct}% from yesterday`;
+        } else if (walkinsToday > 0) {
+            growthText = `+100% from yesterday`;
+        }
+
+        // 2. Tasks stats
+        const taskFilter = await buildTaskFilter(activeUser._id);
+        const totalTasks = await Task.countDocuments(taskFilter);
+        const tasksPending = await Task.countDocuments({
+            ...taskFilter,
+            status: { $in: ['PENDING', 'IN PROGRESS', 'ON HOLD', 'UNDER REVIEW'] }
+        });
+        const taskSubtext = tasksPending > 0 ? `${tasksPending} task(s) pending` : "No tasks assigned today";
+
+        // 3. Performance stats
+        let performanceScore = 4.2;
+        let performanceLabel = 'Avg Store Performance';
+        if (role === 'employee') {
+            performanceScore = 4.5;
+            performanceLabel = 'Staff Performance';
+        }
+
+        // 4. Assessments stats
+        let assessmentsCompleted = 0;
+        let assessmentsTotal = 0;
+
+        if (['super_admin', 'admin', 'hr_admin'].includes(role)) {
+            const allUsers = await User.find({}).select('assignedAssessments').lean();
+            for (const u of allUsers) {
+                if (u.assignedAssessments) {
+                    assessmentsTotal += u.assignedAssessments.length;
+                    assessmentsCompleted += u.assignedAssessments.filter(a => a.status === 'Completed').length;
+                }
+            }
+        } else if (role === 'cluster_admin' || role === 'store_admin') {
+            const accessibleStoreIds = await getAccessibleStoreIds(activeUser._id);
+            const branches = await Branch.find({ _id: { $in: accessibleStoreIds } }).lean();
+            const locCodes = branches.map(b => b.locCode);
+            
+            const usersInStore = await User.find({ locCode: { $in: locCodes } }).select('assignedAssessments').lean();
+            for (const u of usersInStore) {
+                if (u.assignedAssessments) {
+                    assessmentsTotal += u.assignedAssessments.length;
+                    assessmentsCompleted += u.assignedAssessments.filter(a => a.status === 'Completed').length;
+                }
+            }
+        } else {
+            // Employee
+            assessmentsTotal = activeUser.assignedAssessments?.length || 0;
+            assessmentsCompleted = activeUser.assignedAssessments?.filter(a => a.status === 'Completed').length || 0;
+        }
+
+        // 5. Training progress stats
+        let trainingTotal = 0;
+        let trainingCompleted = 0;
+
+        if (['super_admin', 'admin', 'hr_admin'].includes(role)) {
+            const allProgress = await TrainingProgress.find({}).lean();
+            trainingTotal = allProgress.length;
+            trainingCompleted = allProgress.filter(tp => tp.pass || tp.status === 'Completed').length;
+        } else if (role === 'cluster_admin' || role === 'store_admin') {
+            const accessibleStoreIds = await getAccessibleStoreIds(activeUser._id);
+            const branches = await Branch.find({ _id: { $in: accessibleStoreIds } }).lean();
+            const locCodes = branches.map(b => b.locCode);
+            const usersInStore = await User.find({ locCode: { $in: locCodes } }).select('_id').lean();
+            const userIds = usersInStore.map(u => u._id);
+
+            const storeProgress = await TrainingProgress.find({ userId: { $in: userIds } }).lean();
+            trainingTotal = storeProgress.length;
+            trainingCompleted = storeProgress.filter(tp => tp.pass || tp.status === 'Completed').length;
+        } else {
+            // Employee
+            const empProgress = await TrainingProgress.find({ userId: activeUser._id }).lean();
+            trainingTotal = empProgress.length;
+            trainingCompleted = empProgress.filter(tp => tp.pass || tp.status === 'Completed').length;
+        }
+
+        const trainingProgressPercentage = trainingTotal > 0 ? Math.round((trainingCompleted / trainingTotal) * 100) : 0;
+        const trainingsLeft = Math.max(0, trainingTotal - trainingCompleted);
+
+        res.status(200).json({
+            success: true,
+            message: 'Dashboard stats fetched successfully',
+            data: {
+                name,
+                role,
+                storeName,
+                training: {
+                    percentage: trainingProgressPercentage,
+                    completed: trainingCompleted,
+                    total: trainingTotal,
+                    leftToComplete: trainingsLeft
+                },
+                walkins: {
+                    total: totalWalkins,
+                    growthText
+                },
+                tasks: {
+                    total: totalTasks,
+                    subtext: taskSubtext
+                },
+                performance: {
+                    score: performanceScore,
+                    label: performanceLabel
+                },
+                assessments: {
+                    completed: assessmentsCompleted,
+                    total: assessmentsTotal,
+                    text: `${assessmentsCompleted}/${assessmentsTotal} Completed`
+                }
+            }
+        });
+
+    } catch (error) {
+        console.error('Error fetching mobile dashboard stats:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error',
             error: error.message
         });
     }

@@ -33,8 +33,6 @@ const Escalation = () => {
 
     // Save button at the bottom to log the table data
     const handleFormSave = async () => {
-        console.log("Current Table Data:", tableData);
-
         try {
             const response = await fetch(`${baseUrl.baseUrl}api/admin/escalation/level`, {
                 method: 'POST', // Set the method to POST
@@ -47,17 +45,14 @@ const Escalation = () => {
             // Handle the response
             if (!response.ok) {
                 const error = await response.json();
-                console.error("Error saving escalation levels:", error.message);
                 alert(`Failed to save data: ${error.message}`);
                 return;
             }
 
             const data = await response.json();
-            console.log("Data successfully saved:", data);
             alert("Data successfully saved!");
         } catch (error) {
             // Catch network errors or other exceptions
-            console.error("Error in saving data:", error.message);
             alert("An error occurred while saving data.");
         }
     };
@@ -69,13 +64,11 @@ const Escalation = () => {
                     throw new Error("Failed to fetch escalation levels");
                 }
                 const data = await response.json();
-                console.log(data.data);
                 const sortedData = data.data.sort((a, b) => a.id - b.id);
 
                 setTableData(sortedData)
                     ; // Update the state with fetched data
             } catch (error) {
-                console.error("Error fetching escalation levels:", error.message);
                 alert("Failed to load data. Please try again.");
             }
         };
@@ -87,9 +80,9 @@ const Escalation = () => {
     const nonEditableRows = ["On-the-day deadline alert", "Recurring escalation every two days after the 5-day mark"];
 
     return (
-        <div className="min-h-screen flex flex-col items-center justify-center bg-gray-100">
+        <div className="min-h-[calc(100vh-160px)] flex flex-col items-center justify-center bg-gray-50 p-4">
             <div className="w-full max-w-4xl bg-white shadow-md rounded-lg p-6">
-                <h1 className="text-xl font-bold text-gray-800 mb-4">Escalation Levels</h1>
+                <h1 className="text-xl font-extrabold text-gray-800 mb-4">Escalation Levels</h1>
                 <div className="overflow-x-auto">
                     <table className="min-w-full bg-white border border-gray-200">
                         <thead>

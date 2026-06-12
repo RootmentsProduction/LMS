@@ -4,6 +4,7 @@ import Admin from '../model/Admin.js';
 import TrainingProgress from '../model/Trainingprocessschema.js';
 import mongoose from 'mongoose';
 import axios from 'axios';
+import Task from '../model/Task.js';
 
 /**
  * @swagger
@@ -197,6 +198,7 @@ export const createEmployee = async (req, res) => {
                     designation: designation,
                     workingBranch: department, // Using department as working branch
                     phoneNumber: phoneNumber,
+                    source: 'admin',
                     assignedModules: [],
                     assignedAssessments: [],
                     training: []
@@ -609,6 +611,138 @@ export const deleteEmployee = async (req, res) => {
     }
 };
 
+const parseDateParts = (dateStr) => {
+  if (!dateStr) return null;
+  if (dateStr.includes('/')) {
+    const [dd, mm, yyyy] = dateStr.split('/');
+    return new Date(Number(yyyy), Number(mm) - 1, Number(dd));
+  }
+  if (dateStr.includes('-')) {
+    const parts = dateStr.split('-');
+    if (parts[0].length === 4) return new Date(dateStr);
+    const [dd, mm, yyyy] = parts;
+    return new Date(Number(yyyy), Number(mm) - 1, Number(dd));
+  }
+  return new Date(dateStr);
+};
+
+const computeStatus = (task) => {
+  if (task.status === 'COMPLETED') return 'COMPLETED';
+  if (task.status === 'IN PROGRESS') return 'IN PROGRESS';
+  if (task.status === 'ON HOLD') return 'ON HOLD';
+  if (task.status === 'UNDER REVIEW') return 'UNDER REVIEW';
+
+  const end = parseDateParts(task.endDate);
+  if (end) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    end.setHours(23, 59, 59, 999);
+    if (end < today) return 'OVERDUE';
+  }
+  return task.status || 'PENDING';
+};
+
+function buildEmployeeStats(localUser, userTrainingProgress, userTasks) {
+  let trainingCount = 0;
+  let passCountTraining = 0;
+  let trainingDue = 0;
+  
+  let assignedAssessmentsCount = 0;
+  let passCountAssessment = 0;
+  let assessmentDue = 0;
+
+  let taskCount = 0;
+  let passCountTask = 0;
+  let taskDue = 0;
+
+  const today = new Date();
+
+  // 1. Calculate training and assessment stats
+  if (localUser) {
+    const progressMap = new Map();
+    (userTrainingProgress || []).forEach(tp => {
+      if (tp.trainingId) {
+        progressMap.set(tp.trainingId.toString(), tp);
+      }
+    });
+
+    const uniqueTrainingIds = new Set();
+    const assignedTrainings = localUser.training || [];
+    assignedTrainings.forEach(t => {
+      if (t.trainingId) uniqueTrainingIds.add(t.trainingId.toString());
+    });
+    (userTrainingProgress || []).forEach(tp => {
+      if (tp.trainingId) uniqueTrainingIds.add(tp.trainingId.toString());
+    });
+
+    uniqueTrainingIds.forEach(tId => {
+      const progressDoc = progressMap.get(tId);
+      const userTrainingDoc = assignedTrainings.find(t => t.trainingId && t.trainingId.toString() === tId);
+
+      let pass = false;
+      let deadline = null;
+
+      if (progressDoc) {
+        pass = progressDoc.pass || progressDoc.status === 'Completed';
+        deadline = progressDoc.deadline;
+      } else if (userTrainingDoc) {
+        pass = userTrainingDoc.pass || userTrainingDoc.status === 'Completed';
+        deadline = userTrainingDoc.deadline;
+      }
+
+      trainingCount++;
+      if (pass) {
+        passCountTraining++;
+      } else {
+        if (deadline && new Date(deadline) < today) {
+          trainingDue++;
+        }
+      }
+    });
+
+    if (localUser.assignedAssessments?.length) {
+      assignedAssessmentsCount = localUser.assignedAssessments.length;
+      passCountAssessment = localUser.assignedAssessments.filter((a) => a.pass).length;
+      assessmentDue = localUser.assignedAssessments.filter(
+        (a) => new Date(a.deadline) < today && !a.pass
+      ).length;
+    }
+  }
+
+  // 2. Calculate operational task stats
+  if (userTasks && userTasks.length) {
+    taskCount = userTasks.length;
+    userTasks.forEach(task => {
+      const status = computeStatus(task);
+      if (status === 'COMPLETED') {
+        passCountTask++;
+      } else if (status === 'OVERDUE') {
+        taskDue++;
+      }
+    });
+  }
+
+  return {
+    trainingCount,
+    passCountTraining,
+    trainingDue,
+    trainingCompletionPercentage:
+      trainingCount > 0 ? Math.round((passCountTraining / trainingCount) * 100) : 0,
+    
+    assignedAssessmentsCount,
+    passCountAssessment,
+    assessmentDue,
+    assessmentCompletionPercentage:
+      assignedAssessmentsCount > 0
+        ? Math.round((passCountAssessment / assignedAssessmentsCount) * 100)
+        : 0,
+    
+    taskCount,
+    passCountTask,
+    taskDue,
+  };
+}
+
 // New function for employee management with training details
 export const getAllEmployeesWithTrainingDetails = async (req, res) => {
     try {
@@ -617,9 +751,10 @@ export const getAllEmployeesWithTrainingDetails = async (req, res) => {
         // Get admin's allowed branches
         const AdminId = req.admin.userId;
         const AdminBranch = await Admin.findById(AdminId).populate('branches');
-        const allowedLocCodes = AdminBranch.branches.map(branch => branch.locCode);
+        const allowedLocCodes = AdminBranch ? AdminBranch.branches.map(branch => branch.locCode) : [];
+        const isGlobalAdmin = AdminBranch ? ['super_admin', 'admin', 'hr_admin'].includes(AdminBranch.role) : false;
         
-        console.log('📊 Admin allowed branches:', allowedLocCodes);
+        console.log('📊 Admin allowed branches:', allowedLocCodes, 'isGlobalAdmin:', isGlobalAdmin);
         
         // Fetch external employee data
         let externalEmployees = [];
@@ -637,22 +772,22 @@ export const getAllEmployeesWithTrainingDetails = async (req, res) => {
         
         // Create mapping from store names to location codes
         const storeNameToLocCode = {
-            'GROOMS TRIVANDRUM': '5',
-            'GROOMS PALAKKAD': '19',
-            'GROOMS EDAPALLY': '3',
-            'GROOMS KOTTAYAM': '9',
-            'GROOMS PERUMBAVOOR': '10',
-            'GROOMS THRISSUR': '11',
-            'GROOMS CHAVAKKAD': '12',
-            'GROOMS EDAPPAL': '15',
-            'GROOMS VATAKARA': '14',
-            'GROOMS PERINTHALMANNA': '16',
-            'GROOMS MANJERY': '18',
-            'GROOMS KOTTAKKAL': '17',
-            'GROOMS KOZHIKODE': '13',
-            'GROOMS CALICUT': '13',
-            'GROOMS KANNUR': '21',
-            'GROOMS KALPETTA': '20',
+            'SUITOR GUY TRIVANDRUM': '5',
+            'SUITOR GUY PALAKKAD': '19',
+            'SUITOR GUY EDAPPALLY': '3',
+            'SUITOR GUY KOTTAYAM': '9',
+            'SUITOR GUY PERUMBAVOOR': '10',
+            'SUITOR GUY THRISSUR': '11',
+            'SUITOR GUY CHAVAKKAD': '12',
+            'SUITOR GUY EDAPPAL': '15',
+            'SUITOR GUY VATAKARA': '14',
+            'SUITOR GUY PERINTHALMANNA': '16',
+            'SUITOR GUY MANJERY': '18',
+            'SUITOR GUY KOTTAKKAL': '17',
+            'SUITOR GUY KOZHIKODE': '13',
+            'SUITOR GUY CALICUT': '13',
+            'SUITOR GUY KANNUR': '21',
+            'SUITOR GUY KALPETTA': '20',
             'ZORUCCI EDAPPAL': '6',
             'ZORUCCI KOTTAKKAL': '8',
             'ZORUCCI PERINTHALMANNA': '7',
@@ -676,10 +811,11 @@ export const getAllEmployeesWithTrainingDetails = async (req, res) => {
         
         // Filter external employees by allowed location codes
         const filteredExternalEmployees = externalEmployees.filter(emp => {
+            if (isGlobalAdmin) return true;
             const storeName = emp?.store_name?.toUpperCase();
             
             // Always include employees with "No Store" - they should be visible to all admins
-            if (storeName === 'NO STORE' || storeName === 'NO STORE' || !storeName || storeName === '') {
+            if (storeName === 'NO STORE' || !storeName || storeName === '') {
                 return true;
             }
             
@@ -696,22 +832,26 @@ export const getAllEmployeesWithTrainingDetails = async (req, res) => {
         console.log(`✅ Filtered external employees: ${filteredExternalEmployees.length}`);
         
         // Get local users in allowed branches + "No Store" employees
-        const localUsers = await User.find({ 
-            $or: [
-                { locCode: { $in: allowedLocCodes } },
-                { workingBranch: 'No Store' },
-                { workingBranch: 'NO STORE' },
-                { workingBranch: 'no store' },
-                { workingBranch: '' },
-                { workingBranch: { $exists: false } }
-            ]
-        });
+        const localUsers = await User.find(
+            isGlobalAdmin
+            ? {}
+            : { 
+                $or: [
+                    { locCode: { $in: allowedLocCodes } },
+                    { workingBranch: 'No Store' },
+                    { workingBranch: 'NO STORE' },
+                    { workingBranch: 'no store' },
+                    { workingBranch: '' },
+                    { workingBranch: { $exists: false } }
+                ]
+            }
+        );
         console.log(`👥 Local users in allowed branches: ${localUsers.length}`);
         
-        // Create a map of local users by empID for quick lookup
+        // Create a map of local users by empID (case-insensitive) for quick lookup
         const localUserMap = new Map();
         localUsers.forEach(user => {
-            localUserMap.set(user.empID, user);
+            localUserMap.set(String(user.empID).toLowerCase(), user);
         });
         
         // Process all employees (external + local)
@@ -719,7 +859,7 @@ export const getAllEmployeesWithTrainingDetails = async (req, res) => {
         
         // Add local users that might not be in external data
         localUsers.forEach(localUser => {
-            const existsInExternal = filteredExternalEmployees.some(ext => ext.emp_code === localUser.empID);
+            const existsInExternal = filteredExternalEmployees.some(ext => String(ext.emp_code).toLowerCase() === String(localUser.empID).toLowerCase());
             if (!existsInExternal) {
                 allEmployees.push({
                     emp_code: localUser.empID,
@@ -749,94 +889,49 @@ export const getAllEmployeesWithTrainingDetails = async (req, res) => {
             trainingProgressMap.get(userId).push(progress);
         });
         
-        console.log(`📊 Pre-fetched ${allTrainingProgress.length} training progress records for ${allUserIds.length} users`);
+        // Fetch all tasks for these users
+        const empIDs = allEmployees.map(e => String(e.emp_code).toLowerCase()).filter(Boolean);
+        const allTasks = allUserIds.length || empIDs.length
+          ? await Task.find({
+              assignedTo: { $in: [...allUserIds.map(id => id.toString()), ...empIDs] }
+            }).lean()
+          : [];
+
+        const tasksByAssigneeMap = new Map();
+        allTasks.forEach(task => {
+          if (task.assignedTo) {
+            const assigneeKey = String(task.assignedTo).toLowerCase();
+            if (!tasksByAssigneeMap.has(assigneeKey)) {
+              tasksByAssigneeMap.set(assigneeKey, []);
+            }
+            tasksByAssigneeMap.get(assigneeKey).push(task);
+          }
+        });
+
+        console.log(`📊 Pre-fetched ${allTrainingProgress.length} training progress records and ${allTasks.length} tasks`);
         
         // Process each employee to add training/assessment details
         const processedEmployees = await Promise.all(allEmployees.map(async (employee) => {
             const empID = employee.emp_code;
-            const localUser = localUserMap.get(empID);
+            const lowerEmpID = String(empID).toLowerCase();
+            const localUser = localUserMap.get(lowerEmpID);
             
-            let trainingCount = 0;
-            let passCountTraining = 0;
-            let trainingDue = 0;
-            let assignedAssessmentsCount = 0;
-            let passCountAssessment = 0;
-            let assessmentDue = 0;
-            let trainingCompletionPercentage = 0;
-            let assessmentCompletionPercentage = 0;
-            
+            const userProgress = localUser ? (trainingProgressMap.get(localUser._id.toString()) || []) : [];
+
+            let userTasks = [];
             if (localUser) {
-                // Count both assigned trainings (user.training) and mandatory trainings (TrainingProgress)
-                // But avoid double-counting duplicates
-                let assignedTrainingCount = 0;
-                let assignedPassCount = 0;
-                let assignedOverdueCount = 0;
-                
-                let mandatoryTrainingCount = 0;
-                let mandatoryPassCount = 0;
-                let mandatoryOverdueCount = 0;
-                
-                // Count assigned trainings from user.training array
-                if (localUser.training && Array.isArray(localUser.training)) {
-                    assignedTrainingCount = localUser.training.length;
-                    assignedPassCount = localUser.training.filter(t => t.pass).length;
-                    
-                    // Calculate overdue assigned trainings
-                    const today = new Date();
-                    assignedOverdueCount = localUser.training.filter(t => 
-                        new Date(t.deadline) < today && !t.pass
-                    ).length;
-                }
-                
-                // Count mandatory trainings from TrainingProgress collection
-                const userTrainingProgress = trainingProgressMap.get(localUser._id.toString()) || [];
-                
-                // Get assigned training IDs to avoid duplicates
-                const assignedTrainingIds = localUser.training ? 
-                    localUser.training.map(t => t.trainingId.toString()) : [];
-                
-                // Filter out mandatory trainings that are already in assigned trainings
-                const uniqueMandatoryTrainings = userTrainingProgress.filter(tp => 
-                    !assignedTrainingIds.includes(tp.trainingId.toString())
-                );
-                
-                mandatoryTrainingCount = uniqueMandatoryTrainings.length;
-                mandatoryPassCount = uniqueMandatoryTrainings.filter(tp => tp.pass).length;
-                
-                // Calculate overdue mandatory trainings (only unique ones)
-                const today = new Date();
-                mandatoryOverdueCount = uniqueMandatoryTrainings.filter(tp => 
-                    new Date(tp.deadline) < today && !tp.pass
-                ).length;
-                
-                // Combine both types of trainings (no duplicates)
-                trainingCount = assignedTrainingCount + mandatoryTrainingCount;
-                passCountTraining = assignedPassCount + mandatoryPassCount;
-                trainingDue = assignedOverdueCount + mandatoryOverdueCount;
-                
-                trainingCompletionPercentage = trainingCount > 0 ? 
-                    Math.round((passCountTraining / trainingCount) * 100) : 0;
-                
-                // Debug logging for employees with training data
-                if (trainingCount > 0) {
-                    console.log(`📈 Employee ${empID} (${localUser.username}): ${trainingCount} unique trainings (${assignedTrainingCount} assigned + ${mandatoryTrainingCount} mandatory), ${passCountTraining} passed (${trainingCompletionPercentage}%)`);
-                }
-                
-                // Calculate assessment data from user.assignedAssessments records
-                if (localUser.assignedAssessments && Array.isArray(localUser.assignedAssessments)) {
-                    assignedAssessmentsCount = localUser.assignedAssessments.length;
-                    passCountAssessment = localUser.assignedAssessments.filter(a => a.pass).length;
-                    
-                    // Calculate overdue assessments
-                    const today = new Date();
-                    assessmentDue = localUser.assignedAssessments.filter(a => 
-                        new Date(a.deadline) < today && !a.pass
-                    ).length;
-                    
-                    assessmentCompletionPercentage = assignedAssessmentsCount > 0 ? 
-                        Math.round((passCountAssessment / assignedAssessmentsCount) * 100) : 0;
-                }
+              userTasks.push(...(tasksByAssigneeMap.get(localUser._id.toString().toLowerCase()) || []));
             }
+            userTasks.push(...(tasksByAssigneeMap.get(lowerEmpID) || []));
+
+            // Deduplicate tasks
+            const uniqueTasksMap = new Map();
+            userTasks.forEach(t => {
+              uniqueTasksMap.set(t._id.toString(), t);
+            });
+            const uniqueTasks = Array.from(uniqueTasksMap.values());
+
+            const stats = buildEmployeeStats(localUser, userProgress, uniqueTasks);
             
             return {
                 empID: empID,
@@ -845,19 +940,9 @@ export const getAllEmployeesWithTrainingDetails = async (req, res) => {
                 workingBranch: employee.store_name || '',
                 email: employee.email || '',
                 phoneNumber: employee.phone || '',
-                // Training data
-                trainingCount,
-                passCountTraining,
-                trainingDue,
-                trainingCompletionPercentage,
-                // Assessment data
-                assignedAssessmentsCount,
-                passCountAssessment,
-                assessmentDue,
-                assessmentCompletionPercentage,
-                // Additional info
+                ...stats,
                 isLocalUser: !!localUser,
-                hasTrainingData: trainingCount > 0 || assignedAssessmentsCount > 0
+                hasTrainingData: stats.trainingCount > 0 || stats.assignedAssessmentsCount > 0 || stats.taskCount > 0
             };
         }));
         
@@ -865,8 +950,6 @@ export const getAllEmployeesWithTrainingDetails = async (req, res) => {
         const employeesWithMandatoryTraining = processedEmployees.filter(emp => emp.trainingCount > 0).length;
         
         console.log(`✅ Processed ${processedEmployees.length} employees with training details`);
-        console.log(`📊 Employees with any training data: ${employeesWithTraining}`);
-        console.log(`📊 Employees with mandatory/assigned trainings: ${employeesWithMandatoryTraining}`);
         
         res.status(200).json({
             success: true,

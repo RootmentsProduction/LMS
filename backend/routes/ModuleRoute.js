@@ -1,7 +1,7 @@
 import express from 'express'
 const router = express.Router();
-import { createModule, getModules } from '../controllers/moduleController.js'; // Adjust the path to your controller
-import { calculateProgress, createAssessment, createMandatoryTraining, createTraining, getAssessments, GetTrainingById } from '../controllers/AssessmentController.js';
+import { createModule, getModules, updateModule } from '../controllers/moduleController.js'; // Adjust the path to your controller
+import { calculateProgress, createAssessment, createMandatoryTraining, createTraining, getAssessments, GetTrainingById, updateTraining } from '../controllers/AssessmentController.js';
 import { GetAllFullTrainingWithCompletion, GetAllTrainingWithCompletion, MandatoryGetAllTrainingWithCompletion } from '../controllers/AssessmentAndModule.js';
 import { MiddilWare } from '../lib/middilWare.js';
 
@@ -50,6 +50,61 @@ import { MiddilWare } from '../lib/middilWare.js';
  *         description: Internal server error
  */
 router.post('/modules', createModule);
+/**
+ * @swagger
+ * /api/modules/{id}:
+ *   put:
+ *     tags: [Modules]
+ *     summary: Update an existing module
+ *     description: Updates a training module's details (name, description, video list, and questions) by ID.
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The module ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               moduleName:
+ *                 type: string
+ *               description:
+ *                 type: string
+ *               videos:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     title:
+ *                       type: string
+ *                     videoUri:
+ *                       type: string
+ *                     description:
+ *                       type: string
+ *                     duration:
+ *                       type: number
+ *                     questions:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *             required:
+ *               - moduleName
+ *     responses:
+ *       200:
+ *         description: Module updated successfully.
+ *       400:
+ *         description: Invalid module data.
+ *       404:
+ *         description: Module not found.
+ *       500:
+ *         description: Internal server error.
+ */
+router.put('/modules/:id', updateModule);
 
 /**
  * @swagger
@@ -175,6 +230,69 @@ router.get('/assessments/:id?', getAssessments);
  *         description: Internal server error
  */
 router.post('/trainings', MiddilWare, createTraining);
+/**
+ * @swagger
+ * /api/trainings/{id}:
+ *   put:
+ *     tags: [Training]
+ *     summary: Update an existing training program
+ *     description: Updates an existing training program by its ID, modifying the name, list of modules, deadline, and branch/designation assignments.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The training ID to update
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               trainingName:
+ *                 type: string
+ *               description:
+ *                 type: string
+ *               modules:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *               days:
+ *                 type: number
+ *                 description: Deadline days
+ *               workingBranch:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                 description: Targets (branch codes, roles, or user IDs)
+ *               selectedOption:
+ *                 type: string
+ *                 enum: [all, user, designation, branch, new]
+ *               Trainingtype:
+ *                 type: string
+ *                 enum: [Assigned, Mandatory]
+ *             required:
+ *               - trainingName
+ *               - modules
+ *               - days
+ *               - workingBranch
+ *     responses:
+ *       200:
+ *         description: Training updated successfully.
+ *       400:
+ *         description: Training name, modules, days, and selected option are required.
+ *       403:
+ *         description: Access denied – no permissions.
+ *       404:
+ *         description: Training not found.
+ *       500:
+ *         description: Internal server error.
+ */
+router.put('/trainings/:id', MiddilWare, updateTraining);
 
 /**
  * @swagger
@@ -212,7 +330,7 @@ router.get('/trainings/:id?', GetTrainingById);
  *       500:
  *         description: Internal server error
  */
-router.get('/get/allusertraining', GetAllTrainingWithCompletion);
+router.get('/get/allusertraining', MiddilWare, GetAllTrainingWithCompletion);
 
 /**
  * @swagger
@@ -226,7 +344,7 @@ router.get('/get/allusertraining', GetAllTrainingWithCompletion);
  *       500:
  *         description: Internal server error
  */
-router.get('/get/mandatory/allusertraining', MandatoryGetAllTrainingWithCompletion);
+router.get('/get/mandatory/allusertraining', MiddilWare, MandatoryGetAllTrainingWithCompletion);
 
 /**
  * @swagger
@@ -241,6 +359,19 @@ router.get('/get/mandatory/allusertraining', MandatoryGetAllTrainingWithCompleti
  *         description: Internal server error
  */
 router.get('/get/Full/allusertraining', GetAllFullTrainingWithCompletion);
+/**
+ * @swagger
+ * /api/get/full/allusertraining:
+ *   get:
+ *     summary: Get all user training (full, lowercase alias) with completion status
+ *     description: Returns a list of all user trainings (mandatory and optional) with completion details. (Alias of `/api/get/Full/allusertraining`).
+ *     responses:
+ *       200:
+ *         description: A list of all user trainings with completion info.
+ *       500:
+ *         description: Internal server error.
+ */
+router.get('/get/full/allusertraining', GetAllFullTrainingWithCompletion);
 
 /**
  * @swagger

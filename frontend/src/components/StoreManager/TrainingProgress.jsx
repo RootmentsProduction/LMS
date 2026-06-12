@@ -1,73 +1,53 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState } from "react";
 import { PieChart, Pie, Cell } from 'recharts';
-import baseUrl from '../../api/api';
+import { fetchStoreManagerData } from '../../features/dashboard/dashboardFetch';
 
 const TrainingProgress = () => {
-    const token = localStorage.getItem('token');
-    const [data, setData] = useState({
+    const [data, setData] = useState(null);
+    const [isLoading, setIsLoading] = useState(true);
+    useEffect(() => {
+        let mounted = true;
+        const load = async () => {
+            setIsLoading(true);
+            try {
+                const json = await fetchStoreManagerData();
+                if (!mounted) return;
+                setData(json);
+            } finally {
+                if (mounted) setIsLoading(false);
+            }
+        };
+        load();
+        return () => {
+            mounted = false;
+        };
+    }, []);
+    
+    const processedData = data ? {
+        completedTrainings: data.completedTrainings || { count: 0, data: [] },
+        pendingTrainings: data.pendingTrainings || { count: 0, data: [] },
+        dueTrainings: data.dueTrainings || { count: 0, data: [] },
+        userconut: data.userconut || { count: 0 }
+    } : {
         completedTrainings: { count: 0, data: [] },
         pendingTrainings: { count: 0, data: [] },
         dueTrainings: { count: 0, data: [] },
         userconut: { count: 0 }
-    });
-
-    useEffect(() => {
-        const fetchData = async () => {
-            if (!token) {
-                console.error('No token found for TrainingProgress');
-                return;
-            }
-
-            try {
-                console.log('Fetching store manager data from:', `${baseUrl.baseUrl}api/admin/get/storemanagerData`);
-                console.log('Using token:', token ? 'Token exists' : 'No token');
-                
-                const response = await fetch(`${baseUrl.baseUrl}api/admin/get/storemanagerData`, {
-                    method: 'GET',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        Authorization: `Bearer ${token}`,
-                    },
-                    credentials: 'include',
-                });
-
-                console.log('Store manager data response status:', response.status);
-
-                if (!response.ok) {
-                    const errorText = await response.text();
-                    console.error('Store manager data error:', response.status, errorText);
-                    
-                    if (response.status === 401) {
-                        console.error('Authentication failed for store manager data');
-                        return;
-                    }
-                    
-                    throw new Error(`HTTP ${response.status}: ${errorText}`);
-                }
-
-                const result = await response.json();
-                console.log('Store manager data response:', result);
-                setData(result);
-            } catch (error) {
-                console.error('Error fetching training progress data:', error);
-                // Set default data structure on error
-                setData({
-                    completedTrainings: { count: 0, data: [] },
-                    pendingTrainings: { count: 0, data: [] },
-                    dueTrainings: { count: 0, data: [] },
-                    userconut: { count: 0 }
-                });
-            }
-        };
-
-        fetchData();
-    }, [token]);
+    };
 
     const chartData = [
-        { name: 'Completed', value: data?.completedTrainings.count, color: '#016E5B' },
-        { name: 'In Progress', value: data?.dueTrainings.count, color: '#009279' },
-        { name: 'Pending', value: data?.pendingTrainings.count, color: '#0DBE9F' },
+        { name: 'Completed', value: processedData.completedTrainings.count, color: '#016E5B' },
+        { name: 'In Progress', value: processedData.dueTrainings.count, color: '#009279' },
+        { name: 'Pending', value: processedData.pendingTrainings.count, color: '#0DBE9F' },
     ];
+
+    if (isLoading) {
+        return (
+            <div role="status" className="flex items-center justify-center w-[600px] h-[400px] shadow-xl bg-slate-100 rounded-lg animate-pulse">
+                <span className="sr-only">Loading chart...</span>
+            </div>
+        );
+    }
 
     return (
         <div className="relative flex items-center border justify-between w-[600px] p-6 bg-white rounded-lg shadow-md">
@@ -110,7 +90,7 @@ const TrainingProgress = () => {
                     <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center">
                         <p className="text-sm text-black font-semibold">No. of Staffs</p>
                         <p className="text-2xl font-bold text-[#016E5B]">
-                            {data?.userconut.count || 0}
+                            {processedData.userconut.count || 0}
                         </p>
                     </div>
                 </div>

@@ -1,424 +1,707 @@
-import { useState } from "react";
-import { Link } from "react-router-dom";
-import Header from "../../../components/Header/Header";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { IoIosArrowBack } from "react-icons/io";
 import baseUrl from "../../../api/api";
 import { toast } from "react-toastify";
 import SideNav from "../../../components/SideNav/SideNav";
+import {
+  FaPlus,
+  FaRegCircle,
+  FaCircle,
+  FaChevronLeft,
+  FaChevronRight,
+  FaRegBookmark,
+  FaRegFileLines,
+  FaTrash,
+} from "react-icons/fa6";
 
-const CreateModuleData = () => {
-    const [moduleTitle, setModuleTitle] = useState("");
-    const [moduleDescription, setModuleDescription] = useState("");
-    const [videos, setVideos] = useState(null);
-    const [currentVideo, setCurrentVideo] = useState({
-        title: "",
-        videoUri: "",
-        questions: [{ questionText: "", options: ["", "", "", ""], correctAnswer: "" }],
-    });
+/* ─── helpers ─────────────────────────────────────────────── */
+const emptyQuestion = () => ({
+  questionText: "",
+  options: ["", "", "", ""],
+  correctAnswer: "",
+});
 
-    // Handle Video Input Changes
-    const handleVideoChange = (field, value) => {
-        setCurrentVideo({ ...currentVideo, [field]: value });
-    };
+const emptyVideo = () => ({
+  title: "",
+  videoUri: "",
+  questions: [emptyQuestion()],
+});
 
-    // Handle Question Input Changes
-    const handleQuestionChange = (qIndex, field, value) => {
-        const updatedQuestions = [...currentVideo.questions];
-        updatedQuestions[qIndex][field] = value;
-        setCurrentVideo({ ...currentVideo, questions: updatedQuestions });
-    };
+const getCurrentAdminName = () => {
+  const token = localStorage.getItem("token");
+  if (!token) return "Super Admin";
 
-    // Handle Options
-    const handleOptionChange = (qIndex, oIndex, value) => {
-        const updatedQuestions = [...currentVideo.questions];
-        updatedQuestions[qIndex].options[oIndex] = value;
-        setCurrentVideo({ ...currentVideo, questions: updatedQuestions });
-    };
+  try {
+    const payload = JSON.parse(atob(token.split(".")[1] || ""));
+    return payload?.username || payload?.name || "Super Admin";
+  } catch {
+    return "Super Admin";
+  }
+};
 
-    // Handle Correct Answer Selection
-    const handleCorrectAnswerChange = (qIndex, oIndex) => {
-        const updatedQuestions = [...currentVideo.questions];
-        updatedQuestions[qIndex].correctAnswer = updatedQuestions[qIndex].options[oIndex];
-        setCurrentVideo({ ...currentVideo, questions: updatedQuestions });
-    };
+/* ─── SavedVideoCard ──────────────────────────────────────── */
+const SavedVideoCard = ({ video, active, onRemove, onEdit }) => {
+  const firstQuestion = video.questions?.[0];
+  const questionCount = video.questions?.length ?? 0;
+  const options = firstQuestion?.options?.length
+    ? firstQuestion.options
+    : ["Option 1", "Option 2", "Option 3", "Option 4"];
 
-    // Add New Question
-    const addQuestion = () => {
-        const updatedQuestions = [...currentVideo.questions, { questionText: "", options: ["", "", "", ""], correctAnswer: "" }];
-        setCurrentVideo({ ...currentVideo, questions: updatedQuestions });
-    };
-
-    // Remove Question
-    const removeQuestion = (qIndex) => {
-        if (currentVideo.questions.length <= 1) {
-            toast.warning("At least one question is required for each video.");
-            return;
-        }
-        
-        const updatedQuestions = currentVideo.questions.filter((_, index) => index !== qIndex);
-        setCurrentVideo({ ...currentVideo, questions: updatedQuestions });
-        toast.success("Question removed successfully!");
-    };
-
-    // Validate if current video has at least one complete question
-    const validateVideoQuestions = () => {
-        if (!currentVideo.questions || currentVideo.questions.length === 0) {
-            return false;
-        }
-
-        // Check if at least one question is complete
-        const hasCompleteQuestion = currentVideo.questions.some(question => {
-            return question.questionText && 
-                   question.questionText.trim() !== "" &&
-                   question.options && 
-                   question.options.length >= 2 &&
-                   question.options.some(option => option.trim() !== "") &&
-                   question.correctAnswer && 
-                   question.correctAnswer.trim() !== "";
-        });
-
-        return hasCompleteQuestion;
-    };
-
-    // Check if current video is ready to be saved
-    const isCurrentVideoReady = () => {
-        return currentVideo.title && 
-               currentVideo.title.trim() !== "" &&
-               currentVideo.videoUri && 
-               currentVideo.videoUri.trim() !== "" &&
-               validateVideoQuestions();
-    };
-
-    // Save Video and Questions
-    const saveCurrentVideo = () => {
-        // Validate current video before saving
-        if (!currentVideo.title || !currentVideo.title.trim()) {
-            toast.error("Please enter a video title.");
-            return;
-        }
-        if (!currentVideo.videoUri || !currentVideo.videoUri.trim()) {
-            toast.error("Please enter a video URL.");
-            return;
-        }
-
-        // Validate that at least one question is complete
-        if (!validateVideoQuestions()) {
-            toast.error("⚠️ Please add at least one complete question to submit the video. Each question must have a question text, at least 2 options, and a correct answer selected.");
-            return;
-        }
-
-        const updatedVideos = videos ? [...videos] : [];
-        updatedVideos.push({
-            ...currentVideo,
-            title: currentVideo.title.trim(),
-            videoUri: currentVideo.videoUri.trim(),
-            questions: currentVideo.questions || []
-        });
-        setVideos(updatedVideos);
-
-        // Reset current video form
-        setCurrentVideo({
-            title: "",
-            videoUri: "",
-            questions: [{ questionText: "", options: ["", "", "", ""], correctAnswer: "" }],
-        });
-
-        toast.success("Video saved successfully!");
-    };
-
-    // Clear all form data
-    const clearForm = () => {
-        setModuleTitle("");
-        setModuleDescription("");
-        setVideos(null);
-        setCurrentVideo({
-            title: "",
-            videoUri: "",
-            questions: [{ questionText: "", options: ["", "", "", ""], correctAnswer: "" }],
-        });
-    };
-
-    // Submit Module
-    const handleSaveModule = async () => {
-        if (!videos || videos.length === 0) {
-            toast.warning("Please add at least one video.");
-            return;
-        }
-
-        // Validate module title and description
-        if (!moduleTitle.trim()) {
-            toast.error("Please enter a module title.");
-            return;
-        }
-
-        if (!moduleDescription.trim()) {
-            toast.error("Please enter a module description.");
-            return;
-        }
-
-        // Validate each video has required fields and complete questions
-        for (let i = 0; i < videos.length; i++) {
-            const video = videos[i];
-            if (!video.title || !video.title.trim()) {
-                toast.error(`Video ${i + 1} is missing a title.`);
-                return;
-            }
-            if (!video.videoUri || !video.videoUri.trim()) {
-                toast.error(`Video ${i + 1} is missing a video URL.`);
-                return;
-            }
-            
-            // Validate that each video has at least one complete question
-            if (!video.questions || video.questions.length === 0) {
-                toast.error(`⚠️ Video "${video.title}" has no questions. Please add at least one complete question to submit the module.`);
-                return;
-            }
-            
-            const hasCompleteQuestion = video.questions.some(question => {
-                return question.questionText && 
-                       question.questionText.trim() !== "" &&
-                       question.options && 
-                       question.options.length >= 2 &&
-                       question.options.some(option => option.trim() !== "") &&
-                       question.correctAnswer && 
-                       question.correctAnswer.trim() !== "";
-            });
-            
-            if (!hasCompleteQuestion) {
-                toast.error(`⚠️ Video "${video.title}" has incomplete questions. Please ensure each video has at least one complete question with question text, options, and correct answer selected.`);
-                return;
-            }
-        }
-
-        const newModule = {
-            moduleName: moduleTitle.trim(),
-            description: moduleDescription.trim(),
-            videos: videos.map(video => ({
-                ...video,
-                title: video.title.trim(),
-                videoUri: video.videoUri.trim(),
-                questions: video.questions || []
-            }))
-        };
-        console.log('Submitting module:', newModule);
-
-        try {
-            const response = await fetch(`${baseUrl.baseUrl}api/modules`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                credentials: "include",
-                body: JSON.stringify(newModule),
-            });
-
-            if (!response.ok) {
-                const errorText = await response.text();
-                console.error('Server error:', response.status, errorText);
-                toast.error(`Failed to create module: ${response.status} ${response.statusText}`);
-                return;
-            }
-
-            const data = await response.json();
-            toast.success(data.message);
-            
-            // Clear the form after successful submission
-            clearForm();
-        } catch (error) {
-            console.error('Network error:', error);
-            toast.error(`Network error: ${error.message}`);
-        }
-    };
-
-    return (
-        <div className="w-full h-full bg-white text-black">
-            <div><Header name='Modules' /></div>
-            <SideNav />
-            <div className=" md:ml-[100px] mt-[100px] mx-auto max-w-[1400px] w-full mb-[70px]">
-
-
-
-
-                <div>
-                    <Link to={""}>
-                        <div className="flex items-center gap-1 m-5 text-black cursor-pointer">
-                            <IoIosArrowBack />
-                            <p>Back</p>
-                        </div>
-                    </Link>
-                </div>
-                <div className="mx-10 w-auto flex justify-between space-x-10">
-                    <div className="flex flex-col space-y-6">
-                        <div>
-                            <p className="text-[#016E5B] font-semibold mb-2">Module Title</p>
-                            <input
-                                placeholder="Enter module title"
-                                type="text"
-                                className="bg-white w-[450px] border p-2 rounded-lg"
-                                value={moduleTitle}
-                                onChange={(e) => setModuleTitle(e.target.value)}
-                            />
-                        </div>
-
-                        <div>
-                            <p className="text-[#016E5B] font-semibold mb-2">Description</p>
-                            <textarea
-                                placeholder="Add a description..."
-                                className="w-[450px] h-[250px] border bg-white  p-4 rounded-lg"
-                                value={moduleDescription}
-                                onChange={(e) => setModuleDescription(e.target.value)}
-                            />
-                        </div>
-                    </div>
-
-                    <div className="flex flex-col space-y-6">
-                        <div>
-                            <p className="text-[#016E5B] font-semibold mb-2">Video Title</p>
-                            <input
-                                type="text"
-                                placeholder="Video Title"
-                                value={currentVideo.title}
-                                onChange={(e) => handleVideoChange("title", e.target.value)}
-                                className="bg-white w-[450px] border p-2 rounded-lg"
-                            />
-                        </div>
-
-                        <div>
-                            <p className="text-[#016E5B] font-semibold mb-2">Video URL</p>
-                            <input
-                                type="text"
-                                placeholder="Video URL"
-                                value={currentVideo.videoUri}
-                                onChange={(e) => handleVideoChange("videoUri", e.target.value)}
-                                className="bg-white w-[450px] border p-2 rounded-lg"
-                            />
-                        </div>
-
-                        {currentVideo.questions.map((q, qIndex) => {
-                            const isQuestionComplete = q.questionText && 
-                                                      q.questionText.trim() !== "" &&
-                                                      q.options && 
-                                                      q.options.length >= 2 &&
-                                                      q.options.some(option => option.trim() !== "") &&
-                                                      q.correctAnswer && 
-                                                      q.correctAnswer.trim() !== "";
-                            
-                            return (
-                                <div key={qIndex} className={`space-y-4 p-4 border rounded-lg ${isQuestionComplete ? 'border-green-300 bg-green-50' : 'border-orange-300 bg-orange-50'}`}>
-                                    <div className="flex items-center gap-2">
-                                        <input
-                                            type="text"
-                                            placeholder={`Question ${qIndex + 1}`}
-                                            value={q.questionText}
-                                            onChange={(e) => handleQuestionChange(qIndex, "questionText", e.target.value)}
-                                            className="w-full p-2 border rounded-lg bg-white"
-                                        />
-                                        {isQuestionComplete ? (
-                                            <span className="text-green-600 text-lg" title="Question is complete">✅</span>
-                                        ) : (
-                                            <span className="text-orange-600 text-lg" title="Question is incomplete">⚠️</span>
-                                        )}
-                                        {currentVideo.questions.length > 1 && (
-                                            <button
-                                                onClick={() => removeQuestion(qIndex)}
-                                                className="px-3 py-1 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors text-sm"
-                                                title="Remove this question"
-                                            >
-                                                🗑️ Remove
-                                            </button>
-                                        )}
-                                    </div>
-
-                                {q.options.map((option, oIndex) => (
-                                    <div key={oIndex} className="flex items-center space-x-3">
-                                        <input
-                                            type="text"
-                                            placeholder={`Option ${oIndex + 1}`}
-                                            value={option}
-                                            onChange={(e) => handleOptionChange(qIndex, oIndex, e.target.value)}
-                                            className="w-full p-2 border bg-white  rounded-lg"
-                                        />
-                                        <input
-                                            type="radio"
-                                            name={`correctOption-${qIndex}`}
-                                            checked={q.correctAnswer === option}
-                                            onChange={() => handleCorrectAnswerChange(qIndex, oIndex)}
-                                            className="w-5 h-5 "
-                                        />
-                                    </div>
-                                ))}
-                                
-                                {/* Add Question Button */}
-                                <div className="flex justify-center pt-2">
-                                    <button 
-                                        onClick={addQuestion} 
-                                        className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors flex items-center gap-2"
-                                    >
-                                        ➕ Add Question
-                                    </button>
-                                </div>
-                                
-                                {/* Question Count Info */}
-                                <div className="text-center text-sm text-gray-600 mt-2">
-                                    {currentVideo.questions.length} question{currentVideo.questions.length !== 1 ? 's' : ''} added
-                                </div>
-                                </div>
-                            );
-                        })}
-                    </div>
-                </div>
-
-                {/* Validation Status Indicator */}
-                <div className="float-right mt-2 mb-2">
-                    {isCurrentVideoReady() ? (
-                        <div className="flex items-center gap-2 text-green-600">
-                            <span className="text-lg">✅</span>
-                            <span className="text-sm font-medium">Video ready to save</span>
-                        </div>
-                    ) : (
-                        <div className="flex items-center gap-2 text-orange-600">
-                            <span className="text-lg">⚠️</span>
-                            <span className="text-sm font-medium">Complete video details and add at least one question</span>
-                        </div>
-                    )}
-                </div>
-
-                <button 
-                    onClick={saveCurrentVideo} 
-                    className={`p-3 w-56 rounded-lg float-right mt-5 mb-32 ${
-                        isCurrentVideoReady() 
-                            ? 'bg-[#016E5B] text-white hover:bg-[#014d42]' 
-                            : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                    }`}
-                    disabled={!isCurrentVideoReady()}
-                >
-                    Save video and questions
-                </button>
-
-                {/* Show saved videos count */}
-                {videos && videos.length > 0 && (
-                    <div className="text-center mt-4 mb-4">
-                        <p className="text-green-600 font-semibold">
-                            ✅ {videos.length} video{videos.length !== 1 ? 's' : ''} saved
-                        </p>
-                    </div>
-                )}
-
-                <div className="flex justify-center">
-                    <button 
-                        onClick={handleSaveModule} 
-                        className={`p-3 w-56 rounded-lg ${
-                            videos && videos.length > 0 
-                                ? 'bg-[#016E5B] text-white' 
-                                : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                        }`}
-                        disabled={!videos || videos.length === 0}
+  return (
+    <div
+      className={`rounded-[7px] border bg-white p-3 ${
+        active ? "border-[#212121] ring-1 ring-[#212121]" : "border-gray-300"
+      }`}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="text-[13px] font-semibold text-gray-900 truncate">
+          {video.title || "Video Title"}
+        </div>
+        {onRemove && (
+          <button
+            type="button"
+            onClick={onRemove}
+            className="shrink-0 text-gray-400 hover:text-red-500 transition-colors"
+            title="Remove video"
+          >
+            <FaTrash size={10} />
+          </button>
+        )}
+      </div>
+      {onEdit && (
+        <button
+          type="button"
+          onClick={onEdit}
+          className="mt-1 text-[11px] font-medium text-gray-600 hover:text-gray-900 transition-colors"
+        >
+          Edit video
+        </button>
+      )}
+      <div className="mt-1 text-[11px] text-gray-500 truncate">
+        {video.videoUri || "https://www.youtube.com/"}
+      </div>
+      <div className="mt-2 space-y-3">
+        {video.questions?.length ? (
+          video.questions.map((question, qIndex) => (
+            <div key={`${question.questionText || "question"}-${qIndex}`} className="rounded-[6px] border border-gray-200 p-2">
+              <div className="truncate text-[12px] font-medium text-gray-800">
+                {`Question ${qIndex + 1}: ${question.questionText || "Untitled question"}`}
+              </div>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {(question.options?.length ? question.options : ["Option 1", "Option 2", "Option 3", "Option 4"]).slice(0, 4).map((option, index) => {
+                  const optionText = option?.trim() || `Option ${index + 1}`;
+                  const isCorrect = question.correctAnswer === option && option?.trim();
+                  return (
+                    <span
+                      key={index}
+                      className={`inline-flex items-center gap-1 rounded-[5px] border px-2 py-1 text-[11px] ${
+                        isCorrect
+                          ? "border-gray-700 text-gray-900 font-medium"
+                          : "border-gray-300 text-gray-700"
+                      }`}
                     >
-                        Submit Module
-                    </button>
+                      {isCorrect ? <FaCircle size={6} /> : <FaRegCircle size={7} />}
+                      {optionText}
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          ))
+        ) : (
+          <div className="text-[11px] text-gray-500">No quiz questions added yet.</div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+/* ─── Field ───────────────────────────────────────────────── */
+const Field = ({ label, required, value, onChange, placeholder }) => (
+  <label className="block">
+    <div className="mb-1.5 text-[12px] font-semibold text-gray-700">
+      {label} {required && <span className="text-red-500">*</span>}
+    </div>
+    <input
+      value={value}
+      onChange={onChange}
+      placeholder={placeholder}
+      style={{ fontFamily: "DM Sans, sans-serif" }}
+      className="h-9 w-full rounded-[6px] border border-gray-200 bg-[#f1f1f1] px-3 text-[13px] outline-none placeholder:text-gray-400 focus:border-gray-400"
+    />
+  </label>
+);
+
+/* ─── QuizBlock ───────────────────────────────────────────── */
+const QuizBlock = ({ question, qIndex, totalQuestions, onChange, onCorrectAnswer, onRemove }) => (
+  <div className="space-y-2">
+    {/* Question text */}
+    <Field
+      label="Question"
+      required
+      value={question.questionText}
+      onChange={(e) => onChange(qIndex, "questionText", e.target.value)}
+      placeholder="Enter Question"
+    />
+
+    {/* Options */}
+    <div className="space-y-1.5">
+      {question.options.map((opt, oIndex) => {
+        const isCorrect = question.correctAnswer === opt && opt.trim();
+        return (
+          <div key={oIndex} className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => onCorrectAnswer(qIndex, oIndex)}
+              className="shrink-0 text-gray-500 hover:text-gray-800 transition-colors"
+              title="Mark as correct answer"
+            >
+              {isCorrect ? (
+                <FaCircle size={9} className="text-gray-800" />
+              ) : (
+                <FaRegCircle size={10} />
+              )}
+            </button>
+            <input
+              value={opt}
+              onChange={(e) => {
+                const newOptions = [...question.options];
+                newOptions[oIndex] = e.target.value;
+                onChange(qIndex, "options", newOptions);
+                // keep correctAnswer in sync if this option was selected
+                if (question.correctAnswer === question.options[oIndex]) {
+                  onChange(qIndex, "correctAnswer", e.target.value);
+                }
+              }}
+              placeholder={`Option ${oIndex + 1}`}
+              style={{ fontFamily: "DM Sans, sans-serif" }}
+              className="h-9 flex-1 rounded-[6px] border border-gray-200 bg-white px-3 text-[13px] outline-none placeholder:text-gray-400 focus:border-gray-400"
+            />
+          </div>
+        );
+      })}
+    </div>
+
+    {/* Remove question */}
+    {totalQuestions > 1 && (
+      <button
+        type="button"
+        onClick={() => onRemove(qIndex)}
+        className="text-[12px] text-gray-400 hover:text-red-500 transition-colors"
+      >
+        Remove question
+      </button>
+    )}
+  </div>
+);
+
+/* ─── Main Component ──────────────────────────────────────── */
+const CreateModuleData = () => {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const isEditMode = Boolean(id);
+  const [moduleTitle, setModuleTitle] = useState("");
+  const [moduleDescription, setModuleDescription] = useState("");
+  const [videos, setVideos] = useState([]);
+  const [currentVideo, setCurrentVideo] = useState(emptyVideo());
+  const [activeQuizIndex, setActiveQuizIndex] = useState(0);
+  const [editingVideoIndex, setEditingVideoIndex] = useState(null);
+
+    // Keep the page font aligned with the global DM Sans stack.
+  useEffect(() => {
+    if (!document.getElementById("dm-sans-font")) {
+      const link = document.createElement("link");
+      link.id = "dm-sans-font";
+      link.rel = "stylesheet";
+      link.href =
+        "https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap";
+      document.head.appendChild(link);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!id) return;
+
+    const loadModule = async () => {
+      try {
+        const response = await fetch(`${baseUrl.baseUrl}api/modules/${id}`, {
+          method: "GET",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+        });
+
+        if (!response.ok) {
+          toast.error("Failed to load module for editing.");
+          return;
+        }
+
+        const data = await response.json();
+        setModuleTitle(data?.moduleName || "");
+        setModuleDescription(data?.description || "");
+        setVideos(Array.isArray(data?.videos) ? data.videos : []);
+        setCurrentVideo(emptyVideo());
+        setActiveQuizIndex(0);
+        setEditingVideoIndex(null);
+      } catch (error) {
+        toast.error(`Failed to load module: ${error.message}`);
+      }
+    };
+
+    loadModule();
+  }, [id]);
+
+  /* video field changes */
+  const handleVideoChange = (field, value) => {
+    setCurrentVideo((prev) => ({ ...prev, [field]: value }));
+  };
+
+  /* question field changes */
+  const handleQuestionChange = (qIndex, field, value) => {
+    setCurrentVideo((prev) => {
+      const updated = [...prev.questions];
+      updated[qIndex] = { ...updated[qIndex], [field]: value };
+      return { ...prev, questions: updated };
+    });
+  };
+
+  /* mark correct answer */
+  const handleCorrectAnswerChange = (qIndex, oIndex) => {
+    setCurrentVideo((prev) => {
+      const updated = [...prev.questions];
+      const opt = updated[qIndex].options[oIndex];
+      updated[qIndex] = {
+        ...updated[qIndex],
+        correctAnswer: opt?.trim() ? opt : `Option ${oIndex + 1}`,
+      };
+      return { ...prev, questions: updated };
+    });
+  };
+
+  /* add a new quiz question */
+  const addQuestion = () => {
+    setCurrentVideo((prev) => {
+      const nextQuestions = [...prev.questions, emptyQuestion()];
+      return { ...prev, questions: nextQuestions };
+    });
+    setActiveQuizIndex((prev) => prev + 1);
+    toast.info("New quiz question added.");
+  };
+
+  /* remove a quiz question */
+  const removeQuestion = (qIndex) => {
+    setCurrentVideo((prev) => {
+      if (prev.questions.length <= 1) {
+        toast.warning("At least one question is required.");
+        return prev;
+      }
+      const updated = prev.questions.filter((_, i) => i !== qIndex);
+      setActiveQuizIndex(Math.min(activeQuizIndex, updated.length - 1));
+      return { ...prev, questions: updated };
+    });
+  };
+
+  const startEditingVideo = (index) => {
+    const video = videos[index];
+    if (!video) return;
+
+    setCurrentVideo({
+      title: video.title || "",
+      videoUri: video.videoUri || "",
+      questions: Array.isArray(video.questions) && video.questions.length > 0
+        ? video.questions.map((question) => ({
+            questionText: question.questionText || "",
+            options: Array.isArray(question.options) && question.options.length > 0
+              ? [...question.options, "", "", "", ""].slice(0, 4)
+              : ["", "", "", ""],
+            correctAnswer: question.correctAnswer || "",
+          }))
+        : [emptyQuestion()],
+    });
+    setActiveQuizIndex(0);
+    setEditingVideoIndex(index);
+    toast.info("Editing saved video. Update the fields and save the changes.");
+  };
+
+  const cancelEditingVideo = () => {
+    setCurrentVideo(emptyVideo());
+    setActiveQuizIndex(0);
+    setEditingVideoIndex(null);
+  };
+
+  /* navigate between quiz questions */
+  const prevQuiz = () => setActiveQuizIndex((i) => Math.max(0, i - 1));
+  const nextQuiz = () =>
+    setActiveQuizIndex((i) => Math.min(currentVideo.questions.length - 1, i + 1));
+
+  /* validation */
+  const validateQuestion = (q) =>
+    Boolean(
+      q.questionText?.trim() &&
+      Array.isArray(q.options) &&
+      q.options.filter((option) => option?.trim()).length >= 2 &&
+      q.correctAnswer?.trim() &&
+      q.options.filter((option) => option?.trim()).includes(q.correctAnswer)
+    );
+
+  const isCurrentVideoReady = useMemo(
+    () =>
+      Boolean(
+        currentVideo.title.trim() &&
+          currentVideo.videoUri.trim() &&
+          currentVideo.questions.length > 0 &&
+          currentVideo.questions.every(validateQuestion)
+      ),
+    [currentVideo]
+  );
+
+  /* build a clean video object */
+  const buildVideo = (v) => ({
+    title: v.title.trim(),
+    videoUri: v.videoUri.trim(),
+    questions: v.questions.map((q) => ({
+      questionText: q.questionText,
+      options: q.options.map((o, oi) => (o.trim() ? o : `Option ${oi + 1}`)),
+      correctAnswer: q.correctAnswer || `Option 1`,
+    })),
+  });
+
+  /* save current video to list and reset */
+  const saveCurrentVideo = () => {
+    if (!currentVideo.title.trim()) return toast.error("Please enter a video title.");
+    if (!currentVideo.videoUri.trim()) return toast.error("Please enter a video URL.");
+    if (!currentVideo.questions.length) return toast.error("Please add at least one question.");
+    if (currentVideo.questions.some((question) => !validateQuestion(question))) {
+      return toast.error("Please fill each question, add at least two options, and select a correct answer.");
+    }
+
+    const nextVideo = buildVideo(currentVideo);
+    const wasEditing = editingVideoIndex !== null;
+    setVideos((prev) => {
+      if (!wasEditing) {
+        return [...prev, nextVideo];
+      }
+
+      return prev.map((video, index) => (index === editingVideoIndex ? nextVideo : video));
+    });
+    setCurrentVideo(emptyVideo());
+    setActiveQuizIndex(0);
+    setEditingVideoIndex(null);
+    toast.success(wasEditing ? "Video updated successfully." : "Video saved! You can now add the next video.");
+  };
+
+  /* remove a saved video */
+  const removeVideo = (index) => {
+    setVideos((prev) => prev.filter((_, i) => i !== index));
+    if (editingVideoIndex === index) {
+      cancelEditingVideo();
+    } else if (editingVideoIndex !== null && editingVideoIndex > index) {
+      setEditingVideoIndex((prev) => prev - 1);
+    }
+  };
+
+  /* clear everything */
+  const clearForm = () => {
+    setModuleTitle("");
+    setModuleDescription("");
+    setVideos([]);
+    setCurrentVideo(emptyVideo());
+    setActiveQuizIndex(0);
+    setEditingVideoIndex(null);
+  };
+
+  /* submit module */
+  const handleSaveModule = async () => {
+    const draftVideo = isCurrentVideoReady ? buildVideo(currentVideo) : null;
+    const moduleVideos = (() => {
+      if (editingVideoIndex !== null) {
+        return videos.map((video, index) => (index === editingVideoIndex && draftVideo ? draftVideo : video));
+      }
+
+      return draftVideo ? [...videos, draftVideo] : videos;
+    })();
+
+    if (!moduleTitle.trim()) return toast.error("Please enter a module title.");
+    if (!moduleDescription.trim()) return toast.error("Please enter a module description.");
+    if (!moduleVideos.length) return toast.warning("Please add at least one video.");
+    if (moduleVideos.some((video) => !video.questions?.length || video.questions.some((question) => !validateQuestion(question)))) {
+      return toast.error("Please complete every question in every video before saving.");
+    }
+
+    const payload = {
+      moduleName: moduleTitle.trim(),
+      description: moduleDescription.trim(),
+      videos: moduleVideos,
+      createdBy: getCurrentAdminName(),
+    };
+
+    try {
+      const response = await fetch(`${baseUrl.baseUrl}api/modules${isEditMode ? `/${id}` : ""}`, {
+        method: isEditMode ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        toast.error(`Failed to create module: ${response.status} ${response.statusText}`);
+        return;
+      }
+
+      const data = await response.json();
+      toast.success(data.message || (isEditMode ? "Module updated successfully!" : "Module created successfully!"));
+      if (isEditMode) {
+        navigate("/module");
+      } else {
+        clearForm();
+      }
+    } catch (error) {
+      toast.error(`Network error: ${error.message}`);
+    }
+  };
+
+  const activeQ = currentVideo.questions[activeQuizIndex] ?? currentVideo.questions[currentVideo.questions.length - 1] ?? currentVideo.questions[0];
+
+  return (
+    <div className="flex min-h-screen bg-[#f9fafb] text-black" style={{ fontFamily: "'DM Sans', sans-serif" }}>
+      <SideNav />
+
+      <div className="flex-1 md:ml-[120px] px-6 py-6 pb-10">
+        <div className="max-w-[860px]">
+
+          {/* ── Header + basic info (no card, sits on grey bg) ── */}
+          <div>
+
+            {/* Header row */}
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <Link
+                  to="/module"
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-[#f4f4f4] text-gray-700 hover:bg-gray-200 transition-colors"
+                >
+                  <IoIosArrowBack size={16} />
+                </Link>
+                <div>
+                  <h1 className="text-[22px] font-bold leading-tight text-gray-900">
+                    {isEditMode ? "Edit Module" : "Create New Module"}
+                  </h1>
+                  <p className="mt-1.5 text-[12px] text-gray-500">
+                    Build a comprehensive training program with modules and assessments
+                  </p>
                 </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  onClick={clearForm}
+                  className="inline-flex h-9 items-center gap-1.5 rounded-md border border-gray-200 bg-white px-3 text-[12px] font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                  <FaRegBookmark size={11} />
+                  Save as Draft
+                </button>
+                <button
+                  onClick={handleSaveModule}
+                  className="inline-flex h-9 items-center gap-1.5 rounded-md bg-[#111111] px-3 text-[12px] font-medium text-white hover:bg-[#333] transition-colors"
+                >
+                  <FaRegFileLines size={11} />
+                  {isEditMode ? "Update Module" : "Create Training"}
+                </button>
+              </div>
             </div>
 
+            {/* Basic Information */}
+            <div className="mt-5">
+              <p className="text-[12px] font-medium text-gray-500 mb-3">Basic Information</p>
+              <div className="grid gap-4 md:grid-cols-2">
+                <Field
+                  label="Module Title"
+                  required
+                  value={moduleTitle}
+                  onChange={(e) => setModuleTitle(e.target.value)}
+                  placeholder="Enter module title"
+                />
+                <Field
+                  label="Description"
+                  required
+                  value={moduleDescription}
+                  onChange={(e) => setModuleDescription(e.target.value)}
+                  placeholder="Enter Description"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* ── Two-column body (sits on grey bg) ── */}
+          <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-12 md:items-start">
+
+            {/* ── LEFT: Upload Video + Add Quiz ── */}
+            <div className="space-y-3 md:col-span-7">
+
+              {/* Upload Video card */}
+              <div className="rounded-[8px] border border-gray-200 bg-white p-4">
+                <div className="mb-3 flex items-center justify-between gap-2">
+                  <p className="text-[13px] font-semibold text-gray-900">
+                    {editingVideoIndex === null ? "Upload Video" : `Edit Video #${editingVideoIndex + 1}`}
+                  </p>
+                  {editingVideoIndex !== null && (
+                    <button
+                      type="button"
+                      onClick={cancelEditingVideo}
+                      className="text-[12px] text-gray-500 hover:text-gray-900"
+                    >
+                      Cancel edit
+                    </button>
+                  )}
+                </div>
+                <div className="space-y-3">
+                  <Field
+                    label="Video Title"
+                    required
+                    value={currentVideo.title}
+                    onChange={(e) => handleVideoChange("title", e.target.value)}
+                    placeholder="Enter video title"
+                  />
+                  <Field
+                    label="Video URL"
+                    required
+                    value={currentVideo.videoUri}
+                    onChange={(e) => handleVideoChange("videoUri", e.target.value)}
+                    placeholder="Paste video URL (e.g., YouTube or other hosted links)"
+                  />
+                </div>
+              </div>
+
+              {/* Add Quiz card */}
+              <div className="rounded-[8px] border border-gray-200 bg-white p-4">
+                <p className="text-[13px] font-semibold text-gray-900 mb-3">Add Quiz</p>
+                <div className="mb-3 text-[11px] text-gray-500">
+                  {currentVideo.questions.length} question{currentVideo.questions.length === 1 ? "" : "s"} in this video
+                </div>
+
+                {/* Active question */}
+                {activeQ && (
+                  <QuizBlock
+                    question={activeQ}
+                    qIndex={activeQuizIndex}
+                    totalQuestions={currentVideo.questions.length}
+                    onChange={handleQuestionChange}
+                    onCorrectAnswer={handleCorrectAnswerChange}
+                    onRemove={removeQuestion}
+                  />
+                )}
+
+                {/* Add Question button */}
+                <button
+                  type="button"
+                  onClick={addQuestion}
+                  className="mt-3 flex h-9 w-full items-center gap-2 rounded-[6px] border border-dashed border-gray-300 px-3 text-[12px] text-gray-500 hover:border-gray-400 hover:text-gray-700 transition-colors"
+                >
+                  <FaPlus size={10} />
+                  Add Question
+                </button>
+
+                {/* Quiz navigation + Add Quiz */}
+                <div className="mt-4 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={prevQuiz}
+                      disabled={activeQuizIndex === 0}
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-[#f5f5f5] text-gray-500 disabled:opacity-40 hover:bg-gray-200 transition-colors"
+                    >
+                      <FaChevronLeft size={10} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={nextQuiz}
+                      disabled={activeQuizIndex >= currentVideo.questions.length - 1}
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-[#f5f5f5] text-gray-700 disabled:opacity-40 hover:bg-gray-200 transition-colors"
+                    >
+                      <FaChevronRight size={10} />
+                    </button>
+                    {currentVideo.questions.length > 1 && (
+                      <span className="text-[11px] text-gray-400">
+                    {Math.min(activeQuizIndex + 1, currentVideo.questions.length)} / {currentVideo.questions.length}
+                  </span>
+                )}
+              </div>
+                  <button
+                    type="button"
+                    onClick={addQuestion}
+                    className="inline-flex h-8 items-center gap-2 rounded-md bg-[#f5f5f5] px-3 text-[12px] font-medium text-gray-900 hover:bg-gray-200 transition-colors"
+                  >
+                    <FaPlus size={10} />
+                    Add Quiz
+                  </button>
+                </div>
+                {currentVideo.questions.length > 1 && (
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {currentVideo.questions.map((question, index) => (
+                      <button
+                        key={`${question.questionText || "question"}-${index}`}
+                        type="button"
+                        onClick={() => setActiveQuizIndex(index)}
+                        className={`rounded-full border px-2.5 py-1 text-[11px] transition-colors ${
+                          activeQuizIndex === index
+                            ? "border-gray-900 bg-gray-900 text-white"
+                            : "border-gray-300 bg-white text-gray-600 hover:border-gray-500"
+                        }`}
+                      >
+                        Q{index + 1}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Preview / Add Next Video */}
+              <div className="flex items-center justify-between">
+                <Link
+                  to="/module"
+                  className="inline-flex h-9 items-center gap-2 rounded-md border border-gray-200 bg-white px-4 text-[12px] font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                  <FaChevronLeft size={10} />
+                  Preview
+                </Link>
+                <button
+                  type="button"
+                  onClick={saveCurrentVideo}
+                  disabled={!isCurrentVideoReady}
+                  className={`inline-flex h-9 items-center gap-2 rounded-md px-5 text-[12px] font-semibold transition-colors ${
+                    isCurrentVideoReady
+                      ? "bg-[#111111] text-white hover:bg-[#333]"
+                      : "cursor-not-allowed bg-gray-200 text-gray-400"
+                  }`}
+                >
+                  <FaPlus size={11} />
+                  Add Next Video
+                </button>
+              </div>
+            </div>
+
+            {/* ── RIGHT: Saved video cards ── */}
+            <div className="space-y-2.5 md:col-span-5">
+              {videos.length > 0 ? (
+                videos.map((video, index) => (
+                  <SavedVideoCard
+                    key={`${video.title}-${index}`}
+                    video={video}
+                    active={index === 0}
+                    onRemove={() => removeVideo(index)}
+                    onEdit={() => startEditingVideo(index)}
+                  />
+                ))
+              ) : (
+                <div className="rounded-[8px] border border-dashed border-gray-300 bg-white p-6 text-center text-[12px] text-gray-400">
+                  Added videos will appear here.
+                </div>
+              )}
+            </div>
+          </div>
         </div>
-    );
+      </div>
+    </div>
+  );
 };
 
 export default CreateModuleData;

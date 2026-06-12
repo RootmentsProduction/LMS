@@ -1,58 +1,35 @@
 import { useEffect, useState } from "react";
-import baseUrl from "../../api/api";
+import { fetchStoreManagerDueData } from "../../features/dashboard/dashboardFetch";
 
 const OverdueTrainings = () => {
-    const token = localStorage.getItem("token");
-    const [data, setData] = useState([]);
-
+    const [responseData, setResponseData] = useState(null);
+    const [isLoading, setIsLoading] = useState(true);
     useEffect(() => {
-        const fetchData = async () => {
-            if (!token) {
-                console.error('No token found for OverdueTrainings');
-                return;
-            }
-
+        let mounted = true;
+        const load = async () => {
+            setIsLoading(true);
             try {
-                console.log('Fetching overdue training data from:', `${baseUrl.baseUrl}api/admin/get/storemanagerduedata`);
-                console.log('Using token:', token ? 'Token exists' : 'No token');
-                
-                const response = await fetch(
-                    `${baseUrl.baseUrl}api/admin/get/storemanagerduedata`,
-                    {
-                        method: "GET",
-                        headers: {
-                            "Content-Type": "application/json",
-                            Authorization: `Bearer ${token}`,
-                        },
-                        credentials: "include",
-                    }
-                );
-
-                console.log('Overdue training data response status:', response.status);
-
-                if (!response.ok) {
-                    const errorText = await response.text();
-                    console.error('Overdue training data error:', response.status, errorText);
-                    
-                    if (response.status === 401) {
-                        console.error('Authentication failed for overdue training data');
-                        return;
-                    }
-                    
-                    throw new Error(`HTTP ${response.status}: ${errorText}`);
-                }
-
-                const result = await response.json();
-                console.log('Overdue training data response:', result);
-                setData(result.topOverdueUsers || []);
-            } catch (error) {
-                console.error("Error fetching overdue training data:", error);
-                setData([]); // Set empty array on error
+                const json = await fetchStoreManagerDueData();
+                if (!mounted) return;
+                setResponseData(json);
+            } finally {
+                if (mounted) setIsLoading(false);
             }
         };
+        load();
+        return () => {
+            mounted = false;
+        };
+    }, []);
+    const data = responseData?.topOverdueUsers || [];
 
-        fetchData();
-    }, [token]);
+    if (isLoading) {
+        return (
+            <div role="status" className="flex items-center justify-center w-[600px] h-[400px] shadow-xl bg-slate-100 rounded-lg animate-pulse">
+                <span className="sr-only">Loading overdue trainings...</span>
+            </div>
+        );
+    }
 
     return (
         <div className="w-[600px] border bg-white shadow-md rounded-lg p-6">

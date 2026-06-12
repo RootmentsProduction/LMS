@@ -70,6 +70,14 @@ const employeeSchema = new mongoose.Schema({
         type: mongoose.Schema.Types.ObjectId, 
         ref: 'Employee' 
     },
+    storeId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Branch'
+    },
+    userId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+    },
     createdAt: { 
         type: Date, 
         default: Date.now 

@@ -1,1041 +1,467 @@
-// // ... other imports remain unchanged
-// import { useEffect, useState, useMemo } from "react";
-// import Header from "../../components/Header/Header";
-// import SideNav from "../../components/SideNav/SideNav";
-// import { CiFilter } from "react-icons/ci";
-// import { HiDownload } from "react-icons/hi";
-// import { BiChevronDown } from "react-icons/bi";
-// import baseUrl from "../../api/api";
-// import { Link } from "react-router-dom";
-
-// const EmployeeData = () => {
-//   const [data, setData] = useState([]);
-//   const [filteredData, setFilteredData] = useState([]);
-//   const [filterRole, setFilterRole] = useState("");
-//   const [filterBranch, setFilterBranch] = useState("");
-//   const [isRoleOpen, setIsRoleOpen] = useState(false);
-//   const [isBranchOpen, setIsBranchOpen] = useState(false);
-//   const [error, setError] = useState("");
-//   const [isMobile, setIsMobile] = useState(false);
-//   const token = localStorage.getItem('token');
-
-//   // Check for mobile viewport
-//   useEffect(() => {
-//     const checkMobile = () => {
-//       setIsMobile(window.innerWidth < 768);
-//     };
-    
-//     checkMobile();
-//     window.addEventListener('resize', checkMobile);
-    
-//     return () => window.removeEventListener('resize', checkMobile);
-//   }, []);
-
-//   useEffect(() => {
-//     const fetchEmployees = async () => {
-//       try {
-//         const response = await fetch(`${baseUrl.baseUrl}api/employee_range`, {
-//           method: "POST",
-//           headers: { "Content-Type": "application/json" },
-//           credentials: "include",
-//           body: JSON.stringify({ startEmpId: "EMP1", endEmpId: "EMP9999" }),
-//         });
-
-//         if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText}`);
-//         const json = await response.json();
-
-//         const normalized = (json?.data || []).map((e) => ({
-//           empID: e?.emp_code || "",
-//           username: e?.name || "",
-//           designation: e?.role_name || "",
-//           workingBranch: e?.store_name || "",
-//           trainingCount: 0,
-//           passCountTraining: 0,
-//           Trainingdue: 0,
-//           assignedAssessmentsCount: 0,
-//           passCountAssessment: 0,
-//           AssessmentDue: 0,
-//         }));
-
-//         setData(normalized);
-//         setFilteredData(normalized);
-//         setError("");
-//       } catch (error) {
-//         console.error("Failed to fetch employees:", error.message);
-//         setError("Failed to fetch employee data. Please try again later.");
-//         setData([]);
-//         setFilteredData([]);
-//       }
-//     };
-
-//     fetchEmployees();
-//   }, []);
-
-//   const roles = useMemo(() => [...new Set(data.map(emp => emp.designation))], [data]);
-//   const branches = useMemo(() => [...new Set(data.map(emp => emp.workingBranch))], [data]);
-
-//   const filterData = (role, branch) => {
-//     const filtered = data.filter(
-//       employee =>
-//         (!role || employee.designation === role) &&
-//         (!branch || employee.workingBranch === branch)
-//     );
-//     setFilteredData(filtered);
-//   };
-
-//   const handleRoleChange = (role) => {
-//     setFilterRole(role);
-//     filterData(role, filterBranch);
-//     setIsRoleOpen(false);
-//   };
-
-//   const handleBranchChange = (branch) => {
-//     setFilterBranch(branch);
-//     filterData(filterRole, branch);
-//     setIsBranchOpen(false);
-//   };
-
-//   // Close dropdowns when clicking outside
-//   useEffect(() => {
-//     const handleClickOutside = (event) => {
-//       if (!event.target.closest('.dropdown-container')) {
-//         setIsRoleOpen(false);
-//         setIsBranchOpen(false);
-//       }
-//     };
-
-//     document.addEventListener('mousedown', handleClickOutside);
-//     return () => {
-//       document.removeEventListener('mousedown', handleClickOutside);
-//     };
-//   }, []);
-
-//   const exportToCSV = () => {
-//     const headers = [
-//       "Emp ID",
-//       "Name",
-//       "Role",
-//       "Branch",
-//       "Training",
-//       "Trng. Comp",
-//       "Trng. Overdue",
-//       "Assessments",
-//       "Assmt. Comp",
-//       "Assmt. Overdue"
-//     ];
-
-//     const rows = filteredData.map(emp => [
-//       emp.empID,
-//       emp.username,
-//       emp.designation,
-//       emp.workingBranch,
-//       emp.trainingCount,
-//       `${emp.passCountTraining}%`,
-//       emp.Trainingdue,
-//       emp.assignedAssessmentsCount,
-//       `${emp.passCountAssessment}%`,
-//       emp.AssessmentDue
-//     ]);
-
-//     const csvContent =
-//       "data:text/csv;charset=utf-8," +
-//       [headers.join(","), ...rows.map(row => row.join(","))].join("\n");
-
-//     const encodedUri = encodeURI(csvContent);
-//     const link = document.createElement("a");
-//     link.setAttribute("href", encodedUri);
-//     link.setAttribute("download", "employee_data.csv");
-//     document.body.appendChild(link);
-//     link.click();
-//     document.body.removeChild(link);
-//   };
-
-//   // Mobile Card Component
-//   const MobileEmployeeCard = ({ employee, index }) => (
-//     <div className={`p-4 rounded-lg border ${index % 2 === 0 ? 'bg-gray-50' : 'bg-white'} mb-4 shadow-sm`}>
-//       <div className="flex justify-between items-start mb-3">
-//         <div>
-//           <h3 className="font-semibold text-[#016E5B] text-lg">#{employee.empID}</h3>
-//           <p className="font-medium text-gray-800">{employee.username}</p>
-//         </div>
-//         <Link 
-//           to={`/detailed/${employee.empID}`} 
-//           className="bg-[#016E5B] text-white px-3 py-1 rounded text-sm hover:bg-[#014C3F] transition-colors"
-//         >
-//           View
-//         </Link>
-//       </div>
-      
-//       <div className="grid grid-cols-1 gap-2 text-sm">
-//         <div className="flex justify-between">
-//           <span className="text-gray-600">Role:</span>
-//           <span className="font-medium text-right flex-1 ml-2" title={employee.designation}>
-//             {employee.designation}
-//           </span>
-//         </div>
-//         <div className="flex justify-between">
-//           <span className="text-gray-600">Branch:</span>
-//           <span className="font-medium text-right flex-1 ml-2" title={employee.workingBranch}>
-//             {employee.workingBranch}
-//           </span>
-//         </div>
-        
-//         {/* Training Stats */}
-//         <div className="mt-2 pt-2 border-t border-gray-200">
-//           <p className="font-medium text-gray-700 mb-1">Training:</p>
-//           <div className="grid grid-cols-3 gap-2 text-xs">
-//             <div className="text-center">
-//               <div className="font-semibold text-[#016E5B]">{employee.trainingCount}</div>
-//               <div className="text-gray-500">Total</div>
-//             </div>
-//             <div className="text-center">
-//               <div className="font-semibold text-green-600">{employee.passCountTraining}%</div>
-//               <div className="text-gray-500">Completed</div>
-//             </div>
-//             <div className="text-center">
-//               <div className="font-semibold text-red-600">{employee.Trainingdue}</div>
-//               <div className="text-gray-500">Overdue</div>
-//             </div>
-//           </div>
-//         </div>
-
-//         {/* Assessment Stats */}
-//         <div className="mt-2 pt-2 border-t border-gray-200">
-//           <p className="font-medium text-gray-700 mb-1">Assessments:</p>
-//           <div className="grid grid-cols-3 gap-2 text-xs">
-//             <div className="text-center">
-//               <div className="font-semibold text-[#016E5B]">{employee.assignedAssessmentsCount}</div>
-//               <div className="text-gray-500">Total</div>
-//             </div>
-//             <div className="text-center">
-//               <div className="font-semibold text-green-600">{employee.passCountAssessment}%</div>
-//               <div className="text-gray-500">Completed</div>
-//             </div>
-//             <div className="text-center">
-//               <div className="font-semibold text-red-600">{employee.AssessmentDue}</div>
-//               <div className="text-gray-500">Overdue</div>
-//             </div>
-//           </div>
-//         </div>
-//       </div>
-//     </div>
-//   );
-
-//   return (
-//     <div className="mb-[70px] text-[14px]">
-//       <Header name="Employee" />
-//       <SideNav />
-
-//       <div className="md:ml-[90px] mt-[160px] sm:mt-[140px]">
-//         {/* Header Section */}
-//         <div className="px-4 sm:px-6 lg:px-12">
-//           <div className="flex flex-col gap-4 mt-8 sm:mt-12 lg:mt-16 mb-6">
-//             <h1 className="text-[#212121] text-xl sm:text-2xl font-semibold">Employee Management</h1>
-
-//             {/* Filters and Actions */}
-//             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-//               {/* Filters Container */}
-//               <div className="flex flex-col sm:flex-row gap-3 flex-1">
-//                 {/* Role Dropdown */}
-//                 <div className="relative dropdown-container flex-1 sm:flex-none sm:min-w-[140px] sm:max-w-[180px]">
-//                   <button
-//                     className="flex justify-between items-center w-full border-2 py-2.5 px-3 bg-white text-black rounded-md hover:bg-gray-200 transition-all duration-150"
-//                     onClick={() => {
-//                       setIsRoleOpen(prev => !prev);
-//                       setIsBranchOpen(false);
-//                     }}
-//                   >
-//                     <span className="truncate text-sm font-medium">
-//                       {filterRole || "All Roles"}
-//                     </span>
-//                     <BiChevronDown className={`text-[#016E5B] ml-2 flex-shrink-0 transition-transform ${isRoleOpen ? 'rotate-180' : ''}`} size={18} />
-//                   </button>
-//                   {isRoleOpen && (
-//                     <div className="absolute left-0 right-0 mt-2 bg-white rounded-md shadow-lg z-30 max-h-60 overflow-y-auto border border-gray-200">
-//                       <button 
-//                         onClick={() => handleRoleChange("")} 
-//                         className="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-100 border-b border-gray-100 font-medium"
-//                       >
-//                         All Roles
-//                       </button>
-//                       {roles.filter(role => role).map((role, index) => (
-//                         <button 
-//                           key={index} 
-//                           onClick={() => handleRoleChange(role)} 
-//                           className="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-100 border-b border-gray-100 last:border-b-0"
-//                           title={role}
-//                         >
-//                           {role}
-//                         </button>
-//                       ))}
-//                     </div>
-//                   )}
-//                 </div>
-
-//                 {/* Branch Dropdown */}
-//                 <div className="relative dropdown-container flex-1 sm:flex-none sm:min-w-[140px] sm:max-w-[200px]">
-//                   <button
-//                     className="flex justify-between items-center w-full border-2 py-2.5 px-3 bg-white text-black rounded-md hover:bg-gray-200 transition-all duration-150"
-//                     onClick={() => {
-//                       setIsBranchOpen(prev => !prev);
-//                       setIsRoleOpen(false);
-//                     }}
-//                   >
-//                     <span className="truncate text-sm font-medium">
-//                       {filterBranch || "All Branches"}
-//                     </span>
-//                     <BiChevronDown className={`text-[#016E5B] ml-2 flex-shrink-0 transition-transform ${isBranchOpen ? 'rotate-180' : ''}`} size={18} />
-//                   </button>
-//                   {isBranchOpen && (
-//                     <div className="absolute left-0 right-0 mt-2 bg-white rounded-md shadow-lg z-30 max-h-60 overflow-y-auto border border-gray-200">
-//                       <button 
-//                         onClick={() => handleBranchChange("")} 
-//                         className="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-100 border-b border-gray-100 font-medium"
-//                       >
-//                         All Branches
-//                       </button>
-//                       {branches.filter(branch => branch).map((branch, index) => (
-//                         <button 
-//                           key={index} 
-//                           onClick={() => handleBranchChange(branch)} 
-//                           className="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-100 border-b border-gray-100 last:border-b-0"
-//                           title={branch}
-//                         >
-//                           {branch}
-//                         </button>
-//                       ))}
-//                     </div>
-//                   )}
-//                 </div>
-//               </div>
-
-//               {/* CSV Download Button */}
-//               <button
-//                 className="bg-[#016E5B] text-white px-4 py-2.5 rounded-md hover:bg-[#014C3F] transition-all duration-150 text-sm font-medium flex items-center justify-center gap-2 sm:whitespace-nowrap"
-//                 onClick={exportToCSV}
-//               >
-//                 <HiDownload size={16} />
-//                 <span className="hidden sm:inline">Download CSV</span>
-//                 <span className="sm:hidden">CSV</span>
-//               </button>
-//             </div>
-
-//             {/* Results count */}
-//             <div className="text-sm text-gray-600">
-//               Showing {filteredData.length} of {data.length} employees
-//               {(filterRole || filterBranch) && (
-//                 <button 
-//                   onClick={() => {
-//                     setFilterRole("");
-//                     setFilterBranch("");
-//                     setFilteredData(data);
-//                   }}
-//                   className="ml-2 text-[#016E5B] hover:underline"
-//                 >
-//                   Clear filters
-//                 </button>
-//               )}
-//             </div>
-//           </div>
-//         </div>
-
-//         {/* Error Message */}
-//         {error && (
-//           <div className="text-red-500 text-center my-4 mx-4 sm:mx-6 lg:mx-12 p-3 bg-red-50 border border-red-200 rounded-md text-sm">
-//             {error}
-//           </div>
-//         )}
-
-//         {/* Content Container */}
-//         <div className="mx-4 sm:mx-6 lg:mx-12">
-//           {/* Mobile View */}
-//           {isMobile ? (
-//             <div className="space-y-4">
-//               {filteredData.length > 0 ? (
-//                 filteredData.map((employee, index) => (
-//                   <MobileEmployeeCard key={index} employee={employee} index={index} />
-//                 ))
-//               ) : (
-//                 <div className="text-center py-12 text-gray-500 bg-gray-50 rounded-lg">
-//                   <div className="flex flex-col items-center gap-3">
-//                     <span className="text-4xl">📋</span>
-//                     <span className="text-lg font-medium">No employees found</span>
-//                     <span className="text-sm">Try adjusting your filters</span>
-//                   </div>
-//                 </div>
-//               )}
-//             </div>
-//           ) : (
-//             /* Desktop/Tablet Table View */
-//             <div className="overflow-x-auto text-black bg-white rounded-lg shadow-sm border border-gray-200">
-//               <div className="max-h-[70vh] overflow-y-auto">
-//                 <table className="w-full text-sm">
-//                   <thead className="sticky top-0 z-20 bg-[#016E5B] text-white">
-//                     <tr>
-//                       <th className="px-3 py-3 border-r border-[#014C3F] text-center font-semibold min-w-[90px]">Emp ID</th>
-//                       <th className="px-3 py-3 border-r border-[#014C3F] text-center font-semibold min-w-[150px]">Name</th>
-//                       <th className="px-3 py-3 border-r border-[#014C3F] text-center font-semibold min-w-[140px] hidden lg:table-cell">Role</th>
-//                       <th className="px-3 py-3 border-r border-[#014C3F] text-center font-semibold min-w-[180px] hidden lg:table-cell">Branch</th>
-//                       <th className="px-3 py-3 border-r border-[#014C3F] text-center font-semibold min-w-[80px] hidden md:table-cell">Training</th>
-//                       <th className="px-3 py-3 border-r border-[#014C3F] text-center font-semibold min-w-[90px] hidden md:table-cell">Trng. Comp</th>
-//                       <th className="px-3 py-3 border-r border-[#014C3F] text-center font-semibold min-w-[100px] hidden xl:table-cell">Trng. Overdue</th>
-//                       <th className="px-3 py-3 border-r border-[#014C3F] text-center font-semibold min-w-[100px] hidden md:table-cell">Assessments</th>
-//                       <th className="px-3 py-3 border-r border-[#014C3F] text-center font-semibold min-w-[100px] hidden md:table-cell">Assmt. Comp</th>
-//                       <th className="px-3 py-3 border-r border-[#014C3F] text-center font-semibold min-w-[110px] hidden xl:table-cell">Assmt. Overdue</th>
-//                       <th className="px-3 py-3 text-center font-semibold min-w-[70px]">View</th>
-//                     </tr>
-//                   </thead>
-//                   <tbody className="bg-white">
-//                     {filteredData.length > 0 ? (
-//                       filteredData.map((employee, index) => (
-//                         <tr 
-//                           key={index} 
-//                           className={`${index % 2 === 0 ? 'bg-gray-50' : 'bg-white'} hover:bg-blue-50 transition-all border-b border-gray-200`}
-//                         >
-//                           <td className="px-3 py-3 border-r border-gray-200 text-center font-medium text-[#016E5B]">
-//                             #{employee.empID}
-//                           </td>
-//                           <td className="px-3 py-3 border-r border-gray-200 text-center" title={employee.username}>
-//                             <div className="lg:hidden">
-//                               <div className="font-medium">{employee.username}</div>
-//                               <div className="text-xs text-gray-500 mt-1">{employee.designation}</div>
-//                               <div className="text-xs text-gray-500">{employee.workingBranch}</div>
-//                             </div>
-//                             <div className="hidden lg:block">{employee.username}</div>
-//                           </td>
-//                           <td className="px-3 py-3 border-r border-gray-200 text-center text-sm hidden lg:table-cell" title={employee.designation}>
-//                             {employee.designation}
-//                           </td>
-//                           <td className="px-3 py-3 border-r border-gray-200 text-center text-sm hidden lg:table-cell" title={employee.workingBranch}>
-//                             {employee.workingBranch}
-//                           </td>
-//                           <td className="px-3 py-3 border-r border-gray-200 text-center font-medium hidden md:table-cell">{employee.trainingCount}</td>
-//                           <td className="px-3 py-3 border-r border-gray-200 text-center font-medium hidden md:table-cell">{employee.passCountTraining}%</td>
-//                           <td className="px-3 py-3 border-r border-gray-200 text-center font-medium hidden xl:table-cell">{employee.Trainingdue}</td>
-//                           <td className="px-3 py-3 border-r border-gray-200 text-center font-medium hidden md:table-cell">{employee.assignedAssessmentsCount}</td>
-//                           <td className="px-3 py-3 border-r border-gray-200 text-center font-medium hidden md:table-cell">{employee.passCountAssessment}%</td>
-//                           <td className="px-3 py-3 border-r border-gray-200 text-center font-medium hidden xl:table-cell">{employee.AssessmentDue}</td>
-//                           <td className="px-3 py-3 text-center">
-//                             <Link 
-//                               to={`/detailed/${employee.empID}`} 
-//                               className="text-[#016E5B] font-semibold hover:underline hover:text-[#014C3F] transition-colors text-sm px-2 py-1 rounded"
-//                             >
-//                               View
-//                             </Link>
-//                           </td>
-//                         </tr>
-//                       ))
-//                     ) : (
-//                       <tr>
-//                         <td colSpan="11" className="text-center py-12 text-gray-500 bg-gray-50">
-//                           <div className="flex flex-col items-center gap-3">
-//                             <span className="text-4xl">📋</span>
-//                             <span className="text-lg font-medium">No employees found</span>
-//                             <span className="text-sm">Try adjusting your filters</span>
-//                           </div>
-//                         </td>
-//                       </tr>
-//                     )}
-//                   </tbody>
-//                 </table>
-//               </div>
-//             </div>
-//           )}
-//         </div>
-//       </div>
-//     </div>
-//   );
-// };
-
-// export default EmployeeData;
-
-
-import { useEffect, useState, useMemo } from "react";
-import Header from "../../components/Header/Header";
+import { useEffect, useState, useCallback } from "react";
+import { useSelector } from "react-redux";
 import SideNav from "../../components/SideNav/SideNav";
-import { HiDownload } from "react-icons/hi";
-import { BiChevronDown } from "react-icons/bi";
-import { HiRefresh } from "react-icons/hi";
 import baseUrl from "../../api/api";
 import { Link } from "react-router-dom";
+import { FaChevronLeft, FaChevronRight } from "react-icons/fa";
 
-/* ---------- Helpers (no brand merging here) ---------- */
-function canonFixes(s) {
-  return s
-    .replace(/\bedap{1,2}a?l{1,3}y\b/g, "edappally")
-    .replace(/\bedap{1,2}a?l{1,3}i\b/g, "edappally")
-    .replace(/\bmanjeri\b/g, "manjery")
-    .replace(/\bperinthalmana\b/g, "perinthalmanna")
-    .replace(/\bkottakal\b/g, "kottakkal")
-    .replace(/\bkalpeta\b/g, "kalpetta");
-}
-const norm = (s) =>
-  canonFixes(
-    String(s || "")
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, " ")
-      .trim()
-  );
+const getProgressColor = (pct) => {
+  if (pct === 100) return "#22c55e"; // green
+  if (pct >= 85) return "#3b82f6"; // blue
+  if (pct >= 50) return "#f59e0b"; // orange
+  return "#ef4444"; // red
+};
 
-const titleCase = (s) =>
-  String(s || "")
-    .toLowerCase()
-    .replace(/\b\w/g, (m) => m.toUpperCase());
+const getRoleRank = (roleOrDesignation) => {
+  const r = String(roleOrDesignation || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (r.includes("superadmin")) return 6;
+  if (r === "admin") return 5;
+  if (r.includes("hradmin")) return 4;
+  if (r.includes("clusteradmin")) return 3;
+  if (r.includes("storeadmin")) return 2;
+  if (r.includes("employee") || r.includes("sales") || r.includes("staff")) return 1;
+  return 1; // Default
+};
 
-const EmployeeData = () => {
-  const [data, setData] = useState([]);
-  const [filteredData, setFilteredData] = useState([]);
-  const [filterRole, setFilterRole] = useState("");
-  const [filterBranch, setFilterBranch] = useState("");
-  const [isRoleOpen, setIsRoleOpen] = useState(false);
-  const [isBranchOpen, setIsBranchOpen] = useState(false);
-  const [error, setError] = useState("");
-  const [isMobile, setIsMobile] = useState(false);
-  const [isRefreshing, setIsRefreshing] = useState(false);
+const exportCSV = (data) => {
+  const headers = ["#","Emp ID","Name","Role","Store","Training Progress","Tasks Done","Tasks Overdue","Training Done","Training Overdue"];
+  const rows = data.map((e, i) => [i+1, e.empID, e.username, e.designation, e.workingBranch, `${e.trainingCompletionPercentage}%`, e.passCountTask, e.taskDue, e.passCountTraining, e.Trainingdue]);
+  const csv = [headers, ...rows].map(r => r.map(c => `"${String(c||'').replace(/"/g,'""')}"`).join(",")).join("\n");
+  const a = document.createElement("a");
+  a.href = "data:text/csv;charset=utf-8," + encodeURIComponent(csv);
+  a.download = "employees.csv";
+  a.click();
+};
 
-  // mobile viewport check
-  useEffect(() => {
-    const checkMobile = () => setIsMobile(window.innerWidth < 768);
-    checkMobile();
-    window.addEventListener("resize", checkMobile);
-    return () => window.removeEventListener("resize", checkMobile);
-  }, []);
-
-  const fetchEmployees = async () => {
-    try {
-      setIsRefreshing(true);
-      const token = localStorage.getItem('token');
-      if (!token) {
-        setError("Authentication required. Please login again.");
-        return;
-      }
-
-        // Use the new API endpoint that includes training details with cache-busting
-        const cacheBuster = `?t=${Date.now()}`;
-        const response = await fetch(`${baseUrl.baseUrl}api/employee/management/with-training-details${cacheBuster}`, {
-          method: "GET",
-          headers: { 
-            "Content-Type": "application/json",
-            'Authorization': `Bearer ${token}`,
-          },
-          credentials: "include",
-        });
-
-      if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText}`);
-      const json = await response.json();
-
-      if (json.success && json.data) {
-        const normalized = json.data.map((employee) => {
-          const branchRaw = employee.workingBranch || "";
-          return {
-            empID: employee.empID || "",
-            username: employee.username || "",
-            designation: employee.designation || "",
-            workingBranch: branchRaw,                // raw value (for CSV)
-            workingBranchLabel: titleCase(branchRaw),// UI label
-            // Training data from the API
-            trainingCount: employee.trainingCount || 0,
-            passCountTraining: employee.passCountTraining || 0,
-            Trainingdue: employee.trainingDue || 0,
-            trainingCompletionPercentage: employee.trainingCompletionPercentage || 0,
-            // Assessment data from the API
-            assignedAssessmentsCount: employee.assignedAssessmentsCount || 0,
-            passCountAssessment: employee.passCountAssessment || 0,
-            AssessmentDue: employee.assessmentDue || 0,
-            assessmentCompletionPercentage: employee.assessmentCompletionPercentage || 0,
-            // Additional info
-            isLocalUser: employee.isLocalUser || false,
-            hasTrainingData: employee.hasTrainingData || false,
-          };
-        });
-
-        setData(normalized);
-        setFilteredData(normalized);
-        setError("");
-        
-        console.log(`✅ Loaded ${normalized.length} employees with training details`);
-        console.log(`📊 Employees with training data: ${json.employeesWithTraining}`);
-      } else {
-        throw new Error(json.message || "Invalid response format");
-      }
-    } catch (error) {
-      console.error("Failed to fetch employees:", error.message);
-      setError("Failed to fetch employee data. Please try again later.");
-      setData([]);
-      setFilteredData([]);
-    } finally {
-      setIsRefreshing(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchEmployees();
-  }, []);
-
-  // unique lists
-  const roles = useMemo(
-    () => [...new Set(data.map((emp) => emp.designation).filter(Boolean))],
-    [data]
-  );
-
-  // keep brand distinctions; show clean labels
-  const branches = useMemo(() => {
-    const set = new Map(); // label -> raw
-    data.forEach((emp) => {
-      if (emp.workingBranch) set.set(emp.workingBranchLabel, emp.workingBranch);
-    });
-    return Array.from(set.entries()).map(([label, raw]) => ({ label, raw }));
-  }, [data]);
-
-  const filterData = (role, branchRaw) => {
-    const r = norm(role);
-    const b = norm(branchRaw);
-    const filtered = data.filter((employee) => {
-      const roleOk = !r || norm(employee.designation) === r;
-      const branchOk = !b || norm(employee.workingBranch) === b; // robust to Edappally variants
-      return roleOk && branchOk;
-    });
-    setFilteredData(filtered);
-  };
-
-  const handleRoleChange = (role) => {
-    setFilterRole(role);
-    filterData(role, filterBranch);
-    setIsRoleOpen(false);
-  };
-
-  const handleBranchChange = (branchRaw) => {
-    setFilterBranch(branchRaw);
-    filterData(filterRole, branchRaw);
-    setIsBranchOpen(false);
-  };
-
-  // Close dropdowns when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (!event.target.closest(".dropdown-container")) {
-        setIsRoleOpen(false);
-        setIsBranchOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
-  const handleRefresh = async () => {
-    await fetchEmployees();
-  };
-
-  const handleAutoSync = async () => {
-    try {
-      setIsRefreshing(true);
-      const token = localStorage.getItem('token');
-      
-      const response = await fetch(`${baseUrl.baseUrl}api/employee/auto-sync`, {
-        method: "POST",
-        headers: { 
-          "Content-Type": "application/json",
-          'Authorization': `Bearer ${token}`,
-        },
-        credentials: "include",
-      });
-
-      if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText}`);
-      const result = await response.json();
-
-      if (result.success) {
-        console.log('✅ Auto-sync completed:', result.results);
-        // Refresh the employee list after sync
-        await fetchEmployees();
-        
-        // Show success message with details
-        const message = `Sync completed! Created: ${result.results.created}, Updated: ${result.results.updated}, Total: ${result.results.totalInDatabase}`;
-        setError(""); // Clear any previous errors
-        
-        // You could add a toast notification here if you have one
-        console.log(message);
-      } else {
-        throw new Error(result.message || "Auto-sync failed");
-      }
-    } catch (error) {
-      console.error("Auto-sync failed:", error.message);
-      setError(`Auto-sync failed: ${error.message}`);
-    } finally {
-      setIsRefreshing(false);
-    }
-  };
-
-  const exportToCSV = () => {
-    const headers = [
-      "Emp ID",
-      "Name",
-      "Role",
-      "Branch",
-      "Training",
-      "Trng. Comp",
-      "Trng. Overdue",
-      "Assessments",
-      "Assmt. Comp",
-      "Assmt. Overdue",
-    ];
-
-    const rows = filteredData.map((emp) => [
-      emp.empID,
-      emp.username,
-      emp.designation,
-      emp.workingBranch,
-      emp.trainingCount,
-      `${emp.trainingCompletionPercentage}%`,
-      emp.Trainingdue,
-      emp.assignedAssessmentsCount,
-      `${emp.assessmentCompletionPercentage}%`,
-      emp.AssessmentDue,
-    ]);
-
-    const csvContent =
-      "data:text/csv;charset=utf-8," +
-      [headers.join(","), ...rows.map((row) => row.join(","))].join("\n");
-
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", "employee_data.csv");
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  // Mobile Card
-  const MobileEmployeeCard = ({ employee, index }) => (
-    <div className={`p-4 rounded-lg border ${index % 2 === 0 ? "bg-gray-50" : "bg-white"} mb-4 shadow-sm`}>
-      <div className="flex justify-between items-start mb-3">
-        <div>
-          <h3 className="font-semibold text-[#016E5B] text-lg">#{employee.empID}</h3>
-          <p className="font-medium text-gray-800">{employee.username}</p>
-        </div>
-        <Link
-          to={`/detailed/${employee.empID}`}
-          className="bg-[#016E5B] text-white px-3 py-1 rounded text-sm hover:bg-[#014C3F] transition-colors"
-        >
-          View
-        </Link>
+const ProgressBar = ({ pct }) => {
+  const color = getProgressColor(pct);
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+      <div style={{ flex: 1, height: "8px", background: "#e5e7eb", borderRadius: "99px", overflow: "hidden" }}>
+        <div style={{ width: `${Math.min(pct, 100)}%`, height: "100%", background: color, borderRadius: "99px", transition: "width 0.3s" }} />
       </div>
-
-      <div className="grid grid-cols-1 gap-2 text-sm">
-        <div className="flex justify-between">
-          <span className="text-gray-600">Role:</span>
-          <span className="font-medium text-right flex-1 ml-2" title={employee.designation}>
-            {employee.designation}
-          </span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-gray-600">Branch:</span>
-          <span className="font-medium text-right flex-1 ml-2" title={employee.workingBranch}>
-            {employee.workingBranchLabel}
-          </span>
-        </div>
-
-        <div className="mt-2 pt-2 border-t border-gray-200">
-          <p className="font-medium text-gray-700 mb-1">Training:</p>
-          <div className="grid grid-cols-3 gap-2 text-xs">
-            <div className="text-center">
-              <div className="font-semibold text-[#016E5B]">{employee.trainingCount}</div>
-              <div className="text-gray-500">Total</div>
-            </div>
-            <div className="text-center">
-              <div className="font-semibold text-green-600">{employee.passCountTraining}%</div>
-              <div className="text-gray-500">Completed</div>
-            </div>
-            <div className="text-center">
-              <div className="font-semibold text-red-600">{employee.Trainingdue}</div>
-              <div className="text-gray-500">Overdue</div>
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-2 pt-2 border-t border-gray-200">
-          <p className="font-medium text-gray-700 mb-1">Assessments:</p>
-          <div className="grid grid-cols-3 gap-2 text-xs">
-            <div className="text-center">
-              <div className="font-semibold text-[#016E5B]">{employee.assignedAssessmentsCount}</div>
-              <div className="text-gray-500">Total</div>
-            </div>
-            <div className="text-center">
-              <div className="font-semibold text-green-600">{employee.passCountAssessment}%</div>
-              <div className="text-gray-500">Completed</div>
-            </div>
-            <div className="text-center">
-              <div className="font-semibold text-red-600">{employee.AssessmentDue}</div>
-              <div className="text-gray-500">Overdue</div>
-            </div>
-          </div>
-        </div>
-      </div>
+      <span style={{ fontSize: "12px", fontWeight: 600, color: "#374151", minWidth: "34px", textAlign: "right" }}>{pct}%</span>
     </div>
   );
+};
+
+const formatStat = (num) => String(num || 0).padStart(2, "0");
+
+const StatCell = ({ done, total, overdue, pending }) => {
+  let statusText = "";
+  let statusColor = "";
+
+  if (overdue > 0) {
+    statusText = `Overdue : ${overdue}`;
+    statusColor = "#ef4444"; // red
+  } else if (pending > 0) {
+    statusText = `Pending : ${pending}`;
+    statusColor = "#3b82f6"; // blue
+  } else {
+    statusText = "Completed";
+    statusColor = "#22c55e"; // green
+  }
 
   return (
-    <div className="mb-[70px] text-[14px]">
-      <Header name="Employee" />
+    <div style={{ fontSize: "12px", lineHeight: "1.4", fontFamily: "DM Sans, sans-serif" }}>
+      <div style={{ color: "#374151", fontWeight: 600 }}>{formatStat(done)}/{formatStat(total)}</div>
+      <div style={{ color: statusColor, fontWeight: 500, marginTop: "2px" }}>{statusText}</div>
+    </div>
+  );
+};
+
+const mapEmployee = (e) => ({
+  empID: e.empID || "",
+  username: e.username || "",
+  designation: e.designation || "",
+  workingBranch: e.workingBranch ? (e.workingBranch.split(',').length > 5 ? "All Stores" : e.workingBranch) : "",
+  trainingCount: e.trainingCount || 0,
+  passCountTraining: e.passCountTraining || 0,
+  Trainingdue: e.trainingDue || 0,
+  trainingPending: e.trainingPending !== undefined ? e.trainingPending : Math.max(0, (e.trainingCount || 0) - (e.passCountTraining || 0) - (e.trainingDue || 0)),
+  trainingCompletionPercentage: e.trainingCompletionPercentage || 0,
+  assignedAssessmentsCount: e.assignedAssessmentsCount || 0,
+  passCountAssessment: e.passCountAssessment || 0,
+  AssessmentDue: e.assessmentDue || 0,
+  assessmentCompletionPercentage: e.assessmentCompletionPercentage || 0,
+  taskCount: e.taskCount || 0,
+  passCountTask: e.passCountTask || 0,
+  taskDue: e.taskDue || 0,
+  taskPending: e.taskPending !== undefined ? e.taskPending : Math.max(0, (e.taskCount || 0) - (e.passCountTask || 0) - (e.taskDue || 0)),
+});
+
+const EmployeeData = () => {
+  const user = useSelector((state) => state.auth.user);
+  const isRestrictedRole = user?.role === 'cluster_admin' || user?.role === 'store_admin';
+  const [data, setData] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [search, setSearch] = useState("");
+  const [storeFilter, setStoreFilter] = useState("All");
+  const [roleFilter, setRoleFilter] = useState("All");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalEmployees, setTotalEmployees] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [stores, setStores] = useState(["All"]);
+  const [roles, setRoles] = useState(["All"]);
+  const [itemsPerPage, setItemsPerPage] = useState(50);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+
+  const token = localStorage.getItem("token");
+
+  const fetchEmployees = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({
+        page: String(currentPage),
+        limit: String(itemsPerPage === 'All' ? 500 : itemsPerPage),
+        search: search.trim(),
+        store: storeFilter,
+        role: roleFilter,
+      });
+      const res = await fetch(
+        `${baseUrl.baseUrl}api/employee/app-users?${params}`,
+        { headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` } }
+      );
+      const json = await res.json();
+      if (json.success && Array.isArray(json.data)) {
+        const mapped = json.data.map(mapEmployee);
+        const sorted = [...mapped].sort((a, b) => {
+          return (a.empID || "").localeCompare(b.empID || "", undefined, { numeric: true, sensitivity: 'base' });
+        });
+        
+        // Filter out employees on top of them (higher or equal role) if restricted
+        const filtered = isRestrictedRole ? sorted.filter(e => {
+          const userRank = getRoleRank(user?.role);
+          const empRank = getRoleRank(e.designation);
+          return empRank < userRank;
+        }) : sorted;
+
+        setData(filtered);
+        setTotalEmployees(isRestrictedRole ? filtered.length : (json.totalEmployees ?? json.data.length));
+        setTotalPages(json.totalPages ?? 1);
+        if (json.filters?.stores?.length) setStores(json.filters.stores);
+        
+        // Also filter the available role options in the dropdown if restricted
+        if (json.filters?.roles?.length) {
+          if (isRestrictedRole) {
+            const userRank = getRoleRank(user?.role);
+            setRoles(json.filters.roles.filter(r => r === 'All' || getRoleRank(r) < userRank));
+          } else {
+            setRoles(json.filters.roles);
+          }
+        }
+        setError("");
+      } else {
+        throw new Error(json.message || "Failed");
+      }
+    } catch {
+      setError("Failed to load employees.");
+      setData([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [token, currentPage, search, storeFilter, roleFilter, itemsPerPage, isRestrictedRole, user?.role]);
+
+  useEffect(() => {
+    const timer = setTimeout(fetchEmployees, search ? 300 : 0);
+    return () => clearTimeout(timer);
+  }, [fetchEmployees, search]);
+
+  const fetchAllForExport = async () => {
+    const params = new URLSearchParams({
+      page: "1",
+      limit: "500",
+      search: search.trim(),
+      store: storeFilter,
+      role: roleFilter,
+    });
+    const res = await fetch(
+      `${baseUrl.baseUrl}api/employee/app-users?${params}`,
+      { headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` } }
+    );
+    const json = await res.json();
+    if (json.success) {
+      const mapped = (json.data || []).map(mapEmployee);
+      const filtered = isRestrictedRole ? mapped.filter(e => {
+        const userRank = getRoleRank(user?.role);
+        const empRank = getRoleRank(e.designation);
+        return empRank < userRank;
+      }) : mapped;
+      exportCSV(filtered);
+    }
+  };
+
+  const sel = { border:"1px solid #e5e7eb", borderRadius:"8px", padding:"7px 12px", fontSize:"13px", color:"#374151", outline:"none", background:"#fff", cursor:"pointer", fontFamily:"DM Sans, sans-serif" };
+
+  return (
+    <div style={{ minHeight:"100vh", background:"#f9fafb", fontFamily:"DM Sans, sans-serif" }}>
       <SideNav />
 
-      <div className="md:ml-[90px] mt-[160px] sm:mt-[140px]">
-        <div className="px-4 sm:px-6 lg:px-12">
-          <div className="flex flex-col gap-4 mt-8 sm:mt-12 lg:mt-16 mb-6">
-            <h1 className="text-[#212121] text-xl sm:text-2xl font-semibold">Employee Management</h1>
-
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-              <div className="flex flex-col sm:flex-row gap-3 flex-1">
-                {/* Role */}
-                <div className="relative dropdown-container flex-1 sm:flex-none sm:min-w-[140px] sm:max-w-[180px]">
-                  <button
-                    className="flex justify-between items-center w-full border-2 py-2.5 px-3 bg-white text-black rounded-md hover:bg-gray-200 transition-all duration-150"
-                    onClick={() => {
-                      setIsRoleOpen((prev) => !prev);
-                      setIsBranchOpen(false);
-                    }}
-                  >
-                    <span className="truncate text-sm font-medium">
-                      {filterRole || "All Roles"}
-                    </span>
-                    <BiChevronDown
-                      className={`text-[#016E5B] ml-2 flex-shrink-0 transition-transform ${
-                        isRoleOpen ? "rotate-180" : ""
-                      }`}
-                      size={18}
-                    />
-                  </button>
-                  {isRoleOpen && (
-                    <div className="absolute left-0 right-0 mt-2 bg-white rounded-md shadow-lg z-30 max-h-60 overflow-y-auto border border-gray-200">
-                      <button
-                        onClick={() => handleRoleChange("")}
-                        className="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-100 border-b border-gray-100 font-medium"
-                      >
-                        All Roles
-                      </button>
-                      {roles.map((role, index) => (
-                        <button
-                          key={index}
-                          onClick={() => handleRoleChange(role)}
-                          className="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-100 border-b border-gray-100 last:border-b-0"
-                          title={role}
-                        >
-                          {role}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* Branch */}
-                <div className="relative dropdown-container flex-1 sm:flex-none sm:min-w-[160px] sm:max-w-[220px]">
-                  <button
-                    className="flex justify-between items-center w-full border-2 py-2.5 px-3 bg-white text-black rounded-md hover:bg-gray-200 transition-all duration-150"
-                    onClick={() => {
-                      setIsBranchOpen((prev) => !prev);
-                      setIsRoleOpen(false);
-                    }}
-                  >
-                    <span className="truncate text-sm font-medium">
-                      {filterBranch ? titleCase(filterBranch) : "All Branches"}
-                    </span>
-                    <BiChevronDown
-                      className={`text-[#016E5B] ml-2 flex-shrink-0 transition-transform ${
-                        isBranchOpen ? "rotate-180" : ""
-                      }`}
-                      size={18}
-                    />
-                  </button>
-                  {isBranchOpen && (
-                    <div className="absolute left-0 right-0 mt-2 bg-white rounded-md shadow-lg z-30 max-h-60 overflow-y-auto border border-gray-200">
-                      <button
-                        onClick={() => handleBranchChange("")}
-                        className="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-100 border-b border-gray-100 font-medium"
-                      >
-                        All Branches
-                      </button>
-                      {branches.map(({ label, raw }) => (
-                        <button
-                          key={raw}
-                          onClick={() => handleBranchChange(raw)}
-                          className="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-100 border-b border-gray-100 last:border-b-0"
-                          title={label}
-                        >
-                          {label}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Auto-Sync Button */}
-              <button
-                className="bg-green-600 text-white px-4 py-2.5 rounded-md hover:bg-green-700 transition-all duration-150 text-sm font-medium flex items-center justify-center gap-2 sm:whitespace-nowrap"
-                onClick={handleAutoSync}
-                disabled={isRefreshing}
-                title="Sync all employees from external API to database"
-              >
-                <HiRefresh size={16} className={isRefreshing ? 'animate-spin' : ''} />
-                <span className="hidden sm:inline">{isRefreshing ? 'Syncing...' : 'Auto-Sync'}</span>
-                <span className="sm:hidden">{isRefreshing ? '...' : '⟳'}</span>
-              </button>
-
-              {/* Refresh Button */}
-              <button
-                className="bg-blue-600 text-white px-4 py-2.5 rounded-md hover:bg-blue-700 transition-all duration-150 text-sm font-medium flex items-center justify-center gap-2 sm:whitespace-nowrap"
-                onClick={handleRefresh}
-                disabled={isRefreshing}
-              >
-                <HiRefresh size={16} className={isRefreshing ? 'animate-spin' : ''} />
-                <span className="hidden sm:inline">{isRefreshing ? 'Refreshing...' : 'Refresh'}</span>
-                <span className="sm:hidden">{isRefreshing ? '...' : '↻'}</span>
-              </button>
-
-              {/* CSV Download Button */}
-              <button
-                className="bg-[#016E5B] text-white px-4 py-2.5 rounded-md hover:bg-[#014C3F] transition-all duration-150 text-sm font-medium flex items-center justify-center gap-2 sm:whitespace-nowrap"
-                onClick={exportToCSV}
-              >
-                <HiDownload size={16} />
-                <span className="hidden sm:inline">Download CSV</span>
-                <span className="sm:hidden">CSV</span>
-              </button>
-            </div>
-
-            {/* Results count */}
-            <div className="text-sm text-gray-600">
-              Showing {filteredData.length} of {data.length} employees
-              {(filterRole || filterBranch) && (
-                <button
-                  onClick={() => {
-                    setFilterRole("");
-                    setFilterBranch("");
-                    setFilteredData(data);
-                  }}
-                  className="ml-2 text-[#016E5B] hover:underline"
-                >
-                  Clear filters
-                </button>
-              )}
-            </div>
+      <div className="ml-0 md:ml-[120px]" style={{ paddingTop:"24px", paddingLeft:"24px", paddingRight:"24px", paddingBottom:"40px" }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:"20px" }}>
+          <div>
+            <h1 style={{ fontSize:"22px", fontWeight:700, lineHeight:1.2, color:"#111827", margin:0 }}>Employee Management</h1>
+            <p style={{ fontSize:"12px", color:"#9ca3af", margin:"4px 0 0" }}>Store walkings, tasks, and training progress across all locations</p>
           </div>
+          {!isRestrictedRole && (
+            <Link to="/employee/create">
+              <button style={{ background:"#111827", color:"#fff", border:"none", borderRadius:"10px", padding:"9px 18px", fontSize:"13px", fontWeight:600, cursor:"pointer" }}>
+                + New Employee
+              </button>
+            </Link>
+          )}
         </div>
 
-        {/* Error */}
-        {error && (
-          <div className="text-red-500 text-center my-4 mx-4 sm:mx-6 lg:mx-12 p-3 bg-red-50 border border-red-200 rounded-md text-sm">
-            {error}
+        <div style={{ display:"flex", alignItems:"center", gap:"10px", marginBottom:"16px", flexWrap:"wrap" }}>
+          <div style={{ display:"flex", alignItems:"center", gap:"8px", border:"1px solid #e5e7eb", borderRadius:"8px", padding:"7px 12px", background:"#fff", flex:"0 0 260px" }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="text" placeholder="Search by name, id, branch..." value={search} onChange={e=>{setSearch(e.target.value);setCurrentPage(1);}} style={{ border:"none", outline:"none", fontSize:"13px", color:"#374151", background:"transparent", width:"100%" }} />
           </div>
-        )}
 
-        {/* Content */}
-        <div className="mx-4 sm:mx-6 lg:mx-12">
-          {isMobile ? (
-            <div className="space-y-4">
-              {filteredData.length > 0 ? (
-                filteredData.map((employee, index) => (
-                  <MobileEmployeeCard key={index} employee={employee} index={index} />
-                ))
-              ) : (
-                <div className="text-center py-12 text-gray-500 bg-gray-50 rounded-lg">
-                  <div className="flex flex-col items-center gap-3">
-                    <span className="text-4xl">📋</span>
-                    <span className="text-lg font-medium">No employees found</span>
-                    <span className="text-sm">Try adjusting your filters</span>
-                  </div>
-                </div>
-              )}
+          <select value={storeFilter} onChange={e=>{setStoreFilter(e.target.value);setCurrentPage(1);}} style={sel}>
+            {stores.map(s=><option key={s} value={s}>{s === "All" ? "Store : All" : s}</option>)}
+          </select>
+
+          <select value={roleFilter} onChange={e=>{setRoleFilter(e.target.value);setCurrentPage(1);}} style={sel}>
+            {roles.map(r=><option key={r} value={r}>{r === "All" ? "Role : All" : r}</option>)}
+          </select>
+
+          <div style={{ flex:1 }} />
+
+          <button type="button" onClick={fetchAllForExport} style={{ display:"flex", alignItems:"center", gap:"6px", border:"1px solid #e5e7eb", borderRadius:"8px", padding:"7px 14px", fontSize:"13px", fontWeight:500, color:"#374151", background:"#f9fafb", cursor:"pointer" }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Export
+          </button>
+        </div>
+
+        <div style={{ background:"#fff", borderRadius:"14px", border:"1px solid #f0f0f0", boxShadow:"0 1px 4px rgba(0,0,0,0.05)", overflow:"hidden" }}>
+          {loading ? (
+            <div style={{ display:"flex", justifyContent:"center", padding:"48px" }}>
+              <div style={{ width:"28px", height:"28px", border:"2px solid #e5e7eb", borderTopColor:"#111827", borderRadius:"50%", animation:"emp-spin 0.7s linear infinite" }} />
             </div>
+          ) : error ? (
+            <div style={{ textAlign:"center", padding:"48px", color:"#ef4444", fontSize:"13px" }}>
+              {error}
+              <button type="button" onClick={fetchEmployees} style={{ marginLeft:12, textDecoration:"underline", background:"none", border:"none", cursor:"pointer", color:"#111827" }}>Retry</button>
+            </div>
+          ) : data.length === 0 ? (
+            <div style={{ textAlign:"center", padding:"48px", color:"#9ca3af", fontSize:"13px" }}>No employees found.</div>
           ) : (
-            <div className="overflow-x-auto text-black bg-white rounded-lg shadow-sm border border-gray-200">
-              <div className="max-h-[70vh] overflow-y-auto">
-                <table className="w-full text-sm">
-                  <thead className="sticky top-0 z-20 bg-[#016E5B] text-white">
-                    <tr>
-                      <th className="px-3 py-3 border-r border-[#014C3F] text-center font-semibold min-w-[90px]">Emp ID</th>
-                      <th className="px-3 py-3 border-r border-[#014C3F] text-center font-semibold min-w-[150px]">Name</th>
-                      <th className="px-3 py-3 border-r border-[#014C3F] text-center font-semibold min-w-[140px] hidden lg:table-cell">Role</th>
-                      <th className="px-3 py-3 border-r border-[#014C3F] text-center font-semibold min-w-[180px] hidden lg:table-cell">Branch</th>
-                      <th className="px-3 py-3 border-r border-[#014C3F] text-center font-semibold min-w-[80px] hidden md:table-cell">Training</th>
-                      <th className="px-3 py-3 border-r border-[#014C3F] text-center font-semibold min-w-[90px] hidden md:table-cell">Trng. Comp</th>
-                      <th className="px-3 py-3 border-r border-[#014C3F] text-center font-semibold min-w-[100px] hidden xl:table-cell">Trng. Overdue</th>
-                      <th className="px-3 py-3 border-r border-[#014C3F] text-center font-semibold min-w-[100px] hidden md:table-cell">Assessments</th>
-                      <th className="px-3 py-3 border-r border-[#014C3F] text-center font-semibold min-w-[100px] hidden md:table-cell">Assmt. Comp</th>
-                      <th className="px-3 py-3 border-r border-[#014C3F] text-center font-semibold min-w-[110px] hidden xl:table-cell">Assmt. Overdue</th>
-                      <th className="px-3 py-3 text-center font-semibold min-w-[70px]">View</th>
+            <>
+              <div style={{ overflowX:"auto" }}>
+                <table className="min-w-[800px] md:min-w-full" style={{ width:"100%", borderCollapse:"collapse", fontSize:"13px" }}>
+                  <thead>
+                    <tr style={{ background:"#f9fafb", borderBottom:"1px solid #f3f4f6" }}>
+                      {["EMP ID","EMPLOYEE","STORE","TRAINING PROGRESS","TASKS","TRAINING","ACTIONS"].map(h=>(
+                        <th key={h} style={{ padding:"10px 16px", textAlign: h==="ACTIONS" ? "center":"left", fontSize:"10px", fontWeight:600, color:"#9ca3af", letterSpacing:"0.06em", whiteSpace:"nowrap" }}>{h}</th>
+                      ))}
                     </tr>
                   </thead>
-                  <tbody className="bg-white">
-                    {filteredData.length > 0 ? (
-                      filteredData.map((employee, index) => (
-                        <tr
-                          key={index}
-                          className={`${index % 2 === 0 ? "bg-gray-50" : "bg-white"} hover:bg-blue-50 transition-all border-b border-gray-200`}
-                        >
-                          <td className="px-3 py-3 border-r border-gray-200 text-center font-medium text-[#016E5B]">
-                            #{employee.empID}
-                          </td>
-                          <td className="px-3 py-3 border-r border-gray-200 text-center" title={employee.username}>
-                            <div className="lg:hidden">
-                              <div className="font-medium">{employee.username}</div>
-                              <div className="text-xs text-gray-500 mt-1">{employee.designation}</div>
-                              <div className="text-xs text-gray-500">{employee.workingBranchLabel}</div>
-                            </div>
-                            <div className="hidden lg:block">{employee.username}</div>
-                          </td>
-                          <td className="px-3 py-3 border-r border-gray-200 text-center text-sm hidden lg:table-cell" title={employee.designation}>
-                            {employee.designation}
-                          </td>
-                          <td className="px-3 py-3 border-r border-gray-200 text-center text-sm hidden lg:table-cell" title={employee.workingBranch}>
-                            {employee.workingBranchLabel}
-                          </td>
-                          <td className="px-3 py-3 border-r border-gray-200 text-center font-medium hidden md:table-cell">
-                            {employee.trainingCount}
-                          </td>
-                          <td className="px-3 py-3 border-r border-gray-200 text-center font-medium hidden md:table-cell">
-                            {employee.trainingCompletionPercentage}%
-                          </td>
-                          <td className="px-3 py-3 border-r border-gray-200 text-center font-medium hidden xl:table-cell">
-                            {employee.Trainingdue}
-                          </td>
-                          <td className="px-3 py-3 border-r border-gray-200 text-center font-medium hidden md:table-cell">
-                            {employee.assignedAssessmentsCount}
-                          </td>
-                          <td className="px-3 py-3 border-r border-gray-200 text-center font-medium hidden md:table-cell">
-                            {employee.assessmentCompletionPercentage}%
-                          </td>
-                          <td className="px-3 py-3 border-r border-gray-200 text-center font-medium hidden xl:table-cell">
-                            {employee.AssessmentDue}
-                          </td>
-                          <td className="px-3 py-3 text-center">
-                            <Link
-                              to={`/detailed/${employee.empID}`}
-                              className="text-[#016E5B] font-semibold hover:underline hover:text-[#014C3F] transition-colors text-sm px-2 py-1 rounded"
-                            >
-                              View
-                            </Link>
-                          </td>
-                        </tr>
-                      ))
-                    ) : (
-                      <tr>
-                        <td colSpan="11" className="text-center py-12 text-gray-500 bg-gray-50">
-                          <div className="flex flex-col items-center gap-3">
-                            <span className="text-4xl">📋</span>
-                            <span className="text-lg font-medium">No employees found</span>
-                            <span className="text-sm">Try adjusting your filters</span>
-                          </div>
+                  <tbody>
+                    {data.map((e, i) => (
+                      <tr key={e.empID||i} style={{ borderBottom:"1px solid #f9fafb" }}
+                        onMouseEnter={ev=>ev.currentTarget.style.background="#fafafa"}
+                        onMouseLeave={ev=>ev.currentTarget.style.background="#fff"}
+                      >
+                        <td style={{ padding:"14px 16px", color:"#374151", fontWeight:500, fontSize:"12px", textTransform:"uppercase" }}>{e.empID || "—"}</td>
+                        <td style={{ padding:"14px 16px", minWidth:"160px" }}>
+                          <div style={{ fontWeight:600, color:"#111827", fontSize:"13px", textTransform:"uppercase" }}>{e.username || "—"}</div>
+                          <div style={{ fontSize:"11px", color:"#9ca3af", marginTop:"2px", textTransform:"uppercase" }}>{e.designation || "—"}</div>
+                        </td>
+                        <td style={{ padding:"14px 16px", minWidth:"140px" }}>
+                          {e.workingBranch ? (
+                            <>
+                              <div style={{ fontWeight:500, color:"#374151", fontSize:"13px", textTransform:"uppercase" }}>
+                                {e.workingBranch.replace(/^(GROOMS|ZORUCCI|SUITOR GUY)\s*/i, "")}
+                              </div>
+                              <div style={{ fontSize:"11px", color:"#9ca3af", marginTop:"2px", textTransform:"uppercase" }}>
+                                {e.workingBranch.match(/^(GROOMS|ZORUCCI|SUITOR GUY)/i)?.[0] || ""}
+                              </div>
+                            </>
+                          ) : <span style={{ color:"#9ca3af" }}>—</span>}
+                        </td>
+                        <td style={{ padding:"14px 16px", minWidth:"160px" }}>
+                          <ProgressBar pct={e.trainingCompletionPercentage} />
+                        </td>
+                        <td style={{ padding:"14px 16px", minWidth:"100px" }}>
+                          <StatCell done={e.passCountTask} total={e.taskCount} overdue={e.taskDue} pending={e.taskPending} />
+                        </td>
+                        <td style={{ padding:"14px 16px", minWidth:"100px" }}>
+                          <StatCell done={e.passCountTraining} total={e.trainingCount} overdue={e.Trainingdue} pending={e.trainingPending} />
+                        </td>
+                        <td style={{ padding:"14px 16px", textAlign:"center" }}>
+                          <Link to={`/detailed/${e.empID}`} style={{ display:"inline-flex", alignItems:"center", gap:"5px", fontSize:"12px", fontWeight:600, color:"#374151", textDecoration:"none" }}>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/></svg>
+                            View
+                          </Link>
                         </td>
                       </tr>
-                    )}
+                    ))}
                   </tbody>
                 </table>
               </div>
-            </div>
+
+              <div style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                padding: "14px 20px",
+                borderTop: "1px solid #f3f4f6",
+                fontSize: "13px",
+                color: "#6b7280"
+              }}>
+                <span>Showing {itemsPerPage === 'All' ? totalEmployees : Math.min(Number(itemsPerPage), Math.max(0, totalEmployees - (currentPage - 1) * Number(itemsPerPage)))} of {totalEmployees}</span>
+                <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+                  <div style={{ display: "flex", alignItems: "center", position: "relative" }}>
+                    <span style={{ marginRight: "8px", color: "#6b7280" }}>Show:</span>
+                    <button
+                      type="button"
+                      onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "8px",
+                        padding: "5px 10px",
+                        border: "1px solid #e5e7eb",
+                        borderRadius: "8px",
+                        background: "#fff",
+                        fontSize: "13px",
+                        color: "#374151",
+                        cursor: "pointer",
+                        fontWeight: "500",
+                        outline: "none",
+                        minWidth: "64px",
+                        justifyContent: "space-between",
+                        boxShadow: "0 1px 2px rgba(0,0,0,0.05)"
+                      }}
+                    >
+                      <span>{itemsPerPage}</span>
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transition: 'transform 0.2s', transform: isDropdownOpen ? 'rotate(180deg)' : 'none' }}>
+                        <polyline points="6 9 12 15 18 9" />
+                      </svg>
+                    </button>
+                    {isDropdownOpen && (
+                      <>
+                        <div
+                          onClick={() => setIsDropdownOpen(false)}
+                          style={{ position: "fixed", inset: 0, zIndex: 998 }}
+                        />
+                        <div
+                          style={{
+                            position: "absolute",
+                            bottom: "100%",
+                            right: 0,
+                            marginBottom: "6px",
+                            background: "#4b5563",
+                            borderRadius: "10px",
+                            boxShadow: "0 10px 25px rgba(0,0,0,0.15)",
+                            padding: "4px",
+                            zIndex: 999,
+                            minWidth: "80px",
+                            border: "1px solid rgba(255,255,255,0.08)"
+                          }}
+                        >
+                          {[50, 100, 200, "All"].map((opt) => (
+                            <button
+                              key={opt}
+                              type="button"
+                              onClick={() => {
+                                setItemsPerPage(opt);
+                                setCurrentPage(1);
+                                setIsDropdownOpen(false);
+                              }}
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                width: "100%",
+                                padding: "6px 12px 6px 8px",
+                                border: "none",
+                                background: "transparent",
+                                color: "#fff",
+                                fontSize: "13px",
+                                textAlign: "left",
+                                cursor: "pointer",
+                                borderRadius: "6px",
+                                fontWeight: itemsPerPage === opt ? "600" : "400",
+                                fontFamily: "inherit"
+                              }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.background = "#2563eb";
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.background = "transparent";
+                              }}
+                            >
+                              <span style={{ width: "16px", display: "inline-flex", alignItems: "center", marginRight: "4px", fontSize: "11px" }}>
+                                {itemsPerPage === opt ? "✓" : ""}
+                              </span>
+                              <span>{opt}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                  <div style={{ display: "flex", gap: "8px" }}>
+                    <button
+                      type="button"
+                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                      disabled={currentPage === 1}
+                      style={{
+                        width: "36px",
+                        height: "36px",
+                        border: "1px solid #e5e7eb",
+                        borderRadius: "8px",
+                        background: "#fff",
+                        cursor: currentPage === 1 ? "not-allowed" : "pointer",
+                        opacity: currentPage === 1 ? 0.4 : 1,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
+                        color: "#374151"
+                      }}
+                      onMouseEnter={e => { if (currentPage !== 1) e.currentTarget.style.background = '#f9fafb'; }}
+                      onMouseLeave={e => { e.currentTarget.style.background = '#fff'; }}
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="15 18 9 12 15 6" />
+                      </svg>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                      disabled={currentPage === totalPages || totalPages === 0}
+                      style={{
+                        width: "36px",
+                        height: "36px",
+                        border: "1px solid #e5e7eb",
+                        borderRadius: "8px",
+                        background: "#fff",
+                        cursor: (currentPage === totalPages || totalPages === 0) ? "not-allowed" : "pointer",
+                        opacity: (currentPage === totalPages || totalPages === 0) ? 0.4 : 1,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
+                        color: "#374151"
+                      }}
+                      onMouseEnter={e => { if (currentPage !== totalPages && totalPages !== 0) e.currentTarget.style.background = '#f9fafb'; }}
+                      onMouseLeave={e => { e.currentTarget.style.background = '#fff'; }}
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="9 18 15 12 9 6" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </>
           )}
         </div>
       </div>
+      <style>{`@keyframes emp-spin{to{transform:rotate(360deg)}}`}</style>
     </div>
   );
 };

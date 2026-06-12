@@ -7,7 +7,6 @@
 import { BsFillSendCheckFill } from "react-icons/bs";
 
 import { useEffect, useState, useMemo } from "react";
-import Header from "../../components/Header/Header";
 import SideNav from "../../components/SideNav/SideNav";
 import { CiFilter } from "react-icons/ci";
 import baseUrl from "../../api/api";
@@ -41,13 +40,14 @@ const AssessmentOverDuedata = () => {
         if (!response.ok) {
           throw new Error(`${response.statusText}`);
         }
-        console.log(error);
-
         const result = await response.json();
-        setData(result.data);
-        setFilteredData(result.data);
+        const formattedData = (result.data || []).map(emp => ({
+          ...emp,
+          workingBranch: emp.workingBranch ? (emp.workingBranch.split(',').length > 5 ? "All Stores" : emp.workingBranch) : ""
+        }));
+        setData(formattedData);
+        setFilteredData(formattedData);
       } catch (error) {
-        console.error("Failed to fetch employees:", error.message);
         setError("Failed to fetch employee data. Please try again later.");
       }
     };
@@ -104,9 +104,8 @@ const AssessmentOverDuedata = () => {
 
   return (
     <div className="bg-white h-[100] lg:mb-[90px]">
-      <Header name="Employee" />
       <SideNav />
-      <div className="md:ml-[90px] lg:mt-[100px]">
+      <div className="md:ml-[120px]">
         <div className="flex justify-end mb-5 mt-20">
           <div className="flex gap-4 mt-10">
             {/* Role Dropdown */}

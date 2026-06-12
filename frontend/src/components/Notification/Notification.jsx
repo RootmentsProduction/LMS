@@ -1,36 +1,38 @@
-import { useEffect, useState } from "react";
 import { FaRegBell } from "react-icons/fa";
-import baseUrl from "../../api/api";
 import { Link } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { fetchNotifications } from "../../features/dashboard/dashboardFetch";
 
 const Notification = () => {
-    const [notifications, setNotifications] = useState([]);
+    const [responseData, setResponseData] = useState(null);
     const [loading, setLoading] = useState(true);
-    const [error, setError] = useState(null);
+    const [isError, setIsError] = useState(false);
 
     useEffect(() => {
-        // Fetch notifications from the backend
-        const fetchNotifications = async () => {
+        let mounted = true;
+        const load = async () => {
+            setLoading(true);
+            setIsError(false);
             try {
-                const response = await fetch(`${baseUrl.baseUrl}api/admin/home/notification`); // Adjust the endpoint URL
-                const data = await response.json();
-                console.log(data);
-                console.log("hi" + notifications);
-
-                if (response.ok) {
-                    setNotifications(data.notifications); // Update the state with fetched notifications
-                } else {
-                    throw new Error(data.message || "Failed to fetch notifications");
-                }
-            } catch (err) {
-                setError(err.message);
+                const data = await fetchNotifications();
+                if (!mounted) return;
+                setResponseData(data);
+            } catch {
+                if (!mounted) return;
+                setIsError(true);
             } finally {
-                setLoading(false); // Stop the loading spinner
+                if (mounted) setLoading(false);
             }
         };
 
-        fetchNotifications();
+        load();
+        return () => {
+            mounted = false;
+        };
     }, []);
+
+    const notifications = responseData?.notifications || [];
+    const error = isError ? 'Failed to fetch notifications' : null;
 
     if (loading) return <div role="status" className="flex items-center justify-center h-[250px] w-[600px] shadow-xl bg-slate-100 rounded-lg animate-pulse d">
 

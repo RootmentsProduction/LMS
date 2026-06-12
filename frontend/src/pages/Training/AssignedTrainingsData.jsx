@@ -1,6 +1,5 @@
 import { Link } from "react-router-dom";
 import RoundProgressBar from "../../components/RoundBar/RoundBar";
-import Header from "../../components/Header/Header";
 import { FaPlus } from "react-icons/fa";
 import { CiFilter } from "react-icons/ci";
 import { FaTrashAlt } from "react-icons/fa";
@@ -81,7 +80,6 @@ const AssignedTrainingsData = () => {
                 alert(`Successfully deleted ${selectedTrainings.size} training(s)`);
             }
         } catch (error) {
-            console.error('Error deleting trainings:', error);
             alert('An error occurred while deleting trainings. Please try again.');
         } finally {
             setIsDeleting(false);
@@ -92,7 +90,11 @@ const AssignedTrainingsData = () => {
         const fetchData = async () => {
             setLoading(true); // Start loading
             try {
-                const response = await fetch(`${baseUrl.baseUrl}api/get/allusertraining`);
+                const response = await fetch(`${baseUrl.baseUrl}api/get/allusertraining`, {
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('token')}`
+                    }
+                });
                 if (!response.ok) {
                     throw new Error("Failed to fetch data");
                 }
@@ -199,11 +201,8 @@ const AssignedTrainingsData = () => {
     return (
         <>
             <div className="mb-[70px] w-full h-full bg-white">
-                <div>
-                    <Header name="Assigned Training" />
-                </div>
                 <SideNav />
-                <div className="md:ml-[100px] mt-[100px]">
+                <div className="md:ml-[120px]">
                     <div>
                         <div className="flex justify-end mr-20">
                             <Link to={"/Alltraining"}>

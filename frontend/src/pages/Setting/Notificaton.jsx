@@ -28,12 +28,11 @@ const NotificationSettings = () => {
   };
 
   const handleSubmit = () => {
-    console.log("Notification Settings (JSON):", JSON.stringify(settings, null, 2));
   };
 
   return (
     <div className="p-6 bg-gray-50 text-black min-h-screen">
-      <h1 className="text-2xl font-bold mb-6">Notification Settings</h1>
+      <h1 className="text-2xl font-extrabold mb-6">Notification Settings</h1>
       <div className="bg-white p-6 rounded-lg shadow space-y-6">
         {/* Enable Notifications */}
         <div>

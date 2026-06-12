@@ -20,12 +20,11 @@ const assessmentProcessSchema = new mongoose.Schema({
     {
       questionId: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'AssessmentQuestion', // Refers to the question in the assessment
+        ref: 'AssessmentQuestion',
         required: true,
       },
       selectedAnswer: {
-        type: String, // The selected answer by the user
-
+        type: String,
         default: ""
       },
       correctAnswer: {
@@ -33,18 +32,18 @@ const assessmentProcessSchema = new mongoose.Schema({
         default: ""
       },
       isCorrect: {
-        type: Boolean, // Whether the selected answer is correct
+        type: Boolean,
         default: false,
       },
     },
   ],
   totalMarks: {
     type: Number,
-    default: 0, // Total score of the user based on correct answers
+    default: 0,
   },
   passed: {
     type: Boolean,
-    default: false, // Whether the user passed or failed
+    default: false,
   },
   createdAt: {
     type: Date,
@@ -62,6 +61,14 @@ assessmentProcessSchema.pre('save', function (next) {
   next();
 });
 
-// Create and export the model
+// Fetch all attempts for a user
+assessmentProcessSchema.index({ userId: 1 });
+// Fetch all attempts on a specific assessment
+assessmentProcessSchema.index({ assessmentId: 1 });
+// Compound: the most common lookup — did this user attempt this assessment?
+assessmentProcessSchema.index({ userId: 1, assessmentId: 1 });
+// Filter by pass/fail results
+assessmentProcessSchema.index({ passed: 1 });
+
 const AssessmentProcess = mongoose.model('AssessmentProcess', assessmentProcessSchema);
 export default AssessmentProcess;

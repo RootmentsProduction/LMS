@@ -1,174 +1,11 @@
-import nodemailer from 'nodemailer'
 import mongoose from "mongoose";
-import Escalation from "../model/Escalation.js"; // Import your Escalation model
-import User from "../model/User.js"; // Import your User model
-import Admin from "../model/Admin.js"; // Import your Admin model
+import Escalation from "../model/Escalation.js";
+import User from "../model/User.js";
+import Admin from "../model/Admin.js";
 import EscalationLevel from '../model/EscalationLevel.js';
 import { sendWhatsAppMessage } from './WhatsAppMessage.js';
-
-// Get today's date normalized to midnight
-// const now = new Date();
-// const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-
-// // Utility function to compare dates by day, month, and year
-// const isSameDate = (date1, date2) => {
-//     return (
-//         date1.getFullYear() === date2.getFullYear() &&
-//         date1.getMonth() === date2.getMonth() &&
-//         date1.getDate() === date2.getDate()
-//     );
-// };
-
-// Helper function to extract valid ObjectIds from admin lists
-// const getValidObjectIds = (admins) =>
-//     admins.map((admin) => admin._id).filter((id) => mongoose.Types.ObjectId.isValid(id));
-
-// export const AlertNotification = async () => {
-//     try {
-//         // Fetch all required data
-//         const users = await User.find();
-//         const storeManagers = await Admin.find({ role: "store_admin" }).populate("branches");
-//         const clusterManagers = await Admin.find({ role: "cluster_admin" }).populate("branches");
-//         const TrManagers = await Admin.find({ subRole: "TR" });
-//         const HRManagers = await Admin.find({ subRole: "HR" });
-//         const MgmtManagers = await Admin.find({ subRole: "Mgmt" });
-
-//         for (const user of users) {
-//             const training = user.training;
-
-//             for (const item of training) {
-//                 if (!item.deadline || !(item.deadline instanceof Date)) {
-//                     console.error("Invalid deadline in training item:", item);
-//                     continue;
-//                 }
-
-//                 const userLocCode = user.locCode;
-
-//                 // Filter matching admins
-//                 const matchingStoreManagers = storeManagers.filter((storeManager) =>
-//                     storeManager.branches.some((branch) => branch.locCode === userLocCode)
-//                 );
-//                 const matchingClusterManagers = clusterManagers.filter((clusterManager) =>
-//                     clusterManager.branches.some((branch) => branch.locCode === userLocCode)
-//                 );
-
-//                 if (matchingStoreManagers.length === 0) {
-//                     console.warn(`No store managers found for user location code: ${userLocCode}`);
-//                     continue;
-//                 }
-
-//                 const storeManager = matchingStoreManagers[0]; // Select the first store manager
-//                 const clusterManager = matchingClusterManagers[0]; // Select the first cluster manager
-
-//                 // Normalize the deadline
-//                 const deadlineDate = new Date(item.deadline.getFullYear(), item.deadline.getMonth(), item.deadline.getDate());
-//                 const oneDayBefore = new Date(deadlineDate.getTime() - 24 * 60 * 60 * 1000);
-//                 const oneDayAfter = new Date(deadlineDate.getTime() + 24 * 60 * 60 * 1000);
-//                 const threeDaysAfter = new Date(deadlineDate.getTime() + 3 * 24 * 60 * 60 * 1000);
-//                 const fiveDaysAfter = new Date(deadlineDate.getTime() + 5 * 24 * 60 * 60 * 1000);
-
-//                 // Escalation logic
-//                 if (isSameDate(today, oneDayBefore)) {
-//                     const toAdminIds = getValidObjectIds([storeManager]);
-//                     await Escalation.create({
-//                         email: user.email,
-//                         toUser: user._id,
-//                         deadline: item.deadline,
-//                         toAdmin: toAdminIds,
-//                         context: `Deadline notification: Training due on ${item.deadline}. Store Manager: ${storeManager.name}.`,
-//                         level: 1,
-//                     });
-//                 }
-
-//                 if (isSameDate(today, deadlineDate)) {
-//                     const toAdminIds = getValidObjectIds([storeManager]);
-//                     await Escalation.create({
-//                         email: user.email,
-//                         toUser: user._id,
-//                         deadline: item.deadline,
-//                         toAdmin: toAdminIds,
-//                         context: `On-the-day deadline alert: Training due on ${item.deadline}. Store Manager: ${storeManager.name}.`,
-//                         level: 1,
-//                     });
-//                 }
-
-//                 if (isSameDate(today, oneDayAfter)) {
-//                     const toAdminIds = getValidObjectIds([storeManager]);
-//                     await Escalation.create({
-//                         email: user.email,
-//                         deadline: item.deadline,
-//                         toUser: user._id,
-//                         toAdmin: toAdminIds,
-//                         context: `Post-deadline alert: Training due on ${item.deadline}. Store Manager: ${storeManager.name}.`,
-//                         level: 1,
-//                     });
-//                 }
-
-//                 if (isSameDate(today, threeDaysAfter)) {
-//                     const toAdminIds = getValidObjectIds([storeManager, ...matchingClusterManagers, ...TrManagers]);
-//                     await Escalation.create({
-//                         email: user.email,
-//                         deadline: item.deadline,
-//                         toUser: user._id,
-//                         toAdmin: toAdminIds,
-//                         context: `Escalation Level 2: Training overdue. Store Manager: ${storeManager.name}. Cluster Manager(s): ${matchingClusterManagers
-//                             .map((cm) => cm.name)
-//                             .join(", ")}. TR Managers: ${TrManagers.map((tr) => tr.name).join(", ")}.`,
-//                         level: 2,
-//                     });
-//                 }
-
-//                 if (isSameDate(today, fiveDaysAfter)) {
-//                     const toAdminIds = getValidObjectIds([
-//                         storeManager,
-//                         ...matchingClusterManagers,
-//                         ...TrManagers,
-//                         ...HRManagers,
-//                     ]);
-//                     await Escalation.create({
-//                         email: user.email,
-//                         deadline: item.deadline,
-//                         toUser: user._id,
-//                         toAdmin: toAdminIds,
-//                         context: `Escalation Level 3: Training overdue by 5 days. Store Manager: ${storeManager.name}. Cluster Manager(s): ${matchingClusterManagers
-//                             .map((cm) => cm.name)
-//                             .join(", ")}. TR Managers: ${TrManagers.map((tr) => tr.name).join(", ")}. HR Managers: ${HRManagers.map((hr) => hr.name).join(", ")}.`,
-//                         level: 3,
-//                     });
-//                 }
-
-//                 if (
-//                     today.getTime() > fiveDaysAfter.getTime() &&
-//                     (today.getTime() - fiveDaysAfter.getTime()) % (2 * 24 * 60 * 60 * 1000) === 0
-//                 ) {
-//                     const toAdminIds = getValidObjectIds([
-//                         storeManager,
-//                         ...matchingClusterManagers,
-//                         ...TrManagers,
-//                         ...HRManagers,
-//                         ...MgmtManagers,
-//                     ]);
-//                     await Escalation.create({
-//                         email: user.email,
-//                         deadline: item.deadline,
-//                         toUser: user._id,
-//                         toAdmin: toAdminIds,
-//                         context: `Recurring escalation: Training overdue by more than 5 days. Store Manager: ${storeManager.name}. Cluster Manager(s): ${matchingClusterManagers
-//                             .map((cm) => cm.name)
-//                             .join(", ")}. TR Managers: ${TrManagers.map((tr) => tr.name).join(", ")}. HR Managers: ${HRManagers.map((hr) => hr.name).join(", ")}. Mgmt Managers: ${MgmtManagers.map((mgmt) => mgmt.name).join(", ")}.`,
-//                         level: 4,
-//                     });
-//                 }
-//             }
-//         }
-//     } catch (error) {
-//         console.error("Error in AlertNotification:", error);
-//     }
-// };
-
-
-
-
+import TrainingProgress from "../model/Trainingprocessschema.js";
+import { sendNotification } from "../utils/notificationHelper.js";
 
 const now = new Date();
 const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -184,158 +21,218 @@ const isSameDate = (date1, date2) => {
 const getValidObjectIds = (admins) =>
     admins.map((admin) => admin?._id).filter((id) => mongoose.Types.ObjectId.isValid(id));
 
-const processDeadlines = async (user, items, escalationContext) => {
+// Store name to location code mapping
+const storeNameToLocCode = {
+    'ZORUCCI PERINTHALMANNA': '7',
+    'ZORUCCI EDAPPALLY': '1',
+  'SUITOR GUY TRIVANDRUM': '5',
+  'SUITOR GUY PALAKKAD': '19',
+  'SUITOR GUY EDAPPALLY': '3',
+  'SUITOR GUY KOTTAYAM': '9',
+  'SUITOR GUY PERUMBAVOOR': '10',
+  'SUITOR GUY THRISSUR': '11',
+  'SUITOR GUY CHAVAKKAD': '12',
+  'SUITOR GUY EDAPPAL': '15',
+  'SUITOR GUY VATAKARA': '14',
+  'SUITOR GUY PERINTHALMANNA': '16',
+  'SUITOR GUY MANJERI': '18',
+  'SUITOR GUY KOTTAKKAL': '17',
+  'SUITOR GUY KOZHIKODE': '13',
+  'SUITOR GUY KALPETTA': '20',
+  'SUITOR GUY KANNUR': '21'
+};
+
+/**
+ * Process deadline escalations for a single user's training/assessment items.
+ * All admin data is passed in — fetched ONCE outside the loop in AlertNotification.
+ */
+const processDeadlines = async (user, items, escalationContext, adminData) => {
     try {
-        const storeManagers = await Admin.find({ role: "store_admin" }).populate("branches");
-        const clusterManagers = await Admin.find({ role: "cluster_admin" }).populate("branches");
-        const TrManagers = await Admin.find({ subRole: "Level 1" });
-        const HRManagers = await Admin.find({ subRole: "Level 2" });
-        const MgmtManagers = await Admin.find({ subRole: "Level 3" });
-        const escalation = await EscalationLevel.find();
+        const { storeManagers, clusterManagers, TrManagers, HRManagers, escalationLevels } = adminData;
 
-        // Store name to location code mapping - needed to match user locCodes with branch locCodes
-        const storeNameToLocCode = {
-            'ZORUCCI PERINTHALMANNA': '7',
-            'ZORUCCI EDAPPALLY': '1',
-            'SUITOR GUY TRIVANDRUM': '5',
-            'SUITOR GUY PALAKKAD': '19',
-            'SUITOR GUY EDAPPALLY': '3',
-            'SUITOR GUY KOTTAYAM': '9',
-            'SUITOR GUY PERUMBAVOOR': '10',
-            'SUITOR GUY THRISSUR': '11',
-            'SUITOR GUY CHAVAKKAD': '12',
-            'SUITOR GUY EDAPPAL': '15',
-            'SUITOR GUY VATAKARA': '14',
-            'SUITOR GUY PERINTHALMANNA': '16',
-            'SUITOR GUY MANJERI': '18',
-            'SUITOR GUY KOTTAKKAL': '17',
-            'SUITOR GUY CALICUT': '13',
-            'SUITOR GUY KALPETTA': '20',
-            'SUITOR GUY KANNUR': '21'
-        };
+        const BFoneDay    = escalationLevels.find((item) => item.id === 1);
+        const AFoneDay    = escalationLevels.find((item) => item.id === 3);
+        const leveltwo    = escalationLevels.find((item) => item.id === 4);
+        const levelthree  = escalationLevels.find((item) => item.id === 5);
 
-        const BFoneDay = escalation.find((item) => item.id === 1);
-        const AFoneDay = escalation.find((item) => item.id === 3);
-        const leveltwo = escalation.find((item) => item.id === 4);
-        const levelthree = escalation.find((item) => item.id === 5);
+        const userLocCode    = user?.locCode;
+        const numericLocCode = storeNameToLocCode[userLocCode] || userLocCode;
+
+        // Skip users with no valid store assignment
+        if (!numericLocCode || numericLocCode === 'No Store') return;
+
+        const matchingStoreManagers = storeManagers.filter((sm) =>
+            sm.branches.some((branch) => branch.locCode === numericLocCode)
+        );
+        const matchingClusterManagers = clusterManagers.filter((cm) =>
+            cm.branches.some((branch) => branch.locCode === numericLocCode)
+        );
+
+        // No manager assigned for this branch — skip silently
+        if (!matchingStoreManagers.length) return;
+
+        const storeManager = matchingStoreManagers[0];
 
         for (const item of items) {
-            if (!item?.deadline || !(item.deadline instanceof Date)) {
-                console.error("Invalid deadline in item:", item);
-                continue;
-            }
+            if (!item?.deadline || !(item.deadline instanceof Date)) continue;
 
             const name = item?.trainingId?.trainingName || item?.assessmentId?.title || "Unknown";
-            const userLocCode = user?.locCode;
-            
-            // Convert store name to numeric location code for branch matching
-            const numericLocCode = storeNameToLocCode[userLocCode] || userLocCode;
-            console.log(`Converting user locCode "${userLocCode}" to numeric "${numericLocCode}"`);
 
-            const matchingStoreManagers = storeManagers.filter((storeManager) =>
-                storeManager.branches.some((branch) => branch.locCode === numericLocCode)
-            );
-            const matchingClusterManagers = clusterManagers.filter((clusterManager) =>
-                clusterManager.branches.some((branch) => branch.locCode === numericLocCode)
-            );
+            const deadlineDate   = new Date(item.deadline.getFullYear(), item.deadline.getMonth(), item.deadline.getDate());
+            const oneDayBefore   = new Date(deadlineDate.getTime() - (BFoneDay?.numberOfDays   || 1) * 86400000);
+            const oneDayAfter    = new Date(deadlineDate.getTime() + (AFoneDay?.numberOfDays   || 1) * 86400000);
+            const threeDaysAfter = new Date(deadlineDate.getTime() + (leveltwo?.numberOfDays   || 3) * 86400000);
+            const fiveDaysAfter  = new Date(deadlineDate.getTime() + (levelthree?.numberOfDays || 5) * 86400000);
 
-            if (!matchingStoreManagers.length) {
-                console.warn(`No store managers found for user location code: ${userLocCode} (mapped to: ${numericLocCode})`);
-                continue;
-            }
-
-            const storeManager = matchingStoreManagers[0];
-            const clusterManager = matchingClusterManagers[0];
-
-            const deadlineDate = new Date(item.deadline.getFullYear(), item.deadline.getMonth(), item.deadline.getDate());
-            const oneDayBefore = new Date(deadlineDate.getTime() - (BFoneDay?.numberOfDays || 1) * (24 * 60 * 60 * 1000));
-            const oneDayAfter = new Date(deadlineDate.getTime() + (AFoneDay?.numberOfDays || 1) * (24 * 60 * 60 * 1000));
-            const threeDaysAfter = new Date(deadlineDate.getTime() + (leveltwo?.numberOfDays || 3) * (24 * 60 * 60 * 1000));
-            const fiveDaysAfter = new Date(deadlineDate.getTime() + (levelthree?.numberOfDays || 5) * (24 * 60 * 60 * 1000));
-
-            const escalationLevels = [
-                { date: oneDayBefore, level: 1, admins: [storeManager] },
-                { date: deadlineDate, level: 1, admins: [storeManager] },
-                { date: oneDayAfter, level: 1, admins: [storeManager] },
+            const levels = [
+                { date: oneDayBefore,   level: 1, admins: [storeManager] },
+                { date: deadlineDate,   level: 1, admins: [storeManager] },
+                { date: oneDayAfter,    level: 1, admins: [storeManager] },
                 { date: threeDaysAfter, level: 2, admins: [storeManager, ...matchingClusterManagers, ...TrManagers] },
-                { date: fiveDaysAfter, level: 3, admins: [storeManager, ...matchingClusterManagers, ...TrManagers, ...HRManagers] },
+                { date: fiveDaysAfter,  level: 3, admins: [storeManager, ...matchingClusterManagers, ...TrManagers, ...HRManagers] },
             ];
 
-            for (const escalationLevel of escalationLevels) {
-                if (isSameDate(today, escalationLevel.date)) {
-                    const toAdminIds = getValidObjectIds(escalationLevel.admins);
+            for (const lvl of levels) {
+                if (isSameDate(today, lvl.date)) {
+                    const toAdminIds = getValidObjectIds(lvl.admins);
                     await Escalation.create({
                         email: user.email,
                         deadline: item.deadline,
                         toUser: user._id,
                         toAdmin: toAdminIds,
-                        context: `${escalationContext} ${name}. Level ${escalationLevel.level} alert.`,
-                        level: escalationLevel.level,
+                        context: `${escalationContext} ${name}. Level ${lvl.level} alert.`,
+                        level: lvl.level,
                     });
-                    await sendWhatsAppMessage(`91${user.phoneNumber}`, `${escalationContext} ${name}. Level ${escalationLevel.level} alert.`);
+                    await sendWhatsAppMessage(`91${user.phoneNumber}`, `${escalationContext} ${name}. Level ${lvl.level} alert.`);
                 }
             }
         }
     } catch (error) {
-        console.error("Error processing deadlines:", error);
+        console.error(`Error processing deadlines for user ${user?.empID}:`, error.message);
     }
 };
 
 export const AlertNotification = async () => {
     try {
-        const users = await User.find()
-            .populate("training.trainingId")
-            .populate("assignedAssessments.assessmentId");
+        // Fetch all admin data ONCE — not inside the per-user loop
+        const [storeManagers, clusterManagers, TrManagers, HRManagers, escalationLevels, users] = await Promise.all([
+            Admin.find({ role: "store_admin" }).populate("branches"),
+            Admin.find({ role: "cluster_admin" }).populate("branches"),
+            Admin.find({ subRole: "Level 1" }),
+            Admin.find({ subRole: "Level 2" }),
+            EscalationLevel.find(),
+            User.find()
+                .populate("training.trainingId")
+                .populate("assignedAssessments.assessmentId"),
+        ]);
+
+        const adminData = { storeManagers, clusterManagers, TrManagers, HRManagers, escalationLevels };
+
+        console.log(`🔔 AlertNotification: processing ${users.length} users`);
 
         for (const user of users) {
-            const trainingToProcess = user.training?.filter((item) => item?.pass === false) || [];
+            const trainingToProcess    = user.training?.filter((item) => item?.pass === false) || [];
             const assessmentsToProcess = user.assignedAssessments?.filter((item) => item?.pass === false) || [];
 
-            await processDeadlines(user, trainingToProcess, "Training Notification: Training name is");
-            await processDeadlines(user, assessmentsToProcess, "Assessment Notification: Assessment name is");
+            await processDeadlines(user, trainingToProcess,    "Training Notification: Training name is",    adminData);
+            await processDeadlines(user, assessmentsToProcess, "Assessment Notification: Assessment name is", adminData);
         }
+
+        // Check overdue trainings and notify HR Admin
+        await checkOverdueTrainingsForHR();
+
+        console.log(`✅ AlertNotification complete`);
     } catch (error) {
         console.error("Error in AlertNotification:", error);
     }
 };
 
+export const checkOverdueTrainingsForHR = async () => {
+    try {
+        const currentDate = new Date();
+        
+        // 1. Get users with overdue assigned trainings (from User.training array)
+        const overdueAssignedUsers = await User.find({
+            training: {
+                $elemMatch: {
+                    pass: false,
+                    deadline: { $lt: currentDate }
+                }
+            }
+        }).lean();
 
+        // 2. Get overdue mandatory trainings from TrainingProgress collection
+        const overdueMandatoryProgress = await TrainingProgress.find({
+            pass: false,
+            deadline: { $lt: currentDate }
+        }).populate('userId').lean();
 
+        // Use a map to collect unique employees with overdue trainings
+        const overdueEmployees = new Map();
 
+        // Process assigned trainings from User schema
+        overdueAssignedUsers.forEach(user => {
+            const overdueTrainings = user.training.filter(
+                t => t.pass === false && new Date(t.deadline) < currentDate
+            );
+            if (overdueTrainings.length > 0) {
+                const empId = user.empID;
+                if (empId) {
+                    overdueEmployees.set(empId, {
+                        empID: empId,
+                        username: user.username || user.name || "Unknown",
+                        count: overdueTrainings.length
+                    });
+                }
+            }
+        });
 
+        // Process mandatory trainings from TrainingProgress
+        overdueMandatoryProgress.forEach(progress => {
+            const user = progress.userId;
+            if (user && user.empID) {
+                const empId = user.empID;
+                const existing = overdueEmployees.get(empId);
+                if (existing) {
+                    existing.count += 1;
+                } else {
+                    overdueEmployees.set(empId, {
+                        empID: empId,
+                        username: user.username || user.name || "Unknown",
+                        count: 1
+                    });
+                }
+            }
+        });
 
+        const overdueList = Array.from(overdueEmployees.values());
+        console.log(`[HR Overdue Check] Found ${overdueList.length} employees with overdue trainings.`);
 
+        if (overdueList.length === 0) {
+            return; // No overdue trainings, do nothing
+        }
 
+        let title = "Training Overdue Alert";
+        let body = "";
 
+        if (overdueList.length === 1) {
+            const emp = overdueList[0];
+            body = `Training overdue for employee: ${emp.username} (ID: ${emp.empID}).`;
+        } else {
+            body = `Training overdue for ${overdueList.length} employees.`;
+        }
 
+        // Send notification to HR Admin
+        await sendNotification({
+            title,
+            body,
+            roles: ['hr_admin'],
+            category: 'Training',
+            senderName: 'System'
+        });
 
-
-
-
-
-// Email Configuration
-// const transporter = nodemailer.createTransport({
-//     service: "gmail",
-//     auth: {
-//         user: "your_email@gmail.com",
-//         pass: "your_email_password",
-//     },
-// });
-
-// // Function to send emails
-// const sendEmail = async (email, subject, text) => {
-//     try {
-//         await transporter.sendMail({
-//             from: '"Notification System" <your_email@gmail.com>',
-//             to: email,
-//             subject,
-//             text,
-//         });
-//         console.log(`Email sent to ${email}`);
-//     } catch (err) {
-//         console.error(`Failed to send email to ${email}:`, err);
-//     }
-// };
-
-
-
+        console.log(`[HR Overdue Check] Notification sent to HR Admin: "${body}"`);
+    } catch (error) {
+        console.error("Error in checkOverdueTrainingsForHR:", error);
+    }
+};

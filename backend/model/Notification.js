@@ -11,31 +11,38 @@ const notificationSchema = new mongoose.Schema({
         trim: true,
     },
     branch: {
-        type: [String],  // Array of strings
-        default: [],     // Default value is an empty array
+        type: [String],
+        default: [],
     },
     user: {
-        type: [mongoose.Schema.Types.ObjectId], // Change to an array of ObjectId
-        ref: 'User',     // Reference to User model
-        default: [],     // Default to an empty array
+        type: [mongoose.Schema.Types.ObjectId],
+        ref: 'User',
+        default: [],
     },
     Role: {
-        type: [String],  // Array of strings
-        default: [],     // Default value is an empty array
+        type: [String],
+        default: [],
     },
     useradmin: {
         type: String,
-        default: "",     // Default value is an empty string
+        default: "",
     },
     category: {
         type: String,
-        default: "Training",     // Default value is "Training"
+        default: "Training",
     },
     createdAt: {
         type: Date,
-        default: Date.now,  // Automatically set the current date
+        default: Date.now,
     },
 });
+
+// Sorted by latest first on every fetch
+notificationSchema.index({ createdAt: -1 });
+// Filter notifications by category
+notificationSchema.index({ category: 1 });
+// Filter notifications targeted at specific users
+notificationSchema.index({ user: 1 });
 
 const Notification = mongoose.model('Notification', notificationSchema);
 

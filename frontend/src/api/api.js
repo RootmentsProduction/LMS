@@ -1,9 +1,8 @@
 const baseUrl = {
-    // Production URL (Render deployment)
-    baseUrl: "https://lms-1-lavs.onrender.com/",
-    
-    // Development URL (for local development)
-    //  baseUrl: "http://localhost:7000/",
+  // Automatically switch between local development and production Render URL!
+  baseUrl: window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+    ? "http://localhost:7000/"
+    : "https://lms-1-lavs.onrender.com/",
 };
 
 /**
@@ -14,7 +13,7 @@ const baseUrl = {
  */
 export const apiCall = async (endpoint, options = {}) => {
   const url = `${baseUrl.baseUrl}${endpoint}`;
-  
+
   // Default options
   const defaultOptions = {
     method: 'GET',
@@ -41,43 +40,36 @@ export const apiCall = async (endpoint, options = {}) => {
   }
 
   try {
-    console.log(`Making API call to: ${url}`, finalOptions);
-    
     const response = await fetch(url, finalOptions);
-    
+
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
-    
-    const data = await response.json();
-    console.log(`API call successful:`, data);
-    return data;
-    
+
+    return await response.json();
   } catch (error) {
-    console.error('API call failed:', error);
-    
-    // Try CORS proxy as fallback for development
     if (process.env.NODE_ENV === 'development') {
       try {
-        console.log('Trying CORS proxy...');
         const corsProxyUrl = `https://cors-anywhere.herokuapp.com/${url}`;
         const response = await fetch(corsProxyUrl, finalOptions);
-        
+
         if (!response.ok) {
           throw new Error(`CORS proxy failed: ${response.status}`);
         }
-        
-        const data = await response.json();
-        console.log('CORS proxy successful:', data);
-        return data;
-        
+
+        return await response.json();
       } catch (corsError) {
-        console.error('CORS proxy also failed:', corsError);
         throw corsError;
       }
     }
-    
+
     throw error;
+  }
+};
+
+const notifyDashboardRefresh = () => {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event("dashboard:refresh"));
   }
 };
 
@@ -103,9 +95,12 @@ export const markVideoAsComplete = async ({ userId, trainingId, moduleId, videoI
   if (watchTime) params.append('watchTime', watchTime.toString());
   if (totalDuration) params.append('totalDuration', totalDuration.toString());
 
-  return await apiCall(`api/user/update/trainingprocess?${params.toString()}`, {
+  const response = await apiCall(`api/user/update/trainingprocess?${params.toString()}`, {
     method: 'PATCH',
   });
+
+  notifyDashboardRefresh();
+  return response;
 };
 
 /**
@@ -114,10 +109,13 @@ export const markVideoAsComplete = async ({ userId, trainingId, moduleId, videoI
  * @returns {Promise<any>} - API response
  */
 export const updateVideoProgress = async (params) => {
-  return await apiCall('api/video_progress', {
+  const response = await apiCall('api/video_progress', {
     method: 'POST',
     body: JSON.stringify(params),
   });
+
+  notifyDashboardRefresh();
+  return response;
 };
 
 export default baseUrl;

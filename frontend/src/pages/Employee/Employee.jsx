@@ -10,7 +10,7 @@ const Employee = () => {
                 {/* <div style={styles.left} className="hidden md:block z-50">
                     <SideNav />
                 </div> */}
-                <div className="md:hidden sm:block">
+                <div className="md:hidden">
                     <ModileNav />
                 </div>
 
