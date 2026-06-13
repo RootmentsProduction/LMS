@@ -57,19 +57,9 @@ app.use(
       if (!origin) return callback(null, true);
       
       const allowedOrigins = [
-        'https://unicode-mu.vercel.app',
-        'https://lms.rootments.live',
-        'http://localhost:3000',
-        'http://localhost:3001', // lmsweb local dev
-        'http://localhost:5173', // dev (Vite)
-        'http://localhost:5174', // lmsweb dev (Vite)
-        'https://lms-dev-jishnu.vercel.app',
-        'https://lms-3w6k.vercel.app',
-        'https://lmsrootments.vercel.app',
-        'https://lms-testenv-q8co.vercel.app',
-        'https://web-lms-fawn.vercel.app',
-        'https://trainingweb-gamma.vercel.app',
-        'https://learn.rootments.live'
+          'https://brynexone.brynex.com',
+        'https://lms-tau-six-52.vercel.app',
+       
       ];
       
       // Allow Vercel domains
