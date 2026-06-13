@@ -59,6 +59,7 @@ app.use(
       const allowedOrigins = [
           'https://brynexone.brynex.com',
         'https://lms-tau-six-52.vercel.app',
+        'http://localhost:3000'
        
       ];
       
