@@ -136,6 +136,7 @@ const WalkinList = () => {
     const [statusChangedToday, setStatusChangedToday] = useState({});
     const [updatingStatus, setUpdatingStatus] = useState({});
     const isRestrictedEdit = (user?.role === 'cluster_admin' || user?.role === 'store_admin') && (formData._id || customerExistsNotification);
+    const isAdmin = ['super_admin', 'admin', 'hr_admin', 'cluster_admin', 'store_admin'].includes(user?.role);
 
     const safeDateOnly = (dateStr) => {
         if (!dateStr || dateStr === '-') return new Date().toISOString().split('T')[0];
@@ -272,6 +273,15 @@ const WalkinList = () => {
         } catch (err) {
         }
     };
+
+    // Auto-load employees when storeId changes
+    useEffect(() => {
+        if (token && formData.storeId) {
+            loadEmployees(formData.storeId);
+        } else {
+            setEmployees([]);
+        }
+    }, [formData.storeId, token]);
 
     // Reset page to 1 when filters or page limit changes
     useEffect(() => {
@@ -803,6 +813,64 @@ const WalkinList = () => {
                                         />
                                     </div>
                                 </div>
+
+                                {/* Row 1.5: Store and Staff (Visible only for admins) */}
+                                {isAdmin && (
+                                    <div className="grid grid-cols-12 gap-5 pt-1">
+                                        <div className="col-span-12 md:col-span-6">
+                                            <label className="block text-xs font-semibold text-gray-700 mb-1.5">
+                                                Select Store/Branch<span className="text-red-500">*</span>
+                                            </label>
+                                            <div className="relative">
+                                                <select
+                                                    name="store"
+                                                    required
+                                                    value={formData.store}
+                                                    onChange={handleInputChange}
+                                                    className="w-full h-11 border border-gray-200 rounded-lg px-3.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 text-gray-800 bg-white cursor-pointer appearance-none pr-8 font-semibold"
+                                                >
+                                                    <option value="">Select Store</option>
+                                                    {branches.map((b, i) => (
+                                                        <option key={i} value={b.workingBranch}>
+                                                            {b.workingBranch}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-gray-500">
+                                                    <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
+                                                        <path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z" />
+                                                    </svg>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="col-span-12 md:col-span-6">
+                                            <label className="block text-xs font-semibold text-gray-700 mb-1.5">
+                                                Select Staff/Employee<span className="text-red-500">*</span>
+                                            </label>
+                                            <div className="relative">
+                                                <select
+                                                    name="staff"
+                                                    required
+                                                    value={formData.staff}
+                                                    onChange={handleInputChange}
+                                                    className="w-full h-11 border border-gray-200 rounded-lg px-3.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 text-gray-800 bg-white cursor-pointer appearance-none pr-8 font-semibold"
+                                                >
+                                                    <option value="">Select Employee</option>
+                                                    {employees.map((emp, i) => (
+                                                        <option key={i} value={emp.username}>
+                                                            {emp.username} ({emp.employeeId || emp.empID || ''})
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-gray-500">
+                                                    <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
+                                                        <path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z" />
+                                                    </svg>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
 
                                 {/* Row 2: Status, Category, Sub Category, Remarks */}
                                 <div className="grid grid-cols-12 gap-5 pt-1">

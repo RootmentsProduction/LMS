@@ -194,7 +194,7 @@ export const saveWalkin = async (req, res) => {
                 finalEmployeeId = lookupUser._id;
 
                 const isSuperOrHrAdmin = ['super_admin', 'admin', 'hr_admin'].includes(lookupUser.role);
-                if (!isSuperOrHrAdmin || !store || store === '-' || store === '') {
+                if ((!store || store === '-' || store === '') && !isSuperOrHrAdmin) {
                     if (lookupUser.branches && lookupUser.branches.length > 0) {
                         finalStore = lookupUser.branches[0].workingBranch;
                         finalStoreId = lookupUser.branches[0]._id;
@@ -210,6 +210,19 @@ export const saveWalkin = async (req, res) => {
             createdBy = req.admin ? req.admin.userId : lookupUser._id;
         } else if (req.admin) {
             createdBy = req.admin.userId;
+        }
+
+        // Resolve storeId from store name if missing
+        if (finalStore && finalStore !== '-' && !finalStoreId) {
+            const branch = await Branch.findOne({
+                $or: [
+                    { locCode: finalStore },
+                    { workingBranch: finalStore }
+                ]
+            });
+            if (branch) {
+                finalStoreId = branch._id;
+            }
         }
 
         if (req.admin && !req.admin.isSystem) {

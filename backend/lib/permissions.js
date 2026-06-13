@@ -117,9 +117,19 @@ export const getAccessibleEmployeeIds = async (adminId, storeId = null) => {
     const locCodes = branches.map(b => b.locCode);
     const users = await User.find({ locCode: { $in: locCodes } }).select('_id');
 
+    // Also get admins (store/cluster admins) associated with accessible stores, and always include the admin themselves
+    const admins = await Admin.find({
+        $or: [
+            { branches: { $in: accessibleStoreIds } },
+            { _id: adminId }
+        ]
+    }).select('_id');
+
     const allIds = new Set([
         ...accessibleEmployees.map(e => e._id.toString()),
-        ...users.map(u => u._id.toString())
+        ...users.map(u => u._id.toString()),
+        ...admins.map(a => a._id.toString()),
+        adminId.toString()
     ]);
 
     return Array.from(allIds);

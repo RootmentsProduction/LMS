@@ -49,7 +49,7 @@ const ExistingUsers = lazy(() => import('./pages/Setting/UserManagement/Existing
 const CreateNewUser = lazy(() => import('./pages/Setting/UserManagement/CreateNewUser.jsx'))
 const CreateNotificationPage = lazy(() => import('./pages/Setting/CreateNotificationPage.jsx'))
 
-import { setUser } from './features/auth/authSlice.js';
+import { setUser, logout } from './features/auth/authSlice.js';
 
 // Custom Components
 import ProtectedRoute from './components/ProtectedRoute';
@@ -205,6 +205,7 @@ function App() {
           });
 
           if (!response.ok) {
+            dispatch(logout());
             navigate('/login');
             return;
           }
@@ -218,14 +219,13 @@ function App() {
             }));
           } else {
             console.error('No user data in token verification response');
-            localStorage.removeItem('token');
+            dispatch(logout());
             navigate('/login');
           }
 
         } catch (error) {
           console.error('Error verifying token:', error);
-          localStorage.removeItem('token');
-          window.location.reload();
+          dispatch(logout());
           navigate('/login');
         }
       };
