@@ -687,7 +687,7 @@ const WalkinList = () => {
     );
 
     return (
-        <div className="mb-[70px] text-[14px] min-h-screen" style={{ fontFamily: "DM Sans, sans-serif", background: '#f9fafb' }}>
+        <div className="mb-[70px] min-h-screen" style={{ fontFamily: "DM Sans, sans-serif", background: '#f9fafb' }}>
             <SideNav />
             <div className="md:hidden sm:block">
                 <ModileNav />
@@ -696,71 +696,90 @@ const WalkinList = () => {
             {/* Layout Grid Container matching standard dashboard spacing perfectly */}
             <div className="md:ml-[120px] transition-all duration-300" style={{ paddingTop: '24px', paddingLeft: '24px', paddingRight: '24px', paddingBottom: '40px' }}>
                 {showAddView ? (
-                    /* ADD WALKIN FORM VIEW MATCHING SCREENSHOT EXACTLY */
-                    <div className="mt-6 mb-6 max-w-6xl mx-auto px-4" style={{ fontFamily: "DM Sans, sans-serif" }}>
+                    /* ── CREATE / EDIT WALK-IN FORM ── */
+                    <div className="max-w-5xl mx-auto">
 
-                        {/* Title with Back Arrow exactly matching mockup */}
-                        <div className="flex items-center gap-4 mb-8">
+                        {/* ── Page header ── */}
+                        <div className="flex items-center gap-3 mb-8">
                             <button
+                                type="button"
                                 onClick={() => {
                                     setCustomerExistsNotification(false);
                                     setCustomerData(null);
                                     setSelectedFile(null);
                                     setShowAddView(false);
                                 }}
-                                className="flex items-center justify-center w-10 h-10 rounded-full bg-white border border-gray-200 text-gray-800 hover:text-black hover:bg-gray-50 hover:shadow-sm transition-all duration-200 cursor-pointer"
+                                className="w-9 h-9 rounded-xl bg-white border border-gray-200 flex items-center justify-center text-gray-500 hover:text-gray-900 hover:border-gray-300 hover:shadow-sm transition-all cursor-pointer shrink-0"
                             >
-                                <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
                                 </svg>
                             </button>
                             <div>
-                                <h2 className="text-2xl font-bold text-gray-900 leading-none">Create New Walk In</h2>
-                                <p className="text-xs text-gray-400 mt-2">Register a customer's physical store visit details</p>
+                                <h2 className="text-[22px] font-bold text-gray-900 leading-tight">
+                                    {formData._id ? 'Edit Walk In' : 'Create New Walk In'}
+                                </h2>
+                                <p className="text-[12px] text-gray-400 mt-0.5">
+                                    {formData._id ? 'Update the details of this walk-in record' : 'Register a customer\'s physical store visit'}
+                                </p>
                             </div>
                         </div>
 
-                        {/* Two Column Grid */}
-                        <form onSubmit={handleFormSubmit} className="space-y-6">
-                            <div className="grid grid-cols-12 gap-6">
-                                
-                                {/* Left Section: Customer Info & Remarks (8 columns) */}
-                                <div className="col-span-12 lg:col-span-8 space-y-6">
-                                    
-                                    {/* Sub-card 1: Customer Profile */}
-                                    <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-xs space-y-6">
-                                        <div className="border-b border-gray-50 pb-4 mb-2">
-                                            <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider">Customer Profile</h3>
-                                            <p className="text-xs text-gray-400 mt-1">Provide phone number, name, and function date</p>
+                        {/* ── Existing customer / edit banner ── */}
+                        {(formData._id || customerExistsNotification) && (
+                            <div className="mb-6 flex items-start gap-3 p-4 bg-amber-50 border border-amber-200 rounded-xl">
+                                <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center shrink-0 mt-0.5">
+                                    <svg className="w-4 h-4 text-amber-600" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                                    </svg>
+                                </div>
+                                <div>
+                                    <p className="text-[13px] font-semibold text-amber-800">
+                                        {formData._id
+                                            ? `Editing Walk-in Record · Visit #${formData.repeatCount || 1}`
+                                            : `Returning Customer · ${formData.repeatCount || 1} previous visit${(formData.repeatCount || 1) > 1 ? 's' : ''}`
+                                        }
+                                    </p>
+                                    <p className="text-[12px] text-amber-700 mt-0.5 leading-relaxed">
+                                        {formData._id
+                                            ? 'Saving will update this record directly.'
+                                            : 'Details pre-filled. "New Walkin" logs a new visit; other statuses update the existing record.'
+                                        }
+                                    </p>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* ── Form ── */}
+                        <form onSubmit={handleFormSubmit}>
+                            <div className="grid grid-cols-12 gap-5">
+
+                                {/* ════ LEFT COLUMN ════ */}
+                                <div className="col-span-12 lg:col-span-8 space-y-5">
+
+                                    {/* Card: Customer Info */}
+                                    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                                        {/* Card header strip */}
+                                        <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-100">
+                                            <div className="w-7 h-7 rounded-lg bg-gray-900 flex items-center justify-center shrink-0">
+                                                <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                                                </svg>
+                                            </div>
+                                            <div>
+                                                <h3 className="text-[13px] font-semibold text-gray-900">Customer Information</h3>
+                                                <p className="text-[11px] text-gray-400">Phone number, name and function date</p>
+                                            </div>
                                         </div>
 
-                                        {(formData._id || customerExistsNotification) && (
-                                            <div className="p-4 bg-amber-50/50 border border-amber-200 rounded-xl flex items-start gap-3 animate-fade-in mb-4">
-                                                <span className="text-amber-600 text-lg">⚠️</span>
-                                                <div>
-                                                    <h4 className="text-sm font-bold text-amber-800">
-                                                        {formData._id
-                                                            ? `Editing Walk-in Record (Repeat Count: ${formData.repeatCount || 1})`
-                                                            : `Existing Customer Found (Walk-in Count: ${formData.repeatCount || 1})`
-                                                        }
-                                                    </h4>
-                                                    <p className="text-xs text-amber-700 mt-1 leading-relaxed">
-                                                        {formData._id
-                                                            ? 'You are editing the details of this specific walk-in record. Saving will update this record directly.'
-                                                            : 'The customer details have been pre-filled. Setting status to "New Walkin" will log a new visit, while other statuses will update the existing record.'
-                                                        }
-                                                    </p>
-                                                </div>
-                                            </div>
-                                        )}
-
-                                        <div className="grid grid-cols-12 gap-5">
-                                            <div className="col-span-12 md:col-span-6">
-                                                <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">
-                                                    Customer Mobile Number<span className="text-red-500">*</span>
+                                        <div className="p-6 grid grid-cols-12 gap-4">
+                                            {/* Mobile */}
+                                            <div className="col-span-12 sm:col-span-6">
+                                                <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+                                                    Mobile Number <span className="text-red-500 normal-case font-normal">*</span>
                                                 </label>
                                                 <div className="relative">
-                                                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">
+                                                    <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400">
                                                         <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                                                             <path strokeLinecap="round" strokeLinejoin="round" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.94.725l.548 2.2a1 1 0 01-.321.988l-1.305.98a10.582 10.582 0 004.872 4.872l.98-1.305a1 1 0 01.988-.321l2.2.548a1 1 0 01.725.94V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
                                                         </svg>
@@ -770,25 +789,27 @@ const WalkinList = () => {
                                                         name="contact"
                                                         required
                                                         maxLength={10}
-                                                        placeholder="Enter Mobile Number"
+                                                        placeholder="10-digit mobile number"
                                                         value={formData.contact}
                                                         onChange={handleInputChange}
                                                         onBlur={(e) => checkCustomer(e.target.value)}
                                                         disabled={isRestrictedEdit}
-                                                        className={`w-full h-11 pl-11 pr-4 border rounded-xl text-sm focus:outline-none focus:border-black focus:ring-4 focus:ring-gray-100 transition-all font-semibold ${
-                                                            isRestrictedEdit 
-                                                                ? 'bg-gray-50 text-gray-400 cursor-not-allowed border-gray-200' 
+                                                        className={`w-full h-10 pl-10 pr-4 text-[13px] border rounded-xl focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-900 transition-all ${
+                                                            isRestrictedEdit
+                                                                ? 'bg-gray-50 text-gray-400 cursor-not-allowed border-gray-200'
                                                                 : 'bg-white border-gray-200 text-gray-800 placeholder-gray-400'
                                                         }`}
                                                     />
                                                 </div>
                                             </div>
-                                            <div className="col-span-12 md:col-span-6">
-                                                <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">
-                                                    Customer Name<span className="text-red-500">*</span>
+
+                                            {/* Name */}
+                                            <div className="col-span-12 sm:col-span-6">
+                                                <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+                                                    Customer Name <span className="text-red-500 normal-case font-normal">*</span>
                                                 </label>
                                                 <div className="relative">
-                                                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">
+                                                    <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400">
                                                         <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                                                             <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                                                         </svg>
@@ -797,24 +818,26 @@ const WalkinList = () => {
                                                         type="text"
                                                         name="customerName"
                                                         required
-                                                        placeholder="Enter Customer Name"
+                                                        placeholder="Full name"
                                                         value={formData.customerName}
                                                         onChange={handleInputChange}
                                                         disabled={isRestrictedEdit}
-                                                        className={`w-full h-11 pl-11 pr-4 border rounded-xl text-sm focus:outline-none focus:border-black focus:ring-4 focus:ring-gray-100 transition-all font-semibold ${
-                                                            isRestrictedEdit 
-                                                                ? 'bg-gray-50 text-gray-400 cursor-not-allowed border-gray-200' 
+                                                        className={`w-full h-10 pl-10 pr-4 text-[13px] border rounded-xl focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-900 transition-all ${
+                                                            isRestrictedEdit
+                                                                ? 'bg-gray-50 text-gray-400 cursor-not-allowed border-gray-200'
                                                                 : 'bg-white border-gray-200 text-gray-800 placeholder-gray-400'
                                                         }`}
                                                     />
                                                 </div>
                                             </div>
-                                            <div className="col-span-12 md:col-span-8">
-                                                <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">
-                                                    Function Date <span className="text-red-500">*</span>
+
+                                            {/* Function Date */}
+                                            <div className="col-span-12 sm:col-span-7">
+                                                <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+                                                    Function Date <span className="text-red-500 normal-case font-normal">*</span>
                                                 </label>
                                                 <div className="relative">
-                                                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">
+                                                    <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
                                                         <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                                                             <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                                                         </svg>
@@ -826,259 +849,253 @@ const WalkinList = () => {
                                                         value={formData.functionDate}
                                                         onChange={handleInputChange}
                                                         disabled={isRestrictedEdit}
-                                                        className={`w-full h-11 pl-11 pr-4 border rounded-xl text-sm focus:outline-none focus:border-black focus:ring-4 focus:ring-gray-100 transition-all font-semibold ${
-                                                            isRestrictedEdit 
-                                                                ? 'bg-gray-50 text-gray-400 cursor-not-allowed border-gray-200' 
-                                                                : 'bg-white border-gray-200 text-gray-800 cursor-pointer placeholder-gray-400'
+                                                        className={`w-full h-10 pl-10 pr-4 text-[13px] border rounded-xl focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-900 transition-all ${
+                                                            isRestrictedEdit
+                                                                ? 'bg-gray-50 text-gray-400 cursor-not-allowed border-gray-200'
+                                                                : 'bg-white border-gray-200 text-gray-800 cursor-pointer'
                                                         }`}
                                                     />
                                                 </div>
                                             </div>
-                                            <div className="col-span-12 md:col-span-4">
-                                                <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">
-                                                    Repeat Count
+
+                                            {/* Repeat Count badge */}
+                                            <div className="col-span-12 sm:col-span-5">
+                                                <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+                                                    Visit Count
                                                 </label>
-                                                <div className="relative">
-                                                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">
-                                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                                                            <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 7.89M9 11l3-3 3 3m-3-3v12" />
-                                                        </svg>
-                                                    </span>
-                                                    <input
-                                                        type="number"
-                                                        name="repeatCount"
-                                                        readOnly
-                                                        value={formData.repeatCount || 1}
-                                                        className="w-full h-11 pl-11 pr-4 border border-gray-200 bg-gray-50 rounded-xl text-sm focus:outline-none text-gray-500 cursor-not-allowed font-semibold"
-                                                    />
+                                                <div className="h-10 px-4 flex items-center gap-2.5 bg-gray-50 border border-gray-200 rounded-xl">
+                                                    <svg className="w-4 h-4 text-gray-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 7.89M9 11l3-3 3 3m-3-3v12" />
+                                                    </svg>
+                                                    <span className="text-[13px] font-semibold text-gray-600">{formData.repeatCount || 1}</span>
+                                                    {(formData.repeatCount || 1) > 1 && (
+                                                        <span className="ml-auto text-[10px] font-bold text-amber-600 bg-amber-100 px-2 py-0.5 rounded-full">Repeat</span>
+                                                    )}
                                                 </div>
                                             </div>
                                         </div>
                                     </div>
 
-                                    {/* Sub-card 2: Additional Details */}
-                                    <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-xs space-y-6">
-                                        <div className="border-b border-gray-50 pb-4 mb-2">
-                                            <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider">Additional Details</h3>
-                                            <p className="text-xs text-gray-400 mt-1">Optional notes and details about this walk-in</p>
+                                    {/* Card: Remarks */}
+                                    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                                        <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-100">
+                                            <div className="w-7 h-7 rounded-lg bg-gray-900 flex items-center justify-center shrink-0">
+                                                <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                                </svg>
+                                            </div>
+                                            <div>
+                                                <h3 className="text-[13px] font-semibold text-gray-900">Remarks</h3>
+                                                <p className="text-[11px] text-gray-400">Optional notes about this visit</p>
+                                            </div>
                                         </div>
-
-                                        <div>
-                                            <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">
-                                                Remarks <span className="text-gray-400 font-normal">(Optional)</span>
-                                            </label>
+                                        <div className="p-6">
                                             <textarea
                                                 name="remarks"
-                                                rows={3}
-                                                placeholder="Enter your remarks here..."
+                                                rows={4}
+                                                placeholder="Add any notes or observations about this walk-in..."
                                                 value={formData.remarks}
                                                 onChange={handleInputChange}
-                                                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-black focus:ring-4 focus:ring-gray-100 text-gray-800 bg-white placeholder-gray-400 resize-none font-semibold transition-all"
+                                                className="w-full text-[13px] border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-900 text-gray-800 bg-white placeholder-gray-400 resize-none transition-all"
                                             />
                                         </div>
                                     </div>
 
                                 </div>
 
-                                {/* Right Section: Store Assignment & Status (4 columns) */}
-                                <div className="col-span-12 lg:col-span-4 space-y-6">
-                                    
-                                    {/* Sub-card 3: Walk-in Assignment & Status */}
-                                    <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-xs space-y-5">
-                                        <div className="border-b border-gray-50 pb-4 mb-2">
-                                            <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider">Assignment & Status</h3>
-                                            <p className="text-xs text-gray-400 mt-1">Specify branch, handling staff, and visit status</p>
-                                        </div>
+                                {/* ════ RIGHT COLUMN ════ */}
+                                <div className="col-span-12 lg:col-span-4 space-y-5">
 
-                                        {isAdmin && (
-                                            <>
-                                                <div>
-                                                    <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">
-                                                        Select Store/Branch<span className="text-red-500">*</span>
-                                                    </label>
-                                                    <div className="relative">
-                                                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">
-                                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                                                                <path strokeLinecap="round" strokeLinejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                                                            </svg>
-                                                        </span>
-                                                        <select
-                                                            name="store"
-                                                            required
-                                                            value={formData.store}
-                                                            onChange={handleInputChange}
-                                                            className="w-full h-11 pl-11 pr-10 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-black focus:ring-4 focus:ring-gray-100 text-gray-800 bg-white cursor-pointer appearance-none font-semibold transition-all"
-                                                        >
-                                                            <option value="">Select Store</option>
-                                                            {branches.map((b, i) => (
-                                                                <option key={i} value={b.workingBranch}>
-                                                                    {b.workingBranch}
-                                                                </option>
-                                                            ))}
-                                                        </select>
-                                                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-gray-400">
-                                                            <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
-                                                                <path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z" />
-                                                            </svg>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                                <div>
-                                                    <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">
-                                                        Select Staff/Employee<span className="text-red-500">*</span>
-                                                    </label>
-                                                    <div className="relative">
-                                                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">
-                                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                                                                <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                                                            </svg>
-                                                        </span>
-                                                        <select
-                                                            name="staff"
-                                                            required
-                                                            value={formData.staff}
-                                                            onChange={handleInputChange}
-                                                            className="w-full h-11 pl-11 pr-10 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-black focus:ring-4 focus:ring-gray-100 text-gray-800 bg-white cursor-pointer appearance-none font-semibold transition-all"
-                                                        >
-                                                            <option value="">Select Employee</option>
-                                                            {employees.map((emp, i) => (
-                                                                <option key={i} value={emp.username}>
-                                                                    {emp.username} ({emp.employeeId || emp.empID || ''})
-                                                                </option>
-                                                            ))}
-                                                        </select>
-                                                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-gray-400">
-                                                            <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
-                                                                <path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z" />
-                                                            </svg>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </>
-                                        )}
-
-                                        <div>
-                                            <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">
-                                                Status<span className="text-red-500">*</span>
-                                            </label>
-                                            <div className="relative">
-                                                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">
-                                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                                                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
-                                                    </svg>
-                                                </span>
-                                                <select
-                                                    name="status"
-                                                    required
-                                                    value={formData.status}
-                                                    onChange={handleInputChange}
-                                                    className="w-full h-11 pl-11 pr-10 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-black focus:ring-4 focus:ring-gray-100 text-gray-800 bg-white cursor-pointer appearance-none font-semibold transition-all"
-                                                >
-                                                    {!STATUS_OPTIONS.includes(formData.status) && formData.status && (
-                                                        <option value={formData.status}>{formData.status}</option>
-                                                    )}
-                                                    {STATUS_OPTIONS.map((opt) => (<option key={opt} value={opt}>{opt}</option>))}
-                                                </select>
-                                                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-gray-400">
-                                                    <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
-                                                        <path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z" />
-                                                    </svg>
-                                                </div>
+                                    {/* Card: Assignment & Status */}
+                                    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                                        <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-100">
+                                            <div className="w-7 h-7 rounded-lg bg-gray-900 flex items-center justify-center shrink-0">
+                                                <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                                                </svg>
+                                            </div>
+                                            <div>
+                                                <h3 className="text-[13px] font-semibold text-gray-900">Assignment & Status</h3>
+                                                <p className="text-[11px] text-gray-400">Branch, staff and visit status</p>
                                             </div>
                                         </div>
 
-                                        {showCategory && (
+                                        <div className="p-6 space-y-4">
+
+                                            {isAdmin && (
+                                                <>
+                                                    {/* Store */}
+                                                    <div>
+                                                        <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+                                                            Store / Branch <span className="text-red-500 normal-case font-normal">*</span>
+                                                        </label>
+                                                        <div className="relative">
+                                                            <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
+                                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                                                                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                                                                </svg>
+                                                            </span>
+                                                            <select
+                                                                name="store"
+                                                                required
+                                                                value={formData.store}
+                                                                onChange={handleInputChange}
+                                                                className="w-full h-10 pl-10 pr-9 text-[13px] border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-900 text-gray-800 bg-white cursor-pointer appearance-none transition-all"
+                                                            >
+                                                                <option value="">Select Store</option>
+                                                                {branches.map((b, i) => (
+                                                                    <option key={i} value={b.workingBranch}>{b.workingBranch}</option>
+                                                                ))}
+                                                            </select>
+                                                            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-gray-400">
+                                                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Staff */}
+                                                    <div>
+                                                        <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+                                                            Staff / Employee <span className="text-red-500 normal-case font-normal">*</span>
+                                                        </label>
+                                                        <div className="relative">
+                                                            <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
+                                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                                                                    <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+                                                                </svg>
+                                                            </span>
+                                                            <select
+                                                                name="staff"
+                                                                required
+                                                                value={formData.staff}
+                                                                onChange={handleInputChange}
+                                                                className="w-full h-10 pl-10 pr-9 text-[13px] border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-900 text-gray-800 bg-white cursor-pointer appearance-none transition-all"
+                                                            >
+                                                                <option value="">Select Employee</option>
+                                                                {employees.map((emp, i) => (
+                                                                    <option key={i} value={emp.username}>
+                                                                        {emp.username} ({emp.employeeId || emp.empID || ''})
+                                                                    </option>
+                                                                ))}
+                                                            </select>
+                                                            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-gray-400">
+                                                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </>
+                                            )}
+
+                                            {/* Status */}
                                             <div>
-                                                <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">
-                                                    Category<span className="text-red-500">*</span>
+                                                <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+                                                    Visit Status <span className="text-red-500 normal-case font-normal">*</span>
                                                 </label>
                                                 <div className="relative">
-                                                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">
+                                                    <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
                                                         <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                                                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                                                            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                                                         </svg>
                                                     </span>
                                                     <select
-                                                        name="category"
+                                                        name="status"
                                                         required
-                                                        value={formData.category}
+                                                        value={formData.status}
                                                         onChange={handleInputChange}
-                                                        className="w-full h-11 pl-11 pr-10 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-black focus:ring-4 focus:ring-gray-100 text-gray-800 bg-white cursor-pointer appearance-none font-semibold transition-all"
+                                                        className="w-full h-10 pl-10 pr-9 text-[13px] border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-900 text-gray-800 bg-white cursor-pointer appearance-none transition-all"
                                                     >
-                                                        <option value="">Select Category</option>
-                                                        {getCategoryOptions().map((opt) => (<option key={opt} value={opt}>{opt}</option>))}
+                                                        {!STATUS_OPTIONS.includes(formData.status) && formData.status && (
+                                                            <option value={formData.status}>{formData.status}</option>
+                                                        )}
+                                                        {STATUS_OPTIONS.map((opt) => (<option key={opt} value={opt}>{opt}</option>))}
                                                     </select>
-                                                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-gray-400">
-                                                        <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
-                                                            <path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z" />
-                                                        </svg>
+                                                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-gray-400">
+                                                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
                                                     </div>
                                                 </div>
                                             </div>
-                                        )}
+
+                                            {showCategory && (
+                                                <div>
+                                                    <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+                                                        Category <span className="text-red-500 normal-case font-normal">*</span>
+                                                    </label>
+                                                    <div className="relative">
+                                                        <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
+                                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                                                            </svg>
+                                                        </span>
+                                                        <select
+                                                            name="category"
+                                                            required
+                                                            value={formData.category}
+                                                            onChange={handleInputChange}
+                                                            className="w-full h-10 pl-10 pr-9 text-[13px] border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-900 text-gray-800 bg-white cursor-pointer appearance-none transition-all"
+                                                        >
+                                                            <option value="">Select Category</option>
+                                                            {getCategoryOptions().map((opt) => (<option key={opt} value={opt}>{opt}</option>))}
+                                                        </select>
+                                                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-gray-400">
+                                                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
 
                                         {showSubCategory && (
-                                            <div>
-                                                <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">
-                                                    Sub Category<span className="text-red-500">*</span>
-                                                </label>
-                                                <div className="relative">
-                                                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">
-                                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                                                            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                                                        </svg>
-                                                    </span>
-                                                    <select
-                                                        name="subCategory"
-                                                        value={formData.subCategory}
-                                                        onChange={handleInputChange}
-                                                        className="w-full h-11 pl-11 pr-10 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-black focus:ring-4 focus:ring-gray-100 text-gray-800 bg-white cursor-pointer appearance-none font-semibold transition-all"
-                                                    >
-                                                        {getSubCategoryOptions().map((opt) => (<option key={opt} value={opt}>{opt}</option>))}
-                                                    </select>
-                                                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-gray-400">
-                                                        <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
-                                                            <path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z" />
-                                                        </svg>
+                                                <div>
+                                                    <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+                                                        Sub Category <span className="text-red-500 normal-case font-normal">*</span>
+                                                    </label>
+                                                    <div className="relative">
+                                                        <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
+                                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                                            </svg>
+                                                        </span>
+                                                        <select
+                                                            name="subCategory"
+                                                            value={formData.subCategory}
+                                                            onChange={handleInputChange}
+                                                            className="w-full h-10 pl-10 pr-9 text-[13px] border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-900 text-gray-800 bg-white cursor-pointer appearance-none transition-all"
+                                                        >
+                                                            {getSubCategoryOptions().map((opt) => (<option key={opt} value={opt}>{opt}</option>))}
+                                                        </select>
+                                                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-gray-400">
+                                                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
+                                                        </div>
                                                     </div>
                                                 </div>
-                                            </div>
-                                        )}
+                                            )}
 
-                                        {showAttachmentInput && (
-                                            <div>
-                                                <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">
-                                                    Attachment <span className="text-gray-400 font-normal">(Optional)</span>
-                                                </label>
-                                                <div className="relative">
-                                                    <input 
-                                                        type="file" 
-                                                        id="walkin-attachment-file"
-                                                        onChange={handleFileChange} 
-                                                        className="hidden"
-                                                    />
-                                                    <label 
-                                                        htmlFor="walkin-attachment-file" 
-                                                        className="w-full h-11 border border-gray-200 rounded-xl px-4 flex items-center justify-between text-sm focus:outline-none text-gray-600 bg-white cursor-pointer hover:border-gray-400 transition-all font-semibold overflow-hidden"
+                                            {showAttachmentInput && (
+                                                <div>
+                                                    <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+                                                        Attachment <span className="text-gray-400 normal-case font-normal">(Optional)</span>
+                                                    </label>
+                                                    <input type="file" id="walkin-attachment-file" onChange={handleFileChange} className="hidden" />
+                                                    <label
+                                                        htmlFor="walkin-attachment-file"
+                                                        className="flex items-center gap-3 h-10 px-4 border border-dashed border-gray-300 rounded-xl text-[13px] text-gray-500 bg-gray-50 hover:bg-gray-100 hover:border-gray-400 cursor-pointer transition-all overflow-hidden"
                                                     >
-                                                        <span className="truncate">
-                                                            {selectedFile ? selectedFile.name : (formData.attachmentName || 'Choose File...')}
-                                                        </span>
-                                                        <svg className="w-4 h-4 text-gray-400 shrink-0 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                                                        <svg className="w-4 h-4 text-gray-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
                                                         </svg>
+                                                        <span className="truncate">{selectedFile ? selectedFile.name : (formData.attachmentName || 'Choose file to upload')}</span>
                                                     </label>
                                                 </div>
-                                            </div>
-                                        )}
-                                    </div>
+                                            )}
 
-                                    {/* Action Buttons inside the right card */}
-                                    <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-xs">
+                                        </div>{/* end card body */}
+                                    </div>{/* end assignment card */}
+
+                                    {/* Save / Cancel */}
+                                    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
                                         <button
                                             type="submit"
                                             disabled={loading}
-                                            className="w-full bg-black hover:bg-gray-900 text-white h-11 rounded-xl transition-all duration-200 font-bold shadow-sm flex items-center justify-center gap-2 cursor-pointer border-0"
+                                            className="w-full h-11 bg-gray-900 hover:bg-black text-white text-[13px] font-semibold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer border-0 shadow-sm"
                                         >
                                             {loading ? (
                                                 <>
@@ -1089,8 +1106,25 @@ const WalkinList = () => {
                                                     Saving...
                                                 </>
                                             ) : (
-                                                'Save Walk In'
+                                                <>
+                                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                                    </svg>
+                                                    {formData._id ? 'Update Walk In' : 'Save Walk In'}
+                                                </>
                                             )}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setCustomerExistsNotification(false);
+                                                setCustomerData(null);
+                                                setSelectedFile(null);
+                                                setShowAddView(false);
+                                            }}
+                                            className="w-full mt-2.5 h-10 bg-transparent border border-gray-200 hover:border-gray-300 hover:bg-gray-50 text-gray-600 text-[13px] font-medium rounded-xl transition-all cursor-pointer"
+                                        >
+                                            Cancel
                                         </button>
                                     </div>
 
@@ -1105,8 +1139,8 @@ const WalkinList = () => {
                         {/* Header */}
                         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                             <div>
-                                <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Walk In List</h1>
-                                <p className="text-xs text-gray-400 mt-1">Manage physical store customer visits and follow-ups</p>
+                                <h1 className="text-[22px] font-bold text-gray-900 leading-tight">Walk In List</h1>
+                                <p className="text-[12px] text-gray-400 mt-1">Manage physical store customer visits and follow-ups</p>
                             </div>
                             <button
                                 onClick={() => {
@@ -1207,22 +1241,22 @@ const WalkinList = () => {
                             ) : (
                                 <>
                                     <div className="overflow-x-auto">
-                                        <table className="w-full min-w-[1200px] border-collapse text-left text-xs font-semibold">
+                                        <table className="w-full min-w-[1200px] border-collapse text-left">
                                             <thead>
                                                 <tr className="border-b border-gray-100 bg-gray-50/50">
-                                                    <th className="py-4 px-4 text-center text-[10px] font-bold text-gray-400 uppercase tracking-wider w-12">#</th>
-                                                    <th className="py-4 px-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider w-24">Date</th>
-                                                    <th className="py-4 px-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider w-36">Customer</th>
-                                                    <th className="py-4 px-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider w-36">Contact</th>
-                                                    <th className="py-4 px-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider w-28">Function Date</th>
-                                                    <th className="py-4 px-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider w-36">Store</th>
-                                                    <th className="py-4 px-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider w-36">Staff</th>
-                                                    <th className="py-4 px-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider w-28">Category</th>
-                                                    <th className="py-4 px-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider w-36">Sub Category</th>
-                                                    <th className="py-4 px-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider min-w-[160px]">Remarks</th>
-                                                    <th className="py-4 px-4 text-center text-[10px] font-bold text-gray-400 uppercase tracking-wider w-24">Repeat</th>
-                                                    <th className="py-4 px-4 text-center text-[10px] font-bold text-gray-400 uppercase tracking-wider w-36">Status</th>
-                                                    <th className="py-4 px-4 text-center text-[10px] font-bold text-gray-400 uppercase tracking-wider w-14">Edit</th>
+                                                    <th className="py-4 px-4 text-center text-[11px] font-semibold text-gray-500 uppercase tracking-[0.04em] w-12">#</th>
+                                                    <th className="py-4 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-[0.04em] w-24">Date</th>
+                                                    <th className="py-4 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-[0.04em] w-36">Customer</th>
+                                                    <th className="py-4 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-[0.04em] w-36">Contact</th>
+                                                    <th className="py-4 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-[0.04em] w-28">Function Date</th>
+                                                    <th className="py-4 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-[0.04em] w-36">Store</th>
+                                                    <th className="py-4 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-[0.04em] w-36">Staff</th>
+                                                    <th className="py-4 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-[0.04em] w-28">Category</th>
+                                                    <th className="py-4 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-[0.04em] w-36">Sub Category</th>
+                                                    <th className="py-4 px-4 text-[11px] font-semibold text-gray-500 uppercase tracking-[0.04em] min-w-[160px]">Remarks</th>
+                                                    <th className="py-4 px-4 text-center text-[11px] font-semibold text-gray-500 uppercase tracking-[0.04em] w-24">Repeat</th>
+                                                    <th className="py-4 px-4 text-center text-[11px] font-semibold text-gray-500 uppercase tracking-[0.04em] w-36">Status</th>
+                                                    <th className="py-4 px-4 text-center text-[11px] font-semibold text-gray-500 uppercase tracking-[0.04em] w-14">Edit</th>
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-gray-50">
@@ -1257,15 +1291,15 @@ const WalkinList = () => {
                                                             key={w._id || index}
                                                             className="hover:bg-gray-50/40 transition-colors duration-150 text-gray-700"
                                                         >
-                                                            <td className="py-3.5 px-4 text-center text-gray-400 font-normal">{indexFirst + index + 1}</td>
-                                                            <td className="py-3.5 px-4 whitespace-nowrap">{safeDateOnly(w.date)}</td>
-                                                            <td className="py-3.5 px-4 font-bold text-gray-900 max-w-[144px] truncate" title={w.customerName}>{w.customerName || '–'}</td>
-                                                            <td className="py-3.5 px-4 whitespace-nowrap font-medium text-gray-500">{formattedContact}</td>
-                                                            <td className="py-3.5 px-4 whitespace-nowrap">{w.functionDate || '–'}</td>
-                                                            <td className="py-3.5 px-4 max-w-[144px] truncate" title={w.store}>{w.store || '–'}</td>
-                                                            <td className="py-3.5 px-4 max-w-[144px] truncate" title={w.staff}>{w.staff || '–'}</td>
-                                                            <td className="py-3.5 px-4">{w.category || '–'}</td>
-                                                            <td className="py-3.5 px-4">
+                                                            <td className="py-3.5 px-4 text-center text-[13px] text-gray-400 font-normal">{indexFirst + index + 1}</td>
+                                                            <td className="py-3.5 px-4 text-[13px] whitespace-nowrap">{safeDateOnly(w.date)}</td>
+                                                            <td className="py-3.5 px-4 text-[13px] font-medium text-gray-900 max-w-[144px] truncate" title={w.customerName}>{w.customerName || '–'}</td>
+                                                            <td className="py-3.5 px-4 text-[13px] whitespace-nowrap font-medium text-gray-500">{formattedContact}</td>
+                                                            <td className="py-3.5 px-4 text-[13px] whitespace-nowrap">{w.functionDate || '–'}</td>
+                                                            <td className="py-3.5 px-4 text-[13px] max-w-[144px] truncate" title={w.store}>{w.store || '–'}</td>
+                                                            <td className="py-3.5 px-4 text-[13px] max-w-[144px] truncate" title={w.staff}>{w.staff || '–'}</td>
+                                                            <td className="py-3.5 px-4 text-[13px]">{w.category || '–'}</td>
+                                                            <td className="py-3.5 px-4 text-[13px]">
                                                                 <div className="flex items-center gap-1.5 max-w-[144px]">
                                                                     <span className="truncate" title={w.subCategory}>{w.subCategory || '–'}</span>
                                                                     {w.attachment && (
@@ -1283,8 +1317,8 @@ const WalkinList = () => {
                                                                     )}
                                                                 </div>
                                                             </td>
-                                                            <td className="py-3.5 px-4 text-gray-400 font-normal max-w-[180px] truncate" title={w.remarks}>{w.remarks || '–'}</td>
-                                                            <td className="py-3.5 px-4 text-center font-bold text-gray-900">{w.repeatCount}</td>
+                                                            <td className="py-3.5 px-4 text-[13px] text-gray-400 font-normal max-w-[180px] truncate" title={w.remarks}>{w.remarks || '–'}</td>
+                                                            <td className="py-3.5 px-4 text-[13px] text-center font-medium text-gray-900">{w.repeatCount}</td>
                                                             <td className="py-3 px-4 text-center">
                                                                 <div className="relative inline-flex items-center justify-center">
                                                                     <select
