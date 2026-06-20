@@ -7,7 +7,7 @@ const options = {
         info: {
             title: "LMS API - Learning Management System",
             version: "1.0.0",
-            description: "Comprehensive API documentation for the LMS system including user management, assessments, modules, training, and login analytics.",
+            description: "Comprehensive API documentation for the LMS system including user management, assessments, modules, training, walk-in lead management, shoe sales sync, and login analytics.",
             contact: {
                 name: "LMS Development Team",
                 email: "support@lms.com"
@@ -89,6 +89,14 @@ const options = {
             {
                 name: "Auto Tasks",
                 description: "Auto Task Templates — recurring schedules that generate real Task documents automatically"
+            },
+            {
+                name: "Walkin",
+                description: "Walk-in lead management API endpoints for Web Dashboard and Mobile App integrations. Supports rental (Booked/Rentout/Return/Cancelled) and shoe sales (Billed/Bill Returned) status tracking via auto-sync cron."
+            },
+            {
+                name: "Walk-In Sync",
+                description: "Cron job history for the Walk-In Auto Status Sync. The cron fetches 6 external APIs (GetBookingList, GetRentoutList, GetReturnList, GetDeleteList, GetBilledList, GetBillReturnedList) per branch every run and updates walk-in statuses independently for Rental flow and Shoe Sales flow. Use GET /api/walkin/cron-logs to view run history."
             }
         ]
     },

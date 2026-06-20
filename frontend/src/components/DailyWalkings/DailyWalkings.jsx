@@ -57,8 +57,20 @@ const buildDays = (range, startDate, endDate) => {
     return days;
   }
 
-  const totalDays = Math.max(1, Number(range) || 7);
   const today = new Date();
+
+  if (range === "month") {
+    const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+    const days = [];
+    const cursor = new Date(startOfMonth);
+    while (cursor <= today) {
+      days.push(new Date(cursor));
+      cursor.setDate(cursor.getDate() + 1);
+    }
+    return days;
+  }
+
+  const totalDays = Math.max(1, Number(range) || 7);
 
   if (totalDays === 7) {
     const startOfWeek = new Date(today);
@@ -176,7 +188,9 @@ const DailyWalkings = ({ range = "7", customRange, onRangeChange, onCustomRangeC
             }}
           >
             <option value="7">This week to date</option>
+            <option value="month">This month till date</option>
             <option value="14">Last 14 days</option>
+            <option value="30">Last 30 days</option>
             <option value="45">Last 45 days</option>
             <option value="custom">Custom range</option>
           </select>

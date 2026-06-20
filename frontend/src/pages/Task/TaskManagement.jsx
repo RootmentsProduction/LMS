@@ -202,15 +202,19 @@ const TaskManagement = () => {
       const [tasksRes, requestsRes, extensionsRes] = await Promise.all(fetchList);
 
       setTasks(tasksRes.data || []);
-      const userRequests = (requestsRes.data || []).filter(
-        (t) => t.createdBy === user?.userId
+      const allRequests = requestsRes.data || [];
+      setRequests(
+        isGlobalAdmin
+          ? allRequests
+          : allRequests.filter((t) => t.createdBy === user?.userId)
       );
-      setRequests(userRequests);
 
-      const userExtensions = (extensionsRes.data || []).filter(
-        (t) => String(t.createdBy) === String(user?.userId)
+      const allExtensions = extensionsRes.data || [];
+      setExtensions(
+        isGlobalAdmin
+          ? allExtensions
+          : allExtensions.filter((t) => String(t.createdBy) === String(user?.userId))
       );
-      setExtensions(userExtensions);
     } catch (err) {
       setError(err.message);
       setTasks([]);
@@ -375,19 +379,19 @@ const TaskManagement = () => {
           </button>
           <button
             type="button"
-            className={`task-mgmt-tab-btn ${activeTab === 'requests' ? 'active' : ''}`}
-            onClick={() => setActiveTab('requests')}
-          >
-            Requests
-            <span className="task-mgmt-tab-count">{requests.length}</span>
-          </button>
-          <button
-            type="button"
             className={`task-mgmt-tab-btn ${activeTab === 'extensions' ? 'active' : ''}`}
             onClick={() => setActiveTab('extensions')}
           >
             Extension Requests
             <span className="task-mgmt-tab-count">{extensions.length}</span>
+          </button>
+          <button
+            type="button"
+            className={`task-mgmt-tab-btn ${activeTab === 'requests' ? 'active' : ''}`}
+            onClick={() => setActiveTab('requests')}
+          >
+            Review Requests
+            <span className="task-mgmt-tab-count">{requests.length}</span>
           </button>
         </div>
 
@@ -495,9 +499,9 @@ const TaskManagement = () => {
                     <td colSpan={10} style={{ textAlign: 'center', color: '#9ca3af', padding: '32px' }}>
                       {activeTab === 'tasks'
                         ? 'No tasks found. Create one with + New Task.'
-                        : activeTab === 'requests'
-                        ? 'No pending review requests.'
-                        : 'No pending extension requests.'}
+                        : activeTab === 'extensions'
+                        ? 'No pending extension requests.'
+                        : 'No pending review requests.'}
                     </td>
                   </tr>
                 ) : (

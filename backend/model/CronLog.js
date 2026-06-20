@@ -32,12 +32,17 @@ const cronLogSchema = new mongoose.Schema(
 
         // Summary data for walkin_status_sync
         summary: {
-            totalBookings:      { type: Number, default: 0 },
-            totalRentouts:      { type: Number, default: 0 },
-            totalReturns:       { type: Number, default: 0 },
-            totalDeletes:       { type: Number, default: 0 },
-            totalWalkinsUpdated: { type: Number, default: 0 },
-            errorsCount:        { type: Number, default: 0 },
+            totalBookings:           { type: Number, default: 0 },
+            totalRentouts:           { type: Number, default: 0 },
+            totalReturns:            { type: Number, default: 0 },
+            totalDeletes:            { type: Number, default: 0 },
+            totalShoeBilled:         { type: Number, default: 0 },
+            totalShoeBillReturned:   { type: Number, default: 0 },
+            totalWalkinsUpdated:     { type: Number, default: 0 },
+            totalWalkinsSameStatus:  { type: Number, default: 0 },
+            totalWalkinsSameDayRepeat: { type: Number, default: 0 },
+            totalWalkinsSkippedHierarchy: { type: Number, default: 0 },
+            errorsCount:             { type: Number, default: 0 },
         },
 
         // Summary for walkin_loss_expiry
@@ -46,15 +51,19 @@ const cronLogSchema = new mongoose.Schema(
         // Array of per-branch results (walkin_status_sync only)
         branchResults: [
             {
-                locCode:         String,
-                workingBranch:   String,
-                bookings:        Number,
-                rentouts:        Number,
-                returns:         Number,
-                deletes:         Number,
-                matched:         Number,
-                updated:         Number,
-                skipped:         Number,
+                locCode:           String,
+                workingBranch:     String,
+                bookings:          Number,
+                rentouts:          Number,
+                returns:           Number,
+                deletes:           Number,
+                shoeBilled:        Number,
+                shoeBillReturned:  Number,
+                matched:           Number,
+                updated:           Number,
+                sameStatus:        Number,
+                sameDayRepeatSkip: Number,
+                skipped:           Number,
             }
         ],
 
@@ -62,7 +71,7 @@ const cronLogSchema = new mongoose.Schema(
         errorDetails: [
             {
                 branch: String,
-                type:   String,
+                type:   { type: String },
                 error:  String,
             }
         ],

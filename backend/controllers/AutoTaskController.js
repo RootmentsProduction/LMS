@@ -22,6 +22,25 @@ const resolveCreator = async (userId) => {
   return { creator: user, isAdmin: false };
 };
 
+const getLocalTodayDate = () => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const getLocalCurrentTime = () => {
+  const now = new Date();
+  let hours = now.getHours();
+  const minutes = String(now.getMinutes()).padStart(2, '0');
+  const ampm = hours >= 12 ? 'pm' : 'am';
+  hours = hours % 12;
+  hours = hours ? hours : 12; // the hour '0' should be '12'
+  const formattedHours = String(hours).padStart(2, '0');
+  return `${formattedHours}:${minutes}${ampm}`;
+};
+
 // ─────────────────────────────────────────────────────────────────
 // CREATE Auto Task Template
 // POST /api/auto-task/save
@@ -38,10 +57,12 @@ export const createAutoTask = async (req, res) => {
       category,
       subCategory,
       description   = '',
-      priority      = 'Normal',
+      priority      = 'Urgent',
       repeatType    = 'daily',
+      weekDays      = [],
+      monthDays     = [],
       startDate,
-      startTime     = '',
+      startTime     = '09:00am',
       endDate       = '',
       endTime       = '',
       assignMode    = 'all_employees',
@@ -52,10 +73,10 @@ export const createAutoTask = async (req, res) => {
       fileAttachment,
     } = req.body;
 
-    if (!title || !category || !subCategory || !startDate) {
+    if (!title || !category || !subCategory) {
       return res.status(400).json({
         success: false,
-        message: 'title, category, subCategory, and startDate are required',
+        message: 'title, category, and subCategory are required',
       });
     }
 
@@ -82,6 +103,9 @@ export const createAutoTask = async (req, res) => {
       attachmentName = fileAttachment.name || '';
     }
 
+    const finalStartDate = startDate || getLocalTodayDate();
+    const finalStartTime = startTime || '09:00am';
+
     const template = await AutoTaskTemplate.create({
       title:         title.trim(),
       category:      category.trim(),
@@ -91,8 +115,10 @@ export const createAutoTask = async (req, res) => {
       attachment,
       attachmentName,
       repeatType:    repeatType.toLowerCase(),
-      startDate,
-      startTime,
+      weekDays,
+      monthDays,
+      startDate:     finalStartDate,
+      startTime:     finalStartTime,
       endDate,
       endTime,
       assignMode,
@@ -213,7 +239,7 @@ export const updateAutoTask = async (req, res) => {
 
     const allowedFields = [
       'title', 'category', 'subCategory', 'description', 'priority',
-      'repeatType', 'startDate', 'startTime', 'endDate', 'endTime',
+      'repeatType', 'weekDays', 'monthDays', 'startDate', 'startTime', 'endDate', 'endTime',
       'assignMode', 'selectedStores', 'selectedRoles', 'selectedUsers', 'isActive',
     ];
 

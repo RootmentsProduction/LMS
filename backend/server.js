@@ -710,7 +710,7 @@ connectMongoDB().then(() => {
     // Warm external employee cache in background (non-blocking)
     refreshExternalEmployees().catch(() => {});
 
-    // Start walk-in status auto-sync cron (every hour at :00)
+    // Start walk-in status auto-sync cron (every 15 minutes)
     startWalkinStatusSyncCron();
     
     // Start auto task generation cron (every hour at :05, staggered)
@@ -726,7 +726,7 @@ connectMongoDB().then(() => {
       console.log(`📊 CRON JOB HEALTH CHECK - ${timestamp}`);
       console.log(`${'='.repeat(60)}`);
       console.log('✅ All cron jobs are running');
-      console.log('  • Walkin Status Sync: Every hour at :00');
+      console.log('  • Walkin Status Sync: Every 15 minutes');
       console.log('  • Auto Task Generation: Every hour at :05 (staggered)');
       console.log('  • Walkin Loss Expiry: Daily at 6:30 PM UTC');
       console.log('  • AlertNotification: Daily at 6:30 PM UTC');
@@ -734,7 +734,7 @@ connectMongoDB().then(() => {
     });
     
     console.log('\n🕐 Cron Schedule:');
-    console.log('  • :00 min - Walkin Status Sync');
+    console.log('  • Every 15 min - Walkin Status Sync');
     console.log('  • :05 min - Auto Task Generation (staggered)');
     console.log('  • :30 min - Health Check');
     console.log('  • 6:30 PM - AlertNotification & Loss Expiry\n');

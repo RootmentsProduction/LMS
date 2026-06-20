@@ -3,7 +3,7 @@ import { useSelector } from 'react-redux';
 import SideNav from "../../components/SideNav/SideNav";
 import ModileNav from "../../components/SideNav/ModileNav";
 import baseUrl from "../../api/api";
-import { FaChevronLeft, FaChevronRight } from 'react-icons/fa';
+import { FaChevronLeft, FaChevronRight, FaDownload } from 'react-icons/fa';
 
 /* ── helpers ─────────────────────────────────────────────────────────────── */
 const BRAND_TOKENS = new Set(["zorucci", "grooms", "suitor", "guy", "sg"]);
@@ -17,33 +17,243 @@ function norm(s) {
 }
 function locationKey(name) { return norm(name).split(" ").filter(t=>t&&!BRAND_TOKENS.has(t)).join(" "); }
 
-const STATUS_OPTIONS = ['Trial','Loss','Enquiry','Reissue','New Booking','Revisit Booking','Revisit Loss','New Walkin','Booked','Rentout','Return','Cancel','Other'];
+const STATUS_OPTIONS = [
+  'New Walkin',
+  'Loss',
+  'Revisit',
+  'Booked',
+  'Rentout',
+  'Return',
+  'Trial',
+  'Enquiry',
+  'Reissue',
+  'Cancelled',
+  'Billed',
+  'Bill Returned'
+];
 
-const STATUS_COLORS = {
-  'Booked':            { bg:'#dcfce7', color:'#16a34a' },
-  'New Booking':       { bg:'#dcfce7', color:'#16a34a' },
-  'Revisit Booking':   { bg:'#dcfce7', color:'#16a34a' },
-  'Rentout':           { bg:'#fce7f3', color:'#be185d' },
-  'Rent Out':          { bg:'#fce7f3', color:'#be185d' },
-  'Booking & Rentout': { bg:'#fce7f3', color:'#be185d' },
-  'Return':            { bg:'#fef3c7', color:'#d97706' },
-  'Trial':             { bg:'#e0e7ff', color:'#4338ca' },
-  'Loss':              { bg:'#fee2e2', color:'#dc2626' },
-  'Revisit Loss':      { bg:'#fee2e2', color:'#dc2626' },
-  'Cancel':            { bg:'#fee2e2', color:'#dc2626' },
-  'Enquiry':           { bg:'#f3f4f6', color:'#6b7280' },
-  'New Walkin':        { bg:'#dbeafe', color:'#2563eb' },
-  'Reissue':           { bg:'#ede9fe', color:'#7c3aed' },
+const NON_SALES_REASONS = new Set([
+    'Product Already Booked',
+    'Design and Colour Not Available',
+    'Model, Design and Colour Not Available',
+    'Design and Color Unavailable',
+    'Price',
+    'Size',
+    'Enquiry Without Groom and Bride',
+    'Enquiry Without Groom/Bride',
+    'Enquiry Without Trial',
+    'Enquiry Without Trail',
+    'Confirm Later'
+]);
+
+const HARDCODED_STORES = [
+    'Z-Edapally1', 'G-Edappally', 'SG-Trivandrum', 'Z- Edappal', 'Z.Perinthalmanna',
+    'Z.Kottakkal', 'G.Kottayam', 'G.Perumbavoor', 'G.Thrissur', 'G.Chavakkad',
+    'G.Calicut', 'G.Vadakara', 'G.Edappal', 'G.Perinthalmanna', 'G.Kottakkal',
+    'G.Manjeri', 'G.Palakkad', 'G.Kalpetta', 'G.Kannur', 'G.MG Road',
+    'Dappr Squad', 'office', 'production', 'WAREHOUSE'
+];
+
+
+const getStatusColors = (statusStr) => {
+  const colors = {
+    'Booked':            { bg:'#dcfce7', color:'#16a34a' },
+    'New Booking':       { bg:'#dcfce7', color:'#16a34a' },
+    'Revisit Booking':   { bg:'#dcfce7', color:'#16a34a' },
+    'Rentout':           { bg:'#fce7f3', color:'#be185d' },
+    'Rent Out':          { bg:'#fce7f3', color:'#be185d' },
+    'Booking & Rentout': { bg:'#fce7f3', color:'#be185d' },
+    'Return':            { bg:'#fef3c7', color:'#d97706' },
+    'Trial':             { bg:'#e0e7ff', color:'#4338ca' },
+    'Loss':              { bg:'#fee2e2', color:'#dc2626' },
+    'Revisit Loss':      { bg:'#fee2e2', color:'#dc2626' },
+    'Cancel':            { bg:'#fee2e2', color:'#dc2626' },
+    'Cancelled':         { bg:'#fee2e2', color:'#dc2626' },
+    'Enquiry':           { bg:'#f3f4f6', color:'#6b7280' },
+    'New Walkin':        { bg:'#dbeafe', color:'#2563eb' },
+    'Reissue':           { bg:'#ede9fe', color:'#7c3aed' },
+    'Billed':            { bg:'#f3e8ff', color:'#7e22ce' },
+    'Bill Returned':     { bg:'#fae8ff', color:'#a21caf' }
+  };
+  const s = String(statusStr || '').trim();
+  if (colors[s]) return colors[s];
+  const priorityList = [
+    'Cancelled', 'Cancel', 'Loss', 'Revisit Loss', 'Rentout', 'Rent Out', 
+    'Return', 'Bill Returned', 'Booked', 'New Booking', 'Revisit Booking', 'Billed', 'New Walkin'
+  ];
+  for (const p of priorityList) {
+    if (s.toLowerCase().includes(p.toLowerCase())) {
+      return colors[p];
+    }
+  }
+  return { bg: '#f3f4f6', color: '#6b7280' };
+};
+
+const handleDownloadAndView = (base64Data, filename = 'attachment') => {
+  try {
+    if (!base64Data) return;
+    
+    if (!base64Data.startsWith('data:')) {
+      const link = document.createElement('a');
+      link.href = base64Data;
+      link.download = filename;
+      link.target = '_blank';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      return;
+    }
+
+    const parts = base64Data.split(',');
+    if (parts.length < 2) return;
+    
+    const mimeMatch = parts[0].match(/data:(.*?);base64/);
+    const mime = mimeMatch ? mimeMatch[1] : 'application/octet-stream';
+    
+    const byteCharacters = atob(parts[1]);
+    const byteNumbers = new Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i++) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i);
+    }
+    const byteArray = new Uint8Array(byteNumbers);
+    const blob = new Blob([byteArray], { type: mime });
+    const blobUrl = URL.createObjectURL(blob);
+    
+    const downloadLink = document.createElement('a');
+    downloadLink.href = blobUrl;
+    downloadLink.download = filename;
+    document.body.appendChild(downloadLink);
+    downloadLink.click();
+    document.body.removeChild(downloadLink);
+    
+    window.open(blobUrl, '_blank');
+  } catch (error) {
+    console.error('Error downloading/viewing attachment:', error);
+  }
 };
 
 /* ── Export to CSV ───────────────────────────────────────────────────────── */
 const exportCSV = (data) => {
-  const headers = ['#','Date','Customer','Contact','Function Date','Staff','Status','Category','Sub Category','Repeat Count','Remarks'];
-  const rows = data.map((w,i) => [i+1,w.date,w.customerName,w.contact,w.functionDate,w.staff,w.status,w.category,w.subCategory,w.repeatCount,w.remarks||'–']);
-  const csv = [headers, ...rows].map(r => r.map(c => `"${String(c||'').replace(/"/g,'""')}"`).join(',')).join('\n');
-  const blob = new Blob([csv], { type:'text/csv' });
+  const headers = [
+    '#', 
+    'DATE', 
+    'CUSTOMER', 
+    'CONTACT', 
+    'REPEAT COUNT', 
+    'STATUS', 
+    'FUNCTION DATE', 
+    'FUNCTION TYPE', 
+    'CATEGORY', 
+    'PRODUCT TYPE', 
+    'LOSS REASON', 
+    'SUB CATEGORY', 
+    'REMARKS', 
+    'SIZE', 
+    'COLOR', 
+    'NOTES', 
+    'STORE', 
+    'STAFF', 
+    'ATTACHMENT', 
+    'BOOKING DATE', 
+    'RENTOUT DATE', 
+    'RETURN DATE', 
+    'BILLED DATE', 
+    'BILL RETURNED DATE'
+  ];
+
+  // Helper: format a date string as plain text for Excel (avoids ########)
+  const fmtDate = (val) => {
+    if (!val) return '-';
+    try {
+      const d = new Date(val);
+      if (isNaN(d.getTime())) return String(val).split('T')[0];
+      const yyyy = d.getFullYear();
+      const mm   = String(d.getMonth() + 1).padStart(2, '0');
+      const dd   = String(d.getDate()).padStart(2, '0');
+      return `${yyyy}-${mm}-${dd}`;
+    } catch { return '-'; }
+  };
+
+  const rows = data.map((w, i) => {
+    const productType = w.lossProductType || '-';
+    const notesText = w.notes || '-';
+
+    let displayLossReason = '-';
+    let displaySubCategory = '-';
+
+    if (w.status === 'Loss' || w.status === 'Revisit Loss') {
+      const isSales = (w.lossProductType || '').toLowerCase().trim() === 'sales';
+
+      if (w.lossReason && w.lossReason !== '-' && w.lossReason !== '') {
+        displayLossReason = w.lossReason;
+        if (w.lossSelectRemarks && w.lossSelectRemarks !== '-' && w.lossSelectRemarks !== '') {
+          displayLossReason += ` (${w.lossSelectRemarks})`;
+        }
+      } else if (w.subCategory && NON_SALES_REASONS.has(w.subCategory)) {
+        displayLossReason = w.subCategory;
+        if (w.lossSelectRemarks && w.lossSelectRemarks !== '-' && w.lossSelectRemarks !== '') {
+          displayLossReason += ` (${w.lossSelectRemarks})`;
+        }
+      } else if (w.lossSelectRemarks && w.lossSelectRemarks !== '-' && w.lossSelectRemarks !== '') {
+        displayLossReason = w.lossSelectRemarks;
+      }
+
+      if (isSales) {
+        displaySubCategory = w.subCategory || '-';
+      }
+    } else {
+      displaySubCategory = w.subCategory || '-';
+    }
+
+    // Use a raw date string for the walkin date (already YYYY-MM-DD or similar)
+    const walkinDate = w.date ? (w.date.includes('T') ? fmtDate(w.date) : w.date.split(' ')[0]) : '-';
+    const functionDate = w.functionDate ? fmtDate(w.functionDate) : '-';
+
+    return [
+      i + 1,
+      walkinDate,
+      w.customerName || '-',
+      w.contact ? `+91 ${w.contact}` : '-',
+      w.repeatCount || 1,
+      w.status || '-',
+      functionDate,
+      w.functionType || '-',
+      w.category || '-',
+      productType,
+      displayLossReason,
+      displaySubCategory,
+      w.remarks || '-',
+      w.lossSize || '-',
+      w.lossColour || '-',
+      notesText,
+      w.store || '-',
+      w.staff || '-',
+      w.attachment ? (w.attachmentName || 'Yes') : '-',
+      fmtDate(w.bookingDate),
+      fmtDate(w.rentoutDate),
+      fmtDate(w.returnDate),
+      fmtDate(w.billedDate),
+      fmtDate(w.billReturnedDate)
+    ];
+  });
+
+  const csv = [headers, ...rows].map((r, rowIdx) => r.map((c, colIdx) => {
+    let s = String(c ?? '');
+    // Strip any en/em dashes that were used as placeholders (use plain hyphen instead)
+    s = s.replace(/\u2013|\u2014/g, '-');
+    // Clean up any newlines to prevent row-splitting bugs in CSV files
+    s = s.replace(/[\r\n]+/g, ' ');
+    // Escape quotes as per standard CSV rules
+    return `"${s.replace(/"/g, '""')}"`;
+  }).join(',')).join('\n');
+
+  // Prefixing with UTF-8 BOM (\uFEFF) forces Excel to read the CSV as UTF-8 encoding
+  const blob = new Blob(["\ufeff" + csv], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
-  const a = document.createElement('a'); a.href=url; a.download='walkin-report.csv'; a.click();
+  const a = document.createElement('a'); 
+  a.href = url; 
+  a.download = 'walkin-report.csv'; 
+  a.click();
   URL.revokeObjectURL(url);
 };
 
@@ -75,7 +285,14 @@ const WalkinReport = () => {
       try {
         const res  = await fetch(`${baseUrl.baseUrl}api/admin/accessible-stores`, { headers:{ 'Content-Type':'application/json', Authorization:`Bearer ${token}` } });
         const json = await res.json();
-        const list = Array.isArray(json?.stores) ? json.stores : (Array.isArray(json?.data) ? json.data : []);
+        let list = Array.isArray(json?.stores) ? json.stores : (Array.isArray(json?.data) ? json.data : []);
+        
+        if (user?.role === 'super_admin' || user?.role === 'admin' || user?.role === 'hr_admin') {
+          const existing = new Set(list.map(b => b.workingBranch));
+          const missing = HARDCODED_STORES.filter(s => !existing.has(s));
+          list = [...missing.map(name => ({ workingBranch: name })), ...list];
+        }
+        
         setBranches(list);
         if (user?.role === 'store_admin' && list.length > 0) setFormData(p=>({...p, store: list[0].workingBranch}));
       } catch(e){ console.error(e); }
@@ -92,6 +309,8 @@ const WalkinReport = () => {
         const selectedBranch = branches.find(b => b.workingBranch === storeName);
         if (selectedBranch && selectedBranch._id) {
           url += `?storeId=${selectedBranch._id}`;
+        } else {
+          url += `?store=${encodeURIComponent(storeName)}`;
         }
       }
       const res = await fetch(url, {
@@ -123,7 +342,22 @@ const WalkinReport = () => {
         let data = json.data || [];
         if (formData.store && formData.store !== 'All') data = data.filter(w => locationKey(w.store) === locationKey(formData.store));
         if (formData.employee) data = data.filter(w => w.staff === formData.employee);
-        if (selectedStatus) data = data.filter(w => w.status === selectedStatus);
+        if (selectedStatus) {
+          data = data.filter(w => {
+            if (!w.status) return false;
+            const wStatus = String(w.status).trim().toLowerCase();
+            const target = selectedStatus.trim().toLowerCase();
+            if (target === 'cancelled' || target === 'cancel') {
+              return wStatus.includes('cancel') || wStatus.includes('cancelled') || 
+                     String(w.rentalStatus).toLowerCase().includes('cancel') || 
+                     String(w.shoeStatus).toLowerCase().includes('cancel');
+            }
+            const parts = wStatus.split(',').map(p => p.trim());
+            return parts.includes(target) || 
+                   String(w.rentalStatus).trim().toLowerCase() === target || 
+                   String(w.shoeStatus).trim().toLowerCase() === target;
+          });
+        }
         setReportData(data);
         setReportGenerated(true);
         setCurrentPage(1);
@@ -138,7 +372,20 @@ const WalkinReport = () => {
   const displayed = reportData.filter(w => {
     const q = tableSearch.toLowerCase();
     const matchSearch = !q || w.customerName?.toLowerCase().includes(q) || w.contact?.includes(q) || w.staff?.toLowerCase().includes(q);
-    const matchStatus = tableStatus === 'All' || w.status === tableStatus;
+    const matchStatus = tableStatus === 'All' || (() => {
+      if (!w.status) return false;
+      const wStatus = String(w.status).trim().toLowerCase();
+      const target = tableStatus.trim().toLowerCase();
+      if (target === 'cancelled' || target === 'cancel') {
+        return wStatus.includes('cancel') || wStatus.includes('cancelled') || 
+               String(w.rentalStatus).toLowerCase().includes('cancel') || 
+               String(w.shoeStatus).toLowerCase().includes('cancel');
+      }
+      const parts = wStatus.split(',').map(p => p.trim());
+      return parts.includes(target) || 
+             String(w.rentalStatus).trim().toLowerCase() === target || 
+             String(w.shoeStatus).trim().toLowerCase() === target;
+    })();
     return matchSearch && matchStatus;
   });
 
@@ -178,7 +425,7 @@ const WalkinReport = () => {
               <div>
                 <label style={lbl}>Store Name <span style={{color:'#ef4444'}}>*</span></label>
                 <select value={formData.store} disabled={user?.role==='store_admin'} onChange={e=>setFormData(p=>({...p,store:e.target.value,employee:''}))} style={{...inp,cursor:'pointer',appearance:'auto'}}>
-                  {user?.role !== 'store_admin' && <option value="All">Select Store</option>}
+                  {user?.role !== 'store_admin' && <option value="All">All Store</option>}
                   {branches.map((b,i)=><option key={i} value={b.workingBranch}>{b.workingBranch}</option>)}
                 </select>
               </div>
@@ -195,7 +442,7 @@ const WalkinReport = () => {
               <div>
                 <label style={lbl}>Status <span style={{color:'#9ca3af', fontWeight:400}}>(Optional)</span></label>
                 <select value={selectedStatus} onChange={e=>setSelectedStatus(e.target.value)} style={{...inp,cursor:'pointer',appearance:'auto'}}>
-                  <option value="">Choose Status</option>
+                  <option value="">All Status</option>
                   {STATUS_OPTIONS.map(s=><option key={s} value={s}>{s}</option>)}
                 </select>
               </div>
@@ -227,14 +474,11 @@ const WalkinReport = () => {
                   <input type="text" placeholder="Search" value={tableSearch} onChange={e=>{setTableSearch(e.target.value);setCurrentPage(1);}} style={{ border:'none', outline:'none', fontSize:'13px', color:'#374151', background:'transparent', width:'180px' }} />
                 </div>
               </div>
-              {/* Export buttons */}
+              {/* Export button – single button only */}
               <div style={{ display:'flex', alignItems:'center', gap:'8px' }}>
                 <button onClick={()=>exportCSV(displayed)} style={{ display:'flex', alignItems:'center', gap:'6px', border:'1px solid #e5e7eb', borderRadius:'8px', padding:'7px 14px', fontSize:'13px', fontWeight:500, color:'#374151', background:'#f9fafb', cursor:'pointer' }}>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                  Export
-                </button>
-                <button onClick={()=>exportCSV(displayed)} style={{ width:'34px', height:'34px', background:'#16a34a', border:'none', borderRadius:'8px', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8" fill="none" stroke="white" strokeWidth="2"/></svg>
+                  Export CSV
                 </button>
               </div>
             </div>
@@ -248,37 +492,261 @@ const WalkinReport = () => {
               <div style={{ textAlign:'center', padding:'48px', color:'#9ca3af', fontSize:'13px' }}>No records found.</div>
             ) : (
               <div style={{ overflowX:'auto' }}>
-                <table className="min-w-[800px] md:min-w-full" style={{ width:'100%', borderCollapse:'collapse', fontSize:'12px', fontFamily:"DM Sans, sans-serif" }}>
+                <table style={{ width: '3135px', tableLayout: 'fixed', borderCollapse: 'collapse', fontSize: '12px', fontFamily: "DM Sans, sans-serif" }}>
                   <thead>
-                    <tr style={{ background:'#f9fafb', borderBottom:'1px solid #f3f4f6' }}>
-                      {['#','DATE','CUSTOMER','CONTACT','FUNCTION DATE','STAFF','STATUS','CATEGORY','SUB CATEGORY','REPEAT COUNT','REMARKS'].map(h=>(
-                        <th key={h} style={{ padding:'10px 14px', textAlign:(h==='#'||h==='REPEAT COUNT')?'center':'left', fontSize:'10px', fontWeight:600, color:'#9ca3af', letterSpacing:'0.06em', whiteSpace:'nowrap' }}>{h}</th>
-                      ))}
+                    <tr style={{ background:'#fafafa', borderBottom:'1px solid #f3f4f6' }}>
+                      {['#', 'DATE', 'CUSTOMER', 'CONTACT', 'REPEAT COUNT', 'STATUS', 'FUNCTION DATE', 'FUNCTION TYPE', 'CATEGORY', 'PRODUCT TYPE', 'LOSS REASON', 'SUB CATEGORY', 'REMARKS', 'SIZE', 'COLOR', 'NOTES', 'STORE', 'STAFF', 'ATTACHMENT', 'BOOKING DATE', 'RENTOUT DATE', 'RETURN DATE', 'BILLED DATE', 'BILL RETURNED DATE'].map((h, i) => {
+                          const getColWidth = (header) => {
+                            const widths = {
+                              '#': '50px',
+                              'DATE': '100px',
+                              'CUSTOMER': '160px',
+                              'CONTACT': '125px',
+                              'REPEAT COUNT': '110px',
+                              'STATUS': '130px',
+                              'FUNCTION DATE': '115px',
+                              'FUNCTION TYPE': '140px',
+                              'CATEGORY': '115px',
+                              'PRODUCT TYPE': '130px',
+                              'LOSS REASON': '200px',
+                              'SUB CATEGORY': '130px',
+                              'REMARKS': '200px',
+                              'SIZE': '70px',
+                              'COLOR': '85px',
+                              'NOTES': '200px',
+                              'STORE': '140px',
+                              'STAFF': '155px',
+                              'ATTACHMENT': '110px',
+                              'BOOKING DATE': '110px',
+                              'RENTOUT DATE': '110px',
+                              'RETURN DATE': '110px',
+                              'BILLED DATE': '110px',
+                              'BILL RETURNED DATE': '165px'
+                            };
+                            return widths[header] || '120px';
+                          };
+                          const colWidth = getColWidth(h);
+                          return (
+                              <th
+                                  key={i}
+                                  style={{
+                                      padding: '12px 12px',
+                                      textAlign: 'center',
+                                      fontSize: '11px',
+                                      fontWeight: 600,
+                                      color: '#9ca3af',
+                                      letterSpacing: '0.06em',
+                                      whiteSpace: 'nowrap',
+                                      width: colWidth,
+                                      minWidth: colWidth,
+                                      maxWidth: colWidth,
+                                      boxSizing: 'border-box'
+                                  }}
+                              >
+                                  {h}
+                              </th>
+                          );
+                      })}
                     </tr>
                   </thead>
                   <tbody>
                     {currentItems.map((w,i)=>{
-                      const sc = STATUS_COLORS[w.status] || { bg:'#f3f4f6', color:'#6b7280' };
+                      const sc = getStatusColors(w.status);
+                      
+                      const productType = w.lossProductType || '–';
+                      const notesText = w.notes || '–';
+
+                      let displayLossReason = '–';
+                      let displaySubCategory = '–';
+
+                      if (w.status === 'Loss' || w.status === 'Revisit Loss') {
+                          const isSales = (w.lossProductType || '').toLowerCase().trim() === 'sales';
+                          
+                          if (w.lossReason && w.lossReason !== '-' && w.lossReason !== '') {
+                              displayLossReason = w.lossReason;
+                              if (w.lossSelectRemarks && w.lossSelectRemarks !== '-' && w.lossSelectRemarks !== '') {
+                                  displayLossReason += ` (${w.lossSelectRemarks})`;
+                              }
+                          } else if (w.subCategory && NON_SALES_REASONS.has(w.subCategory)) {
+                              displayLossReason = w.subCategory;
+                              if (w.lossSelectRemarks && w.lossSelectRemarks !== '-' && w.lossSelectRemarks !== '') {
+                                  displayLossReason += ` (${w.lossSelectRemarks})`;
+                              }
+                          } else if (w.lossSelectRemarks && w.lossSelectRemarks !== '-' && w.lossSelectRemarks !== '') {
+                              displayLossReason = w.lossSelectRemarks;
+                          }
+
+                          if (isSales) {
+                              displaySubCategory = w.subCategory || '–';
+                          }
+                      } else {
+                          displaySubCategory = w.subCategory || '–';
+                      }
+
                       return (
                         <tr key={w._id||i} style={{ borderBottom:'1px solid #f9fafb', background:'#fff' }}
-                          onMouseEnter={e=>e.currentTarget.style.background='#fafafa'}
-                          onMouseLeave={e=>e.currentTarget.style.background='#fff'}
+                          onMouseEnter={e=>e.currentTarget.style.background = '#fafafa'}
+                          onMouseLeave={e=>e.currentTarget.style.background = '#fff'}
                         >
-                          <td style={{ padding:'12px 14px', textAlign:'center', color:'#9ca3af' }}>{indexFirst+i+1}</td>
-                          <td style={{ padding:'12px 14px', whiteSpace:'nowrap', color:'#374151' }}>{w.date}</td>
-                          <td style={{ padding:'12px 14px', color:'#111827', fontWeight:500, whiteSpace:'nowrap' }}>{w.customerName}</td>
-                          <td style={{ padding:'12px 14px', whiteSpace:'nowrap', color:'#374151' }}>+91 {w.contact}</td>
-                          <td style={{ padding:'12px 14px', whiteSpace:'nowrap', color:'#374151' }}>{w.functionDate}</td>
-                          <td style={{ padding:'12px 14px', whiteSpace:'nowrap', color:'#374151' }}>{w.staff}</td>
-                          <td style={{ padding:'12px 14px' }}>
-                            <span style={{ background:sc.bg, color:sc.color, borderRadius:'20px', padding:'3px 10px', fontSize:'10px', fontWeight:700, whiteSpace:'nowrap', display:'inline-block' }}>
-                              {w.status?.toUpperCase()}
-                            </span>
+                          <td style={{ padding: '11px 12px', textAlign: 'center', color: '#9ca3af', boxSizing: 'border-box' }}>{indexFirst+i+1}</td>
+                          <td style={{textAlign: 'center',  padding: '11px 12px', color: '#374151', boxSizing: 'border-box' }}>
+                                <div className="walkin-marquee-container">
+                                    <span className="walkin-marquee-text walkin-anim-scroll">{w.date ? w.date.split(' ')[0] : '–'}</span>
+                                </div>
+                              </td>
+                          <td style={{textAlign: 'center',  padding: '11px 12px', color: '#111827', fontWeight: 500, boxSizing: 'border-box' }}>
+                                <div className="walkin-marquee-container">
+                                    <span className="walkin-marquee-text walkin-anim-scroll">{w.customerName}</span>
+                                </div>
+                              </td>
+                          <td style={{textAlign: 'center',  padding: '11px 12px', color: '#374151', boxSizing: 'border-box' }}>
+                                <div className="walkin-marquee-container">
+                                    <span className="walkin-marquee-text walkin-anim-scroll">+91 {w.contact}</span>
+                                </div>
+                              </td>
+                          <td style={{ textAlign: 'center', padding: '11px 12px', color: '#374151', boxSizing: 'border-box' }}>
+                                <div className="walkin-marquee-container">
+                                    <span className="walkin-marquee-text walkin-anim-scroll">{w.repeatCount}</span>
+                                </div>
+                              </td>
+                          <td style={{ padding: '11px 12px', textAlign: 'center', boxSizing: 'border-box' }}>
+                            <div className="walkin-marquee-container" style={{ width: '110px', margin: '0 auto' }}>
+                              <span
+                                className="walkin-marquee-text walkin-anim-scroll"
+                                style={{
+                                  background: sc.bg,
+                                  color: sc.color,
+                                  borderRadius: '20px',
+                                  padding: '3px 10px',
+                                  fontSize: '10px',
+                                  fontWeight: 700,
+                                  whiteSpace: 'nowrap',
+                                  display: 'inline-block',
+                                  boxSizing: 'border-box',
+                                  textAlign: 'center'
+                                }}
+                              >
+                                {w.status?.toUpperCase()}
+                              </span>
+                            </div>
                           </td>
-                          <td style={{ padding:'12px 14px', whiteSpace:'nowrap', color:'#374151' }}>{w.category||'–'}</td>
-                          <td style={{ padding:'12px 14px', whiteSpace:'nowrap', color:'#374151' }}>{w.subCategory||'–'}</td>
-                          <td style={{ padding:'12px 14px', textAlign:'center', color:'#374151' }}>{w.repeatCount}</td>
-                          <td style={{ padding:'12px 14px', color:'#6b7280', maxWidth:'140px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }} title={w.remarks}>{w.remarks||'–'}</td>
+                          <td style={{textAlign: 'center',  padding: '11px 12px', color: '#374151', boxSizing: 'border-box' }}>
+                                <div className="walkin-marquee-container">
+                                    <span className="walkin-marquee-text walkin-anim-scroll">{w.functionDate || '–'}</span>
+                                </div>
+                              </td>
+                          <td style={{textAlign: 'center',  padding: '11px 12px', color: '#374151', boxSizing: 'border-box' }}>
+                                <div className="walkin-marquee-container">
+                                    <span className="walkin-marquee-text walkin-anim-scroll">{w.functionType || '–'}</span>
+                                </div>
+                              </td>
+                          <td style={{textAlign: 'center',  padding: '11px 12px', color: '#374151', boxSizing: 'border-box' }}>
+                                <div className="walkin-marquee-container">
+                                    <span className="walkin-marquee-text walkin-anim-scroll">{w.category || '–'}</span>
+                                </div>
+                              </td>
+                          <td style={{textAlign: 'center',  padding: '11px 12px', color: '#374151', boxSizing: 'border-box' }}>
+                                <div className="walkin-marquee-container">
+                                    <span className="walkin-marquee-text walkin-anim-scroll">{productType}</span>
+                                </div>
+                              </td>
+                          <td style={{textAlign: 'center',  padding: '11px 12px', color: '#374151', boxSizing: 'border-box' }}>
+                                <div className="walkin-marquee-container">
+                                    <span className="walkin-marquee-text walkin-anim-scroll">{displayLossReason}</span>
+                                </div>
+                              </td>
+                          <td style={{textAlign: 'center',  padding: '11px 12px', color: '#374151', boxSizing: 'border-box' }}>
+                                <div className="walkin-marquee-container">
+                                    <span className="walkin-marquee-text walkin-anim-scroll">{displaySubCategory}</span>
+                                </div>
+                              </td>
+                          <td style={{textAlign: 'center',  padding: '11px 12px', color: '#6b7280', boxSizing: 'border-box' }}>
+                                <div className="walkin-marquee-container">
+                                    <span className="walkin-marquee-text walkin-anim-scroll">{w.remarks||'–'}</span>
+                                </div>
+                              </td>
+                              <td style={{textAlign: 'center', padding: '11px 12px', color: '#374151', boxSizing: 'border-box' }}>
+                                <div className="walkin-marquee-container">
+                                    <span className="walkin-marquee-text walkin-anim-scroll">{w.lossSize || '–'}</span>
+                                </div>
+                              </td>
+                              <td style={{textAlign: 'center', padding: '11px 12px', color: '#374151', boxSizing: 'border-box' }}>
+                                <div className="walkin-marquee-container">
+                                    <span className="walkin-marquee-text walkin-anim-scroll">{w.lossColour || '–'}</span>
+                                </div>
+                              </td>
+                          <td style={{textAlign: 'center',  padding: '11px 12px', color: '#6b7280', boxSizing: 'border-box' }}>
+                                <div className="walkin-marquee-container">
+                                    <span className="walkin-marquee-text walkin-anim-scroll">{notesText}</span>
+                                </div>
+                              </td>
+                          <td style={{textAlign: 'center',  padding: '11px 12px', color: '#374151', boxSizing: 'border-box' }}>
+                                <div className="walkin-marquee-container">
+                                    <span className="walkin-marquee-text walkin-anim-scroll">{w.store || '–'}</span>
+                                </div>
+                              </td>
+                          <td style={{textAlign: 'center',  padding: '11px 12px', color: '#374151', boxSizing: 'border-box' }}>
+                                <div className="walkin-marquee-container">
+                                    <span className="walkin-marquee-text walkin-anim-scroll">{w.staff || '–'}</span>
+                                </div>
+                              </td>
+                          <td style={{ padding: '11px 12px', textAlign: 'center', boxSizing: 'border-box' }}>
+                            {w.attachment ? (
+                              <button
+                                onClick={() => handleDownloadAndView(w.attachment, w.attachmentName || 'attachment')}
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  width: '28px',
+                                  height: '28px',
+                                  color: '#2563eb',
+                                  background: '#eff6ff',
+                                  border: '1px solid #bfdbfe',
+                                  borderRadius: '50%',
+                                  cursor: 'pointer',
+                                  transition: 'all 0.2s',
+                                  boxSizing: 'border-box'
+                                }}
+                                onMouseEnter={e => {
+                                  e.currentTarget.style.background = '#dbeafe';
+                                  e.currentTarget.style.color = '#1d4ed8';
+                                }}
+                                onMouseLeave={e => {
+                                  e.currentTarget.style.background = '#eff6ff';
+                                  e.currentTarget.style.color = '#2563eb';
+                                }}
+                                title="Download and view attachment"
+                              >
+                                <FaDownload size={12} />
+                              </button>
+                            ) : '–'}
+                          </td>
+                          <td style={{ padding: '11px 12px', textAlign: 'center', color: '#6b7280', fontSize: '11px', boxSizing: 'border-box' }}>
+                                <div className="walkin-marquee-container">
+                                    <span className="walkin-marquee-text walkin-anim-scroll">{w.bookingDate ? new Date(w.bookingDate).toISOString().split('T')[0] : '–'}</span>
+                                </div>
+                              </td>
+                          <td style={{ padding: '11px 12px', textAlign: 'center', color: '#6b7280', fontSize: '11px', boxSizing: 'border-box' }}>
+                                <div className="walkin-marquee-container">
+                                    <span className="walkin-marquee-text walkin-anim-scroll">{w.rentoutDate ? new Date(w.rentoutDate).toISOString().split('T')[0] : '–'}</span>
+                                </div>
+                              </td>
+                          <td style={{ padding: '11px 12px', textAlign: 'center', color: '#6b7280', fontSize: '11px', boxSizing: 'border-box' }}>
+                                <div className="walkin-marquee-container">
+                                    <span className="walkin-marquee-text walkin-anim-scroll">{w.returnDate ? new Date(w.returnDate).toISOString().split('T')[0] : '–'}</span>
+                                </div>
+                              </td>
+                          <td style={{ padding: '11px 12px', textAlign: 'center', color: '#6b7280', fontSize: '11px', boxSizing: 'border-box' }}>
+                                <div className="walkin-marquee-container">
+                                    <span className="walkin-marquee-text walkin-anim-scroll">{w.billedDate ? new Date(w.billedDate).toISOString().split('T')[0] : '–'}</span>
+                                </div>
+                              </td>
+                          <td style={{ padding: '11px 12px', textAlign: 'center', color: '#6b7280', fontSize: '11px', boxSizing: 'border-box' }}>
+                                <div className="walkin-marquee-container">
+                                    <span className="walkin-marquee-text walkin-anim-scroll">{w.billReturnedDate ? new Date(w.billReturnedDate).toISOString().split('T')[0] : '–'}</span>
+                                </div>
+                              </td>
                         </tr>
                       );
                     })}
@@ -297,7 +765,7 @@ const WalkinReport = () => {
               fontSize: '13px',
               color: '#6b7280'
             }}>
-              <span>Showing {itemsPerPage === 'All' ? displayed.length : Math.min(Number(itemsPerPage), Math.max(0, displayed.length - (currentPage - 1) * Number(itemsPerPage)))} of {displayed.length}</span>
+              <span>Showing {displayed.length === 0 ? 0 : indexFirst + 1} to {indexFirst + currentItems.length} of {displayed.length} entries</span>
               <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', position: 'relative' }}>
                   <span style={{ marginRight: '8px', color: '#6b7280' }}>Show:</span>
@@ -446,7 +914,30 @@ const WalkinReport = () => {
           </div>
         )}
       </div>
-      <style>{`@keyframes report-spin{to{transform:rotate(360deg)}}`}</style>
+      <style>{`
+        @keyframes report-spin{to{transform:rotate(360deg)}}
+        .walkin-marquee-container {
+            container-type: inline-size;
+            overflow: hidden;
+            white-space: nowrap;
+            display: block;
+            width: 100%;
+        }
+        .walkin-marquee-text {
+            display: inline-block;
+            min-width: 100%;
+        }
+        .walkin-marquee-container:hover .walkin-marquee-text {
+            animation-play-state: paused;
+        }
+        .walkin-anim-scroll {
+            animation: walkin-marquee-scroll 8s linear infinite;
+        }
+        @keyframes walkin-marquee-scroll {
+            0%, 15% { transform: translateX(0); }
+            85%, 100% { transform: translateX(calc(-100% + 100cqw)); }
+        }
+      `}</style>
     </div>
   );
 };

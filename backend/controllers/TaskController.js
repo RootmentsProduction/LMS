@@ -750,7 +750,7 @@ export const getTaskAssignees = async (req, res) => {
     }
 
     const adminId = req.admin.userId;
-    let user = await Admin.findById(adminId);
+    let user = await Admin.findById(adminId).populate('branches');
     let role = user ? user.role : '';
     let isUserAdmin = true;
 
@@ -763,7 +763,51 @@ export const getTaskAssignees = async (req, res) => {
       isUserAdmin = false;
     }
 
-    // 1. Build generic options list based on role
+    // Helper to determine if a user/admin is associated with all/multiple stores
+    const isAllStoreEmployee = (item, designationOrRole) => {
+      const design = String(designationOrRole || '').toLowerCase();
+      const workingBranch = String(item.workingBranch || '').toLowerCase();
+      
+      const hasAllStoreRole = ['super_admin', 'admin', 'hr_admin'].includes(design) || 
+                              design.includes('hr admin') || 
+                              design.includes('super admin') || 
+                              design.includes('admin');
+      
+      const hasAllStoreBranch = workingBranch.includes(',') || 
+                                workingBranch.includes('all store') || 
+                                workingBranch.includes('office');
+                                
+      const hasManyLocCodes = Array.isArray(item.locCode) && item.locCode.length > 3;
+      const hasManyBranches = Array.isArray(item.branches) && item.branches.length > 3;
+      
+      return hasAllStoreRole || hasAllStoreBranch || hasManyLocCodes || hasManyBranches || item.locCode === 'All';
+    };
+
+    // 1. Parse target branch from query parameters (locCode or storeId)
+    const { locCode, storeId } = req.query;
+    let targetBranchId = null;
+    let targetBranchName = null;
+
+    if (locCode) {
+      const branch = await Branch.findOne({ locCode: String(locCode).trim() });
+      if (branch) {
+        targetBranchId = branch._id.toString();
+        targetBranchName = branch.workingBranch;
+      }
+    } else if (storeId) {
+      const branch = await Branch.findOne({ 
+        $or: [
+          ...(storeId.match(/^[0-9a-fA-F]{24}$/) ? [{ _id: storeId }] : []),
+          { locCode: String(storeId).trim() }
+        ]
+      });
+      if (branch) {
+        targetBranchId = branch._id.toString();
+        targetBranchName = branch.workingBranch;
+      }
+    }
+
+    // 2. Build generic options list based on role
     const genericOptions = [];
     if (role === 'super_admin' || role === 'admin') {
       genericOptions.push(
@@ -783,19 +827,28 @@ export const getTaskAssignees = async (req, res) => {
         { value: 'all_employees', label: 'All Employees', type: 'group' },
         { value: 'all_store_admins', label: 'All Store Admins', type: 'group' }
       );
-    } else if (role === 'store_admin' || role === 'user') {
+    } else if (role === 'store_admin') {
       genericOptions.push(
         { value: 'all_employees', label: 'All Employees', type: 'group' }
       );
     }
 
-    // 2. Fetch accessible stores for the logged-in admin/user
-    const accessibleStoreIds = await getAccessibleStoreIds(adminId);
+    // 3. Fetch accessible stores for the logged-in admin/user
+    let accessibleStoreIds = await getAccessibleStoreIds(adminId);
 
-    // 3. Get Accessible Employees under these stores
-    let employeeIds = await getAccessibleEmployeeIds(adminId);
+    // Restrict accessible stores to the queried target branch if provided
+    if (targetBranchId) {
+      if (accessibleStoreIds.includes(targetBranchId)) {
+        accessibleStoreIds = [targetBranchId];
+      } else {
+        accessibleStoreIds = [];
+      }
+    }
 
-    // 4. Fetch Accessible Admins based on logged-in user's role
+    // 4. Get Accessible Employees under these stores
+    let employeeIds = await getAccessibleEmployeeIds(adminId, targetBranchId || null);
+
+    // 5. Fetch Accessible Admins based on logged-in user's role
     let adminQuery = { isActive: true };
     if (role === 'super_admin' || role === 'admin') {
       adminQuery.role = { $in: ['hr_admin', 'cluster_admin', 'store_admin', 'super_admin', 'admin'] };
@@ -817,7 +870,7 @@ export const getTaskAssignees = async (req, res) => {
       admins = await Admin.find(adminQuery).populate('branches');
     }
 
-    // 5. Format individual lists
+    // 6. Format individual lists
     const individualAssignees = [];
 
     // Add Admins
@@ -826,15 +879,22 @@ export const getTaskAssignees = async (req, res) => {
         ? ad.subRole 
         : (ad.role === 'super_admin' ? 'Super Admin' : (ad.role === 'admin' ? 'Admin' : (ad.role === 'hr_admin' ? 'HR Admin' : (ad.role === 'cluster_admin' ? 'Cluster Admin' : 'Store Admin'))));
       
-      const storeName = (ad.role === 'super_admin' || ad.role === 'admin' || ad.role === 'hr_admin')
-        ? 'Office'
+      let storeName = (ad.role === 'super_admin' || ad.role === 'admin' || ad.role === 'hr_admin')
+        ? 'All Store'
         : (ad.branches && ad.branches.length > 0 ? ad.branches[0].workingBranch : 'Store');
+
+      const isAllStore = isAllStoreEmployee(ad, ad.role);
+      if (isAllStore) {
+        storeName = 'All Store';
+      }
 
       individualAssignees.push({
         value: ad._id.toString(),
         label: `${ad.name} - ${designation} - ${storeName}`,
         type: 'admin',
         role: ad.role,
+        isAllStore,
+        storeNameNormalized: storeName
       });
     });
 
@@ -843,15 +903,22 @@ export const getTaskAssignees = async (req, res) => {
       const designation = user.subRole && user.subRole !== 'NR'
         ? user.subRole
         : (user.role === 'super_admin' ? 'Super Admin' : (user.role === 'admin' ? 'Admin' : (user.role === 'hr_admin' ? 'HR Admin' : (user.role === 'cluster_admin' ? 'Cluster Admin' : 'Store Admin'))));
-      const storeName = (user.role === 'super_admin' || user.role === 'admin' || user.role === 'hr_admin')
-        ? 'Office'
+      let storeName = (user.role === 'super_admin' || user.role === 'admin' || user.role === 'hr_admin')
+        ? 'All Store'
         : (user.branches && user.branches.length > 0 ? user.branches[0].workingBranch : 'Store');
+
+      const isAllStore = isAllStoreEmployee(user, user.role);
+      if (isAllStore) {
+        storeName = 'All Store';
+      }
 
       individualAssignees.push({
         value: user._id.toString(),
         label: `${user.name} - ${designation} - ${storeName}`,
         type: 'admin',
         role: user.role,
+        isAllStore,
+        storeNameNormalized: storeName
       });
     }
 
@@ -861,12 +928,19 @@ export const getTaskAssignees = async (req, res) => {
       if (!individualAssignees.some(item => item.value === emp._id.toString())) {
         const name = emp.firstName ? `${emp.firstName} ${emp.lastName || ''}`.trim() : (emp.username || 'Employee');
         const designation = emp.designation || 'Staff';
-        const storeNameVal = (emp.storeId && emp.storeId.workingBranch) || emp.workingBranch || 'Store';
+        let storeNameVal = (emp.storeId && emp.storeId.workingBranch) || emp.workingBranch || 'Store';
+
+        const isAllStore = isAllStoreEmployee(emp, designation);
+        if (isAllStore) {
+          storeNameVal = 'All Store';
+        }
 
         individualAssignees.push({
           value: emp._id.toString(),
           label: `${name} - ${designation} - ${storeNameVal}`,
           type: 'employee',
+          isAllStore,
+          storeNameNormalized: storeNameVal
         });
       }
     });
@@ -878,12 +952,19 @@ export const getTaskAssignees = async (req, res) => {
     dbUsers.forEach(u => {
       if (!individualAssignees.some(item => item.value === u._id.toString())) {
         const designation = u.designation || 'Staff';
-        const storeNameVal = u.workingBranch || 'Store';
+        let storeNameVal = u.workingBranch || 'Store';
+
+        const isAllStore = isAllStoreEmployee(u, designation);
+        if (isAllStore) {
+          storeNameVal = 'All Store';
+        }
 
         individualAssignees.push({
           value: u._id.toString(),
           label: `${u.username || 'Employee'} - ${designation} - ${storeNameVal}`,
           type: 'employee',
+          isAllStore,
+          storeNameNormalized: storeNameVal
         });
       }
     });
@@ -891,20 +972,61 @@ export const getTaskAssignees = async (req, res) => {
     // Make sure logged-in regular user is in the list
     if (!isUserAdmin && !individualAssignees.some(emp => emp.value === adminId.toString())) {
       const designation = user.designation || 'Staff';
-      const storeNameVal = user.workingBranch || 'Store';
+      let storeNameVal = user.workingBranch || 'Store';
+
+      const isAllStore = isAllStoreEmployee(user, designation);
+      if (isAllStore) {
+        storeNameVal = 'All Store';
+      }
 
       individualAssignees.push({
         value: user._id.toString(),
         label: `${user.username || 'Employee'} - ${designation} - ${storeNameVal}`,
         type: 'employee',
+        isAllStore,
+        storeNameNormalized: storeNameVal
+      });
+    }
+
+    // 7. Filter individual options
+    let filteredAssignees = individualAssignees;
+
+    if (role === 'user' || role === 'store_admin') {
+      // Build a list of allowed store names for the logged-in user or store admin
+      let allowedStoreNames = [];
+      if (role === 'user') {
+        if (user.workingBranch) {
+          allowedStoreNames.push(user.workingBranch.trim().toLowerCase());
+        }
+      } else if (role === 'store_admin') {
+        if (user.branches && user.branches.length > 0) {
+          user.branches.forEach(b => {
+            if (b.workingBranch) {
+              allowedStoreNames.push(b.workingBranch.trim().toLowerCase());
+            }
+          });
+        }
+      }
+
+      filteredAssignees = individualAssignees.filter(assignee => {
+        if (assignee.isAllStore) return false;
+        const assigneeStore = String(assignee.storeNameNormalized || '').trim().toLowerCase();
+        return allowedStoreNames.includes(assigneeStore);
+      });
+    } else if (targetBranchName) {
+      // If a specific store is requested via locCode/storeId parameter, filter to just that store
+      const normalizedTarget = String(targetBranchName).trim().toLowerCase();
+      filteredAssignees = individualAssignees.filter(assignee => {
+        const assigneeStore = String(assignee.storeNameNormalized || '').trim().toLowerCase();
+        return assigneeStore === normalizedTarget;
       });
     }
 
     // Sort individual options alphabetically by label
-    individualAssignees.sort((a, b) => a.label.localeCompare(b.label));
+    filteredAssignees.sort((a, b) => a.label.localeCompare(b.label));
 
     // Combine generic group options with individual options
-    const finalOptions = [...genericOptions, ...individualAssignees];
+    const finalOptions = [...genericOptions, ...filteredAssignees];
 
     return res.status(200).json({
       success: true,

@@ -183,8 +183,34 @@ export const HomeBar = async (req, res) => {
             };
         });
 
+        // Calculate weighted average training progress across all branches
+        // Exclude legacy/internal branches (same list as frontend dashboardUtils.js)
+        const hiddenBranches = new Set([
+            "office", "production", "warehouse",
+            "suitor guy kochi", "grooms kochi", "sg kochi",
+            "suitor guy calicut", "grooms calicut", "sg calicut",
+            "dappr squad",
+        ]);
+        let weightedCompleted = 0;
+        let weightedTotal = 0;
+        allData.forEach((branch) => {
+            const name = String(branch.branchName || "").toLowerCase().trim();
+            if (hiddenBranches.has(name)) return; // skip hidden branches
+            const total = branch.totalTraining || 0;
+            const completePct = branch.completeTraining || 0;
+            if (total > 0) {
+                weightedCompleted += (completePct / 100) * total;
+                weightedTotal += total;
+            }
+        });
+        const avgTrainingProgress = weightedTotal > 0
+            ? Math.round((weightedCompleted / weightedTotal) * 100)
+            : 0;
+
         const payload = {
             message: "Data fetched for progress",
+            avgTrainingProgress,
+            totalEmployees: users.length,
             data: allData,
         };
 
@@ -754,47 +780,15 @@ export const CreatingAdminUsers = async (req, res) => {
             
             const savedAdmin = await existingAdmin.save();
 
-            // Sync/Create corresponding User record
-            const userDesignation = role === 'super_admin' ? 'Super Admin' : (role === 'admin' ? 'Admin' : (role === 'hr_admin' ? 'HR Admin' : (role === 'cluster_admin' ? 'Cluster Admin' : 'Store Admin')));
-            let workingBranchStr = "";
-            let finalLocCodes = [];
-            if (finalBranches && finalBranches.length > 0) {
-                const branchDocs = await Branch.find({ _id: { $in: finalBranches } });
-                workingBranchStr = branchDocs.map(b => b.workingBranch).join(", ");
-                finalLocCodes = branchDocs.map(b => b.locCode);
-            }
-
-            let userRecord = await User.findOne({ $or: [{ empID: EmpId }, { email }] });
-            let userHashedPassword = savedAdmin.password;
-            if (password && password.trim() !== "") {
-                userHashedPassword = await bcrypt.hash(String(password).trim(), 10);
-            }
-
+            // Also check and update the corresponding User record if it exists
+            const userRecord = await User.findOne({ $or: [{ empID: EmpId }, { email }] });
             if (userRecord) {
                 userRecord.username = name;
                 userRecord.email = email;
                 userRecord.phoneNumber = phoneNumber || userRecord.phoneNumber;
-                userRecord.password = userHashedPassword;
-                userRecord.designation = userDesignation;
-                userRecord.workingBranch = workingBranchStr;
-                userRecord.locCode = finalLocCodes;
-                await userRecord.save();
-            } else {
-                userRecord = new User({
-                    _id: savedAdmin._id, // preserve ID
-                    username: name,
-                    email,
-                    phoneNumber: phoneNumber || "",
-                    password: userHashedPassword,
-                    empID: EmpId,
-                    designation: userDesignation,
-                    workingBranch: workingBranchStr,
-                    locCode: finalLocCodes,
-                    source: "admin",
-                    assignedModules: [],
-                    assignedAssessments: [],
-                    training: []
-                });
+                if (password && password.trim() !== "") {
+                    userRecord.password = await bcrypt.hash(String(password).trim(), 10);
+                }
                 await userRecord.save();
             }
 
@@ -828,47 +822,15 @@ export const CreatingAdminUsers = async (req, res) => {
         // Save the admin user
         const savedAdmin = await newAdmin.save();
 
-        // Sync/Create corresponding User record
-        const userDesignation = role === 'super_admin' ? 'Super Admin' : (role === 'admin' ? 'Admin' : (role === 'hr_admin' ? 'HR Admin' : (role === 'cluster_admin' ? 'Cluster Admin' : 'Store Admin')));
-        let workingBranchStr = "";
-        let finalLocCodes = [];
-        if (finalBranches && finalBranches.length > 0) {
-            const branchDocs = await Branch.find({ _id: { $in: finalBranches } });
-            workingBranchStr = branchDocs.map(b => b.workingBranch).join(", ");
-            finalLocCodes = branchDocs.map(b => b.locCode);
-        }
-
-        let userRecord = await User.findOne({ $or: [{ empID: EmpId }, { email }] });
-        let userHashedPassword = savedAdmin.password;
-        if (password && password.trim() !== "") {
-            userHashedPassword = await bcrypt.hash(String(password).trim(), 10);
-        }
-
+        // Also check and update the corresponding User record if it exists
+        const userRecord = await User.findOne({ $or: [{ empID: EmpId }, { email }] });
         if (userRecord) {
             userRecord.username = name;
             userRecord.email = email;
             userRecord.phoneNumber = phoneNumber || userRecord.phoneNumber;
-            userRecord.password = userHashedPassword;
-            userRecord.designation = userDesignation;
-            userRecord.workingBranch = workingBranchStr;
-            userRecord.locCode = finalLocCodes;
-            await userRecord.save();
-        } else {
-            userRecord = new User({
-                _id: savedAdmin._id, // preserve ID
-                username: name,
-                email,
-                phoneNumber: phoneNumber || "",
-                password: userHashedPassword,
-                empID: EmpId,
-                designation: userDesignation,
-                workingBranch: workingBranchStr,
-                locCode: finalLocCodes,
-                source: "admin",
-                assignedModules: [],
-                assignedAssessments: [],
-                training: []
-            });
+            if (password && password.trim() !== "") {
+                userRecord.password = await bcrypt.hash(String(password).trim(), 10);
+            }
             await userRecord.save();
         }
 
@@ -974,7 +936,11 @@ export const getAccessibleEmployees = async (req, res) => {
             query.storeId = resolvedStore._id;
         }
 
-        let employees = await Employee.find(query);
+        let employees = await Employee.find(query).lean();
+        employees = employees.map(emp => ({
+            ...emp,
+            username: emp.username || `${emp.firstName || ''} ${emp.lastName || ''}`.trim()
+        }));
 
         // Fallback: If no employees are found in employeedata, query User collection and map them
         if (employees.length === 0) {
@@ -1011,50 +977,88 @@ export const getAccessibleEmployees = async (req, res) => {
             }));
         }
 
-        // --- FILTER OUT ADMINS (except the store admin of the selected store) ---
-        const adminsList = await Admin.find({}).select('email EmpId employeeId role branches').lean();
-        const adminMap = new Map();
-        adminsList.forEach(a => {
-            const emailKey = a.email?.toLowerCase().trim();
-            const empIdKey = a.EmpId?.toLowerCase().trim();
-            const employeeIdKey = (a.employeeId || '')?.toLowerCase().trim();
-            
-            if (emailKey) adminMap.set(emailKey, a);
-            if (empIdKey) adminMap.set(empIdKey, a);
-            if (employeeIdKey) adminMap.set(employeeIdKey, a);
+        // Determine allowed admin roles to return as employees based on logged-in admin's role
+        let allowedAdminRoles = ['store_admin', 'cluster_admin'];
+        let excludedAdminRoles = ['super_admin', 'admin', 'hr_admin'];
+        
+        if (req.admin.role === 'store_admin') {
+            allowedAdminRoles = ['store_admin'];
+            excludedAdminRoles = ['super_admin', 'admin', 'hr_admin', 'cluster_admin'];
+        }
+
+        // Fetch store/cluster admins for the selected/accessible stores to include them as employees
+        let storeAdminQuery = { role: { $in: allowedAdminRoles }, isActive: true };
+        if (resolvedStore) {
+            storeAdminQuery.branches = resolvedStore._id;
+        } else {
+            const accessibleStoreIds = await getAccessibleStoreIds(req.admin.userId);
+            storeAdminQuery.branches = { $in: accessibleStoreIds };
+        }
+        
+        const storeAdmins = await Admin.find(storeAdminQuery).lean();
+        const mappedStoreAdmins = storeAdmins.map(sa => {
+            let branchName = "";
+            if (resolvedStore) {
+                branchName = resolvedStore.workingBranch;
+            }
+            return {
+                _id: sa._id,
+                employeeId: sa.EmpId || sa.employeeId || '',
+                username: sa.name,
+                firstName: sa.name.split(' ')[0] || '',
+                lastName: sa.name.split(' ').slice(1).join(' ') || '',
+                email: sa.email,
+                phoneNumber: sa.phoneNumber,
+                designation: sa.role === 'cluster_admin' ? 'Cluster Admin' : 'Store Admin',
+                workingBranch: branchName || (sa.branches && sa.branches.length > 0 ? '' : 'No Store'),
+                status: 'Active'
+            };
         });
 
-        employees = employees.filter(emp => {
+        // Merge mapped store admins with employees
+        const combinedEmployees = [...employees, ...mappedStoreAdmins];
+
+        // Deduplicate the combined list by id, email, or employeeId
+        const seenIds = new Set();
+        const seenEmails = new Set();
+        const seenEmpIds = new Set();
+        
+        const uniqueEmployees = [];
+        for (const emp of combinedEmployees) {
+            const empIdStr = emp._id.toString();
+            const emailKey = emp.email?.toLowerCase().trim();
+            const empCodeKey = (emp.employeeId || emp.empID || '').toString().toLowerCase().trim();
+            
+            if (seenIds.has(empIdStr)) continue;
+            if (emailKey && seenEmails.has(emailKey)) continue;
+            if (empCodeKey && seenEmpIds.has(empCodeKey)) continue;
+            
+            seenIds.add(empIdStr);
+            if (emailKey) seenEmails.add(emailKey);
+            if (empCodeKey) seenEmpIds.add(empCodeKey);
+            
+            uniqueEmployees.push(emp);
+        }
+
+        // --- FILTER OUT NON-STORE/CLUSTER ADMINS (from showing up in the Employee dropdown) ---
+        // Exclude anyone who is a non-store/cluster admin (e.g. super_admin, admin, hr_admin)
+        const adminsList = await Admin.find({ role: { $in: excludedAdminRoles } }).select('email EmpId employeeId').lean();
+        const adminEmails = new Set(adminsList.map(a => a.email?.toLowerCase().trim()).filter(Boolean));
+        const adminEmpIds = new Set([
+            ...adminsList.map(a => a.EmpId?.toLowerCase().trim()).filter(Boolean),
+            ...adminsList.map(a => (a.employeeId || '')?.toLowerCase().trim()).filter(Boolean)
+        ]);
+
+        const filteredEmployees = uniqueEmployees.filter(emp => {
             const empEmail = emp.email?.toLowerCase().trim();
             const empId = (emp.employeeId || emp.empID)?.toLowerCase().trim();
             
-            // Check if the employee is an admin
-            const matchingAdmin = adminMap.get(empEmail) || adminMap.get(empId);
-            
-            if (matchingAdmin) {
-                // If it is an admin, check if they are the store_admin for the resolvedStore
-                if (resolvedStore && matchingAdmin.role === 'store_admin') {
-                    // Check if this store admin is assigned to the selected store
-                    const assignedBranchIds = (matchingAdmin.branches || []).map(b => b.toString());
-                    const isAssignedToThisStore = assignedBranchIds.includes(resolvedStore._id.toString());
-                    if (isAssignedToThisStore) {
-                        return true; // Keep them in the list
-                    }
-                }
-                return false; // Filter out other admins (Super Admin, Cluster Admin, other Store Admins)
-            }
-
-            // Exclude if it's an "All Stores" employee (assigned to more than 5 branches) when a specific store is resolved
-            if (resolvedStore) {
-                const branchStr = emp.workingBranch || '';
-                const isAllStores = branchStr === 'All Stores' || branchStr.split(',').length > 5;
-                if (isAllStores) return false;
-            }
-
-            return true;
+            // Exclude if the email or employee ID matches any non-store admin record
+            const isMatch = adminEmails.has(empEmail) || adminEmpIds.has(empId);
+            return !isMatch;
         });
 
-        res.status(200).json({ employees });
+        res.status(200).json({ employees: filteredEmployees });
     } catch (error) {
         console.error("Error fetching accessible employees:", error);
         res.status(500).json({ message: "Server error", error: error.message });
@@ -1255,7 +1259,49 @@ export const updateAdminUser = async (req, res) => {
 
                 return res.status(200).json({ success: true, message: "User promoted to admin successfully", data: savedAdmin });
             } else {
-                // Just update employee in User collection
+                // role === 'employee' — but this User record might belong to a previously
+                // promoted admin (cluster_admin / store_admin), in which case a matching
+                // Admin document also exists and must be deleted to complete the demotion.
+                const parallelAdmin = await Admin.findById(id);
+                if (parallelAdmin) {
+                    // Full Admin → Employee demotion path
+                    const hashedPassword = parallelAdmin.password || isEmployee.password;
+                    const empId = parallelAdmin.EmpId || isEmployee.empID;
+
+                    let workingBranch = "No Store";
+                    let locCode = [];
+                    if (branches && branches.length > 0) {
+                        const branchDocs = await Branch.find({ _id: { $in: branches } });
+                        if (branchDocs && branchDocs.length > 0) {
+                            workingBranch = branchDocs.map(b => b.workingBranch).join(", ");
+                            locCode = branchDocs.map(b => b.locCode);
+                        }
+                    }
+
+                    // Delete both records first
+                    await Admin.findByIdAndDelete(id);
+                    await User.findByIdAndDelete(id);
+                    // Also clean up any stale duplicate records by email/empID
+                    await User.deleteOne({ $or: [{ empID: empId }, { email }], _id: { $ne: id } });
+
+                    // Re-create as pure Employee in User collection
+                    const newUser = new User({
+                        _id: parallelAdmin._id,
+                        username: name,
+                        email,
+                        phoneNumber: phoneNumber || parallelAdmin.phoneNumber || "",
+                        password: password && password.trim() !== "" ? await bcrypt.hash(password, 10) : hashedPassword,
+                        empID: empId,
+                        designation: "Employee",
+                        workingBranch,
+                        locCode,
+                        source: "admin"
+                    });
+                    const savedUser = await newUser.save();
+                    return res.status(200).json({ success: true, message: "Admin demoted to employee successfully", data: savedUser });
+                }
+
+                // Pure employee update (no Admin record exists)
                 const updateFields = {
                     username: name,
                     email,
@@ -1365,50 +1411,30 @@ export const updateAdminUser = async (req, res) => {
             return res.status(404).json({ success: false, message: "User not found" });
         }
 
-        // Also check and update/create the corresponding User record
+        // Also check and update the corresponding User record if it exists
         try {
-            let userRecord = await User.findOne({ $or: [{ empID: updatedAdmin.EmpId }, { email: updatedAdmin.email }] });
-            const userDesignation = role === 'super_admin' ? 'Super Admin' : (role === 'admin' ? 'Admin' : (role === 'hr_admin' ? 'HR Admin' : (role === 'cluster_admin' ? 'Cluster Admin' : 'Store Admin')));
-            
-            let workingBranchStr = "";
-            let finalLocCodes = [];
-            const finalBranches = updateFields.branches || [];
-            if (finalBranches.length > 0) {
-                const branchDocs = await Branch.find({ _id: { $in: finalBranches } });
-                workingBranchStr = branchDocs.map(b => b.workingBranch).join(", ");
-                finalLocCodes = branchDocs.map(b => b.locCode);
-            }
-
-            let userHashedPassword = updatedAdmin.password;
-            if (password && password.trim() !== "") {
-                userHashedPassword = await bcrypt.hash(password, 10);
-            }
-
+            const userRecord = await User.findOne({ $or: [{ empID: updatedAdmin.EmpId }, { email: updatedAdmin.email }] });
             if (userRecord) {
                 userRecord.username = name;
                 userRecord.email = email;
                 userRecord.phoneNumber = phoneNumber || userRecord.phoneNumber;
-                userRecord.password = userHashedPassword;
+                if (password && password.trim() !== "") {
+                    userRecord.password = await bcrypt.hash(password, 10);
+                }
+                const userDesignation = role === 'super_admin' ? 'Super Admin' : (role === 'admin' ? 'Admin' : (role === 'hr_admin' ? 'HR Admin' : (role === 'cluster_admin' ? 'Cluster Admin' : 'Store Admin')));
                 userRecord.designation = userDesignation;
+
+                let workingBranchStr = "";
+                let finalLocCodes = [];
+                const finalBranches = updateFields.branches || [];
+                if (finalBranches.length > 0) {
+                    const branchDocs = await Branch.find({ _id: { $in: finalBranches } });
+                    workingBranchStr = branchDocs.map(b => b.workingBranch).join(", ");
+                    finalLocCodes = branchDocs.map(b => b.locCode);
+                }
                 userRecord.workingBranch = workingBranchStr;
                 userRecord.locCode = finalLocCodes;
-                await userRecord.save();
-            } else {
-                userRecord = new User({
-                    _id: updatedAdmin._id, // preserve ID
-                    username: name,
-                    email,
-                    phoneNumber: phoneNumber || "",
-                    password: userHashedPassword,
-                    empID: updatedAdmin.EmpId,
-                    designation: userDesignation,
-                    workingBranch: workingBranchStr,
-                    locCode: finalLocCodes,
-                    source: "admin",
-                    assignedModules: [],
-                    assignedAssessments: [],
-                    training: []
-                });
+
                 await userRecord.save();
             }
         } catch (syncErr) {

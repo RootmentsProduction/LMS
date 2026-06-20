@@ -75,11 +75,27 @@ const shouldGenerateToday = (template, targetDate) => {
   }
 
   if (type === 'weekly') {
+    if (template.weekDays && template.weekDays.length > 0) {
+      const daysMap = {
+        sunday: 0,
+        monday: 1,
+        tuesday: 2,
+        wednesday: 3,
+        thursday: 4,
+        friday: 5,
+        saturday: 6
+      };
+      const targetDayIndex = target.getDay();
+      return template.weekDays.some(day => daysMap[day.toLowerCase()] === targetDayIndex);
+    }
     // Same day of the week as startDate
     return target.getDay() === start.getDay();
   }
 
   if (type === 'monthly') {
+    if (template.monthDays && template.monthDays.length > 0) {
+      return template.monthDays.includes(target.getDate());
+    }
     // Same day of the month as startDate
     return target.getDate() === start.getDate();
   }

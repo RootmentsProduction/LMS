@@ -1,25 +1,32 @@
 import cron from 'node-cron';
 import { syncWalkinStatuses, expireWalkinsToLoss } from '../services/walkinStatusSyncService.js';
 
+let isScheduled = false;
 let isRunning = false;
 let isLossExpiryRunning = false;
 
 export const startWalkinStatusSyncCron = () => {
+    if (isScheduled) {
+        console.log('⚠️ [Walkin Status Sync Cron] Scheduler is already started. Skipping duplicate registration.');
+        return;
+    }
+    isScheduled = true;
     console.log('🕐 Starting Walk-in Status Sync Scheduler...');
 
-    // Run every 1 hour
-    cron.schedule('0 * * * *', async () => {
+    // Run every 15 minutes
+    cron.schedule('*/15 * * * *', async () => {
         if (isRunning) {
-            console.log('⚠️ [Walkin Status Sync Cron] Previous sync job is still running. Skipping this execution.');
+            console.log('⚠️ [Walkin Status Sync Cron] Sync Skipped (Already Running).');
             return;
         }
 
         isRunning = true;
         try {
-            console.log('⏰ Running scheduled Walk-in Status Sync...');
+            console.log('🔄 [Walkin Status Sync Cron] Sync Started');
             await syncWalkinStatuses();
+            console.log('✅ [Walkin Status Sync Cron] Sync Completed');
         } catch (error) {
-            console.error('❌ Scheduled Walk-in Status Sync Cron encountered an error:', error);
+            console.error('❌ [Walkin Status Sync Cron] Sync Failed:', error);
         } finally {
             isRunning = false;
         }
@@ -43,6 +50,6 @@ export const startWalkinStatusSyncCron = () => {
         }
     });
 
-    console.log('✅ Walk-in Status Sync Scheduler started (runs every 1 hour, loss expiry runs daily at 12:00 AM)');
+    console.log('✅ Walk-in Status Sync Scheduler started (runs every 15 minutes, loss expiry runs daily at 12:00 AM)');
 };
 

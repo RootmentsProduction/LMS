@@ -37,16 +37,121 @@ function locationKey(name) {
     return tokens.join(" ");
 }
 
-const getFormattedDateTime = () => {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
-    const hours = String(now.getHours()).padStart(2, '0');
-    const minutes = String(now.getMinutes()).padStart(2, '0');
-    const seconds = String(now.getSeconds()).padStart(2, '0');
-    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+const getFormattedDateTime = (date = new Date()) => {
+    const d = new Date(date);
+    const istDate = new Date(d.getTime() + (5.5 * 60 * 60 * 1000));
+    const year = istDate.getUTCFullYear();
+    const month = String(istDate.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(istDate.getUTCDate()).padStart(2, '0');
+    const hour = String(istDate.getUTCHours()).padStart(2, '0');
+    const minute = String(istDate.getUTCMinutes()).padStart(2, '0');
+    const second = String(istDate.getUTCSeconds()).padStart(2, '0');
+    return `${year}-${month}-${day} ${hour}:${minute}:${second}`;
 };
+
+const getLocalDateStringIST = (date) => {
+    if (!date) return null;
+    const d = new Date(date);
+    const istDate = new Date(d.getTime() + (5.5 * 60 * 60 * 1000));
+    const year = istDate.getUTCFullYear();
+    const month = String(istDate.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(istDate.getUTCDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
+
+const updateStatusAndDates = (walkinRecord, statusInput) => {
+    if (!statusInput) return false;
+    const cleanInput = statusInput.trim();
+    
+    const isShoeStatus = (s) => ['Billed', 'Bill Returned'].includes(s);
+    
+    let rentalUpdated = false;
+    let shoeUpdated = false;
+    
+    if (cleanInput.includes(',')) {
+        const parts = cleanInput.split(',').map(p => p.trim());
+        const shoePart = parts.find(isShoeStatus);
+        const rentalPart = parts.find(p => !isShoeStatus(p));
+        
+        if (rentalPart && walkinRecord.rentalStatus !== rentalPart) {
+            walkinRecord.rentalStatus = rentalPart;
+            rentalUpdated = true;
+        }
+        if (shoePart && walkinRecord.shoeStatus !== shoePart) {
+            walkinRecord.shoeStatus = shoePart;
+            shoeUpdated = true;
+        }
+    } else {
+        if (isShoeStatus(cleanInput)) {
+            if (walkinRecord.shoeStatus !== cleanInput) {
+                walkinRecord.shoeStatus = cleanInput;
+                shoeUpdated = true;
+            }
+        } else {
+            if (walkinRecord.rentalStatus !== cleanInput) {
+                walkinRecord.rentalStatus = cleanInput;
+                rentalUpdated = true;
+            }
+        }
+    }
+    
+    if (rentalUpdated) {
+        const rStatus = walkinRecord.rentalStatus;
+        const statusLower = rStatus.toLowerCase();
+        if (statusLower.includes('booking') || statusLower === 'booked') {
+            walkinRecord.bookingDate = new Date();
+        } else if (statusLower.includes('rentout') || statusLower === 'rent out') {
+            walkinRecord.rentoutDate = new Date();
+        } else if (statusLower === 'return') {
+            walkinRecord.returnDate = new Date();
+        } else if (statusLower === 'cancelled' || statusLower === 'cancel') {
+            walkinRecord.cancelDate = new Date();
+            walkinRecord.cancellationDate = new Date();
+        }
+        
+        if (!walkinRecord.statusHistory) {
+            walkinRecord.statusHistory = [];
+        }
+        walkinRecord.statusHistory.push({
+            status: rStatus,
+            category: walkinRecord.category && walkinRecord.category !== '-' ? walkinRecord.category : 'Product',
+            date: new Date()
+        });
+    }
+    
+    if (shoeUpdated) {
+        const sStatus = walkinRecord.shoeStatus;
+        if (sStatus === 'Billed') {
+            walkinRecord.billedDate = new Date();
+        } else if (sStatus === 'Bill Returned') {
+            walkinRecord.billReturnedDate = new Date();
+        }
+        
+        if (!walkinRecord.statusHistory) {
+            walkinRecord.statusHistory = [];
+        }
+        walkinRecord.statusHistory.push({
+            status: sStatus,
+            category: 'Sales',
+            date: new Date()
+        });
+    }
+    
+    if (rentalUpdated || shoeUpdated) {
+        const getCombinedStatus = (rental, shoe) => {
+            const r = (rental || 'New Walkin').trim();
+            const s = (shoe || '').trim();
+            if (!s || s === '-' || s === 'None') return r;
+            if (r === 'New Walkin' || r === '-') return s;
+            return `${r}, ${s}`;
+        };
+        walkinRecord.status = getCombinedStatus(walkinRecord.rentalStatus, walkinRecord.shoeStatus);
+        return true;
+    }
+    return false;
+};
+
+
 
 /**
  * Helper to match stores based on normalized location keys
@@ -124,20 +229,53 @@ export const saveWalkin = async (req, res) => {
             employeeId,
             category,
             subCategory,
+            functionType,
             remarks,
             status,
             date,
-            fileAttachment
+            fileAttachment,
+            notes,
+            lossProductType,
+            lossSize,
+            lossColour,
+            lossSalesPrice,
+            lossSelectRemarks,
+            lossEnquiryTrailOption,
+            lossEnquiryRevisitDate,
+            lossReason
         } = req.body;
 
-        if (!customerName || !contact) {
+        // Parse optional fields with fallback to aliases posted from Flutter / Web panel
+        const notesVal = notes !== undefined ? notes : (req.body.note !== undefined ? req.body.note : req.body.lossNote);
+        const lossProductTypeVal = lossProductType !== undefined ? lossProductType : req.body.productType;
+        const lossSizeVal = lossSize !== undefined ? lossSize : req.body.size;
+        const lossColourVal = lossColour !== undefined ? lossColour : (req.body.colour !== undefined ? req.body.colour : (req.body.color !== undefined ? req.body.color : req.body.lossColor));
+        const lossSalesPriceVal = lossSalesPrice !== undefined ? lossSalesPrice : (req.body.salesPrice !== undefined ? req.body.salesPrice : req.body.price);
+        const lossSelectRemarksVal = lossSelectRemarks !== undefined ? lossSelectRemarks : (req.body.priceRemarks !== undefined ? req.body.priceRemarks : req.body.selectRemarks);
+        const lossEnquiryTrailOptionVal = lossEnquiryTrailOption !== undefined ? lossEnquiryTrailOption : req.body.trialOption;
+        const lossEnquiryRevisitDateVal = lossEnquiryRevisitDate !== undefined ? lossEnquiryRevisitDate : req.body.revisitDate;
+        const lossReasonVal = lossReason !== undefined ? lossReason : req.body.lossReason;
+
+        const setOptionalLossFields = (record) => {
+            if (notesVal !== undefined) record.notes = String(notesVal).trim();
+            if (lossProductTypeVal !== undefined) record.lossProductType = String(lossProductTypeVal).trim();
+            if (lossSizeVal !== undefined) record.lossSize = String(lossSizeVal).trim();
+            if (lossColourVal !== undefined) record.lossColour = String(lossColourVal).trim();
+            if (lossSalesPriceVal !== undefined) record.lossSalesPrice = String(lossSalesPriceVal).trim();
+            if (lossSelectRemarksVal !== undefined) record.lossSelectRemarks = String(lossSelectRemarksVal).trim();
+            if (lossEnquiryTrailOptionVal !== undefined) record.lossEnquiryTrailOption = String(lossEnquiryTrailOptionVal).trim();
+            if (lossEnquiryRevisitDateVal !== undefined) record.lossEnquiryRevisitDate = String(lossEnquiryRevisitDateVal).trim();
+            if (lossReasonVal !== undefined) record.lossReason = String(lossReasonVal).trim();
+        };
+
+        if (!_id && (!customerName || !contact)) {
             return res.status(400).json({
                 success: false,
                 message: 'customerName and contact are required fields'
             });
         }
 
-        const trimmedContact = contact.trim();
+        const trimmedContact = contact ? contact.trim() : '-';
 
         // Automatically fetch current date and time when adding walk-ins
         const todayStr = _id ? (date || getFormattedDateTime()) : getFormattedDateTime();
@@ -154,9 +292,19 @@ export const saveWalkin = async (req, res) => {
 
         const passedEmpId = req.body.empID || req.body.empid || req.body.employeeId || req.body.staff;
         if (passedEmpId) {
-            lookupUser = await User.findOne({ empID: { $regex: `^${String(passedEmpId).trim()}$`, $options: 'i' } });
+            lookupUser = await User.findOne({ 
+                $or: [
+                    { empID: { $regex: `^${String(passedEmpId).trim()}$`, $options: 'i' } },
+                    { username: { $regex: `^${String(passedEmpId).trim()}$`, $options: 'i' } }
+                ]
+            });
             if (!lookupUser) {
-                lookupUser = await Admin.findOne({ EmpId: { $regex: `^${String(passedEmpId).trim()}$`, $options: 'i' } }).populate('branches');
+                lookupUser = await Admin.findOne({ 
+                    $or: [
+                        { EmpId: { $regex: `^${String(passedEmpId).trim()}$`, $options: 'i' } },
+                        { name: { $regex: `^${String(passedEmpId).trim()}$`, $options: 'i' } }
+                    ]
+                }).populate('branches');
             }
             if (!lookupUser && mongoose.Types.ObjectId.isValid(passedEmpId)) {
                 lookupUser = await User.findById(passedEmpId);
@@ -176,8 +324,8 @@ export const saveWalkin = async (req, res) => {
         if (lookupUser) {
             const isUser = lookupUser.empID !== undefined;
             if (isUser) {
-                finalStaff = lookupUser.username;
-                finalStore = lookupUser.workingBranch;
+                finalStaff = (staff && staff !== '-' && staff !== 'None') ? staff.trim() : lookupUser.username;
+                finalStore = (store && store !== '-' && store !== '') ? store.trim() : lookupUser.workingBranch;
                 finalEmployeeId = lookupUser._id;
 
                 const branch = await Branch.findOne({
@@ -190,7 +338,7 @@ export const saveWalkin = async (req, res) => {
                     finalStoreId = branch._id;
                 }
             } else {
-                finalStaff = lookupUser.name;
+                finalStaff = (staff && staff !== '-' && staff !== 'None') ? staff.trim() : lookupUser.name;
                 finalEmployeeId = lookupUser._id;
 
                 const isSuperOrHrAdmin = ['super_admin', 'admin', 'hr_admin'].includes(lookupUser.role);
@@ -229,14 +377,23 @@ export const saveWalkin = async (req, res) => {
             const adminId = req.admin.userId;
             const isAdminManager = ['super_admin', 'admin', 'hr_admin'].includes(req.admin.role);
             if (!isAdminManager) {
-                if (finalStoreId) {
+                if (finalStoreId && mongoose.Types.ObjectId.isValid(finalStoreId)) {
                     await validateStoreAccess(adminId, finalStoreId);
                 }
-                if (finalEmployeeId) {
+                if (finalEmployeeId && mongoose.Types.ObjectId.isValid(finalEmployeeId)) {
                     await validateEmployeeAccess(adminId, finalEmployeeId);
                 }
             }
         }
+
+        // Sanitize IDs to prevent Cast to ObjectId BSONErrors
+        if (finalStoreId !== undefined && finalStoreId !== null && !mongoose.Types.ObjectId.isValid(finalStoreId)) {
+            finalStoreId = undefined;
+        }
+        if (finalEmployeeId !== undefined && finalEmployeeId !== null && !mongoose.Types.ObjectId.isValid(finalEmployeeId)) {
+            finalEmployeeId = undefined;
+        }
+
 
         // Direct update by _id (e.g. edited from list view)
         if (_id) {
@@ -254,35 +411,76 @@ export const saveWalkin = async (req, res) => {
                 return res.status(404).json({ success: false, message: 'Walk-in record not found or access denied' });
             }
 
-            walkinRecord.customerName = customerName.trim();
-            walkinRecord.contact = trimmedContact;
+            const incomingStatus = status ? status.trim() : '';
+            if (incomingStatus === 'New Walkin' && walkinRecord.status !== 'New Walkin') {
+                // Reset option: Keep existing walk-in with the same data, and create a brand new one with repeatCount = 1
+                const newWalkin = new Walkin({
+                    customerName: customerName ? customerName.trim() : walkinRecord.customerName,
+                    contact: trimmedContact !== '-' ? trimmedContact : walkinRecord.contact,
+                    functionDate: functionDate ? functionDate.trim() : walkinRecord.functionDate,
+                    store: store ? store.trim() : walkinRecord.store,
+                    staff: staff ? staff.trim() : walkinRecord.staff,
+                    storeId: finalStoreId || walkinRecord.storeId,
+                    employeeId: finalEmployeeId || walkinRecord.employeeId,
+                    createdBy: createdBy || walkinRecord.createdBy,
+                    category: category ? category.trim() : walkinRecord.category,
+                    subCategory: subCategory ? subCategory.trim() : walkinRecord.subCategory,
+                    functionType: '-',
+                    attachment: (fileAttachment && fileAttachment.base64) ? fileAttachment.base64 : walkinRecord.attachment,
+                    attachmentName: (fileAttachment && fileAttachment.name) ? fileAttachment.name : walkinRecord.attachmentName,
+                    remarks: remarks ? remarks.trim() : walkinRecord.remarks,
+                    notes: notesVal !== undefined ? String(notesVal).trim() : walkinRecord.notes,
+                    lossProductType: lossProductTypeVal !== undefined ? String(lossProductTypeVal).trim() : walkinRecord.lossProductType,
+                    lossSize: lossSizeVal !== undefined ? String(lossSizeVal).trim() : walkinRecord.lossSize,
+                    lossColour: lossColourVal !== undefined ? String(lossColourVal).trim() : walkinRecord.lossColour,
+                    lossSalesPrice: lossSalesPriceVal !== undefined ? String(lossSalesPriceVal).trim() : walkinRecord.lossSalesPrice,
+                    lossSelectRemarks: lossSelectRemarksVal !== undefined ? String(lossSelectRemarksVal).trim() : walkinRecord.lossSelectRemarks,
+                    lossEnquiryTrailOption: lossEnquiryTrailOptionVal !== undefined ? String(lossEnquiryTrailOptionVal).trim() : walkinRecord.lossEnquiryTrailOption,
+                    lossEnquiryRevisitDate: lossEnquiryRevisitDateVal !== undefined ? String(lossEnquiryRevisitDateVal).trim() : walkinRecord.lossEnquiryRevisitDate,
+                    lossReason: lossReasonVal !== undefined ? String(lossReasonVal).trim() : walkinRecord.lossReason,
+                    repeatCount: 1,
+                    date: todayStr
+                });
+                updateStatusAndDates(newWalkin, 'New Walkin');
+                await newWalkin.save();
+
+                return res.status(201).json({
+                    success: true,
+                    message: 'New walk-in reset created successfully',
+                    data: newWalkin
+                });
+            }
+
+            if (customerName !== undefined && customerName !== null) walkinRecord.customerName = customerName.trim();
+            if (contact !== undefined && contact !== null) walkinRecord.contact = trimmedContact;
             if (functionDate) walkinRecord.functionDate = functionDate.trim();
-            if (finalStore) walkinRecord.store = finalStore;
-            if (finalStaff) walkinRecord.staff = finalStaff;
-            if (finalStoreId) walkinRecord.storeId = finalStoreId;
-            if (finalEmployeeId) walkinRecord.employeeId = finalEmployeeId;
+            if (store !== undefined && store !== null) walkinRecord.store = store.trim();
+            if (staff !== undefined && staff !== null) walkinRecord.staff = staff.trim();
+            if (finalStoreId !== undefined && finalStoreId !== null) walkinRecord.storeId = finalStoreId;
+            if (finalEmployeeId !== undefined && finalEmployeeId !== null) walkinRecord.employeeId = finalEmployeeId;
             if (category) walkinRecord.category = category.trim();
             if (subCategory) walkinRecord.subCategory = subCategory.trim();
+            if (status === 'Loss') {
+                if (functionType) walkinRecord.functionType = functionType.trim();
+            } else {
+                walkinRecord.functionType = '-';
+            }
             if (fileAttachment && fileAttachment.base64) {
                 walkinRecord.attachment = fileAttachment.base64;
                 walkinRecord.attachmentName = fileAttachment.name;
             }
             if (remarks) walkinRecord.remarks = remarks.trim();
+            setOptionalLossFields(walkinRecord);
+            let statusChanged = false;
             if (status) {
                 const trimmedStatus = status.trim();
                 if (walkinRecord.status !== trimmedStatus) {
+                    statusChanged = true;
                     // Check if status was already changed today
-                    const today = new Date();
-                    today.setHours(0, 0, 0, 0);
+                    const currentTodayIST = getLocalDateStringIST(new Date());
+                    const lastChangeIST = getLocalDateStringIST(walkinRecord.lastStatusChangeDate);
 
-                    const lastChangeDate = walkinRecord.lastStatusChangeDate ? new Date(walkinRecord.lastStatusChangeDate) : null;
-                    const lastChangeDateStart = lastChangeDate ? new Date(lastChangeDate) : null;
-                    if (lastChangeDateStart) {
-                        lastChangeDateStart.setHours(0, 0, 0, 0);
-                    }
-
-                    // If status was changed today, prevent another change
-                    if (lastChangeDateStart && lastChangeDateStart.getTime() === today.getTime()) {
+                    if (lastChangeIST && lastChangeIST === currentTodayIST) {
                         return res.status(400).json({
                             success: false,
                             message: 'Status can only be changed once per day. Please try again tomorrow.',
@@ -290,23 +488,29 @@ export const saveWalkin = async (req, res) => {
                         });
                     }
 
-                    // Only increment repeatCount if the status change happens on a DIFFERENT day
+                    // Only increment repeatCount if the status change happens on a DIFFERENT day and is not Cancelled
                     const existingDateStr = walkinRecord.date ? walkinRecord.date.substring(0, 10) : null;
                     const todayDateStr = todayStr.substring(0, 10);
-                    if (existingDateStr !== todayDateStr) {
+                    const isCancelled = trimmedStatus === 'Cancelled' || trimmedStatus === 'Cancel' || trimmedStatus.includes('Cancelled') || trimmedStatus.includes('Cancel');
+                    if (existingDateStr !== todayDateStr && !isCancelled) {
                         walkinRecord.repeatCount = (walkinRecord.repeatCount || 1) + 1;
                     }
 
                     // Update status change tracking
                     walkinRecord.lastStatusChangeDate = new Date();
                     walkinRecord.statusChangedToday = true;
+
+                    updateStatusAndDates(walkinRecord, trimmedStatus);
                 }
-                walkinRecord.status = trimmedStatus;
             }
             if (createdBy) walkinRecord.createdBy = createdBy;
             walkinRecord.date = todayStr; // Update visit date to the requested value
 
-            await walkinRecord.save();
+            if (statusChanged) {
+                await walkinRecord.save();
+            } else {
+                await walkinRecord.save({ timestamps: false });
+            }
             return res.status(200).json({
                 success: true,
                 message: 'Walk-in updated successfully',
@@ -314,12 +518,15 @@ export const saveWalkin = async (req, res) => {
             });
         }
 
-        let query = { contact: trimmedContact };
-        if (req.admin) {
-            const adminId = req.admin.userId;
-            query = await buildWalkinFilter(adminId, query);
+        let walkinRecord = null;
+        if (trimmedContact !== '-' && trimmedContact !== '') {
+            let query = { contact: trimmedContact };
+            if (req.admin) {
+                const adminId = req.admin.userId;
+                query = await buildWalkinFilter(adminId, query);
+            }
+            walkinRecord = await Walkin.findOne(query).sort({ createdAt: -1 });
         }
-        let walkinRecord = await Walkin.findOne(query).sort({ createdAt: -1 });
 
         const isSameStore = walkinRecord && (
             locationKey(walkinRecord.store) === locationKey(finalStore) ||
@@ -327,19 +534,14 @@ export const saveWalkin = async (req, res) => {
         );
 
         if (walkinRecord && status !== 'New Walkin' && isSameStore) {
+            let statusChanged = false;
             // Check if status was already changed today
             if (status && status.trim() !== walkinRecord.status) {
-                const today = new Date();
-                today.setHours(0, 0, 0, 0);
+                statusChanged = true;
+                const currentTodayIST = getLocalDateStringIST(new Date());
+                const lastChangeIST = getLocalDateStringIST(walkinRecord.lastStatusChangeDate);
 
-                const lastChangeDate = walkinRecord.lastStatusChangeDate ? new Date(walkinRecord.lastStatusChangeDate) : null;
-                const lastChangeDateStart = lastChangeDate ? new Date(lastChangeDate) : null;
-                if (lastChangeDateStart) {
-                    lastChangeDateStart.setHours(0, 0, 0, 0);
-                }
-
-                // If status was changed today, prevent another change
-                if (lastChangeDateStart && lastChangeDateStart.getTime() === today.getTime()) {
+                if (lastChangeIST && lastChangeIST === currentTodayIST) {
                     return res.status(400).json({
                         success: false,
                         message: 'Status can only be changed once per day. Please try again tomorrow.',
@@ -347,39 +549,51 @@ export const saveWalkin = async (req, res) => {
                     });
                 }
 
-                // Only increment repeatCount if status change happens on a DIFFERENT day than last recorded
+                // Only increment repeatCount if status change happens on a DIFFERENT day than last recorded and is not Cancelled
                 const existingDateStr = walkinRecord.date ? walkinRecord.date.substring(0, 10) : null;
                 const todayDateStr = todayStr.substring(0, 10);
-                if (existingDateStr !== todayDateStr) {
+                const isCancelled = status.trim() === 'Cancelled' || status.trim() === 'Cancel' || status.trim().includes('Cancelled') || status.trim().includes('Cancel');
+                if (existingDateStr !== todayDateStr && !isCancelled) {
                     walkinRecord.repeatCount += 1;
                 }
             }
 
-            walkinRecord.customerName = customerName.trim();
+            if (customerName !== undefined && customerName !== null) walkinRecord.customerName = customerName.trim();
             if (functionDate) walkinRecord.functionDate = functionDate.trim();
-            if (finalStore) walkinRecord.store = finalStore;
-            if (finalStaff) walkinRecord.staff = finalStaff;
-            if (finalStoreId) walkinRecord.storeId = finalStoreId;
-            if (finalEmployeeId) walkinRecord.employeeId = finalEmployeeId;
+            if (store !== undefined && store !== null) walkinRecord.store = store.trim();
+            if (staff !== undefined && staff !== null) walkinRecord.staff = staff.trim();
+            if (storeId !== undefined && storeId !== null) walkinRecord.storeId = storeId;
+            if (employeeId !== undefined && employeeId !== null) walkinRecord.employeeId = employeeId;
             if (category) walkinRecord.category = category.trim();
             if (subCategory) walkinRecord.subCategory = subCategory.trim();
+            if (status === 'Loss') {
+                if (functionType) walkinRecord.functionType = functionType.trim();
+            } else {
+                walkinRecord.functionType = '-';
+            }
             if (fileAttachment && fileAttachment.base64) {
                 walkinRecord.attachment = fileAttachment.base64;
                 walkinRecord.attachmentName = fileAttachment.name;
             }
             if (remarks) walkinRecord.remarks = remarks.trim();
+            setOptionalLossFields(walkinRecord);
             if (status) {
                 const trimmedStatus = status.trim();
                 if (walkinRecord.status !== trimmedStatus) {
                     walkinRecord.lastStatusChangeDate = new Date();
                     walkinRecord.statusChangedToday = true;
+
+                    updateStatusAndDates(walkinRecord, trimmedStatus);
                 }
-                walkinRecord.status = trimmedStatus;
             }
             if (createdBy) walkinRecord.createdBy = createdBy;
             walkinRecord.date = todayStr; // Update to latest visit date
 
-            await walkinRecord.save();
+            if (statusChanged) {
+                await walkinRecord.save();
+            } else {
+                await walkinRecord.save({ timestamps: false });
+            }
             return res.status(200).json({
                 success: true,
                 message: 'Existing walk-in updated successfully',
@@ -389,21 +603,24 @@ export const saveWalkin = async (req, res) => {
             // ALWAYS Create new record if status is 'New Walkin' or if it is a different store.
             // Query the latest walk-in for this contact AT THE SAME STORE to base the repeatCount on the store-specific history.
             let storeLatest = null;
-            if (finalStoreId) {
-                storeLatest = await Walkin.findOne({
-                    contact: trimmedContact,
-                    storeId: finalStoreId
-                }).sort({ createdAt: -1 });
-            } else if (finalStore && finalStore !== '-') {
-                storeLatest = await Walkin.findOne({
-                    contact: trimmedContact,
-                    store: finalStore
-                }).sort({ createdAt: -1 });
+            if (trimmedContact !== '-' && trimmedContact !== '') {
+                if (finalStoreId) {
+                    storeLatest = await Walkin.findOne({
+                        contact: trimmedContact,
+                        storeId: finalStoreId
+                    }).sort({ createdAt: -1 });
+                } else if (finalStore && finalStore !== '-') {
+                    storeLatest = await Walkin.findOne({
+                        contact: trimmedContact,
+                        store: finalStore
+                    }).sort({ createdAt: -1 });
+                }
             }
-            const nextRepeatCount = storeLatest ? (storeLatest.repeatCount || 1) + 1 : 1;
+            const initialStatus = status ? status.trim() : 'New Walkin';
+            const nextRepeatCount = initialStatus === 'New Walkin' ? 1 : (storeLatest ? (storeLatest.repeatCount || 1) + 1 : 1);
 
             const newWalkin = new Walkin({
-                customerName: customerName.trim(),
+                customerName: customerName ? customerName.trim() : '-',
                 contact: trimmedContact,
                 functionDate: functionDate ? functionDate.trim() : '-',
                 store: finalStore,
@@ -413,13 +630,23 @@ export const saveWalkin = async (req, res) => {
                 createdBy: createdBy || undefined,
                 category: category ? category.trim() : '-',
                 subCategory: subCategory ? subCategory.trim() : '-',
+                functionType: (initialStatus === 'Loss' && functionType) ? functionType.trim() : '-',
                 attachment: (fileAttachment && fileAttachment.base64) ? fileAttachment.base64 : '',
                 attachmentName: (fileAttachment && fileAttachment.name) ? fileAttachment.name : '',
                 remarks: remarks ? remarks.trim() : '-',
-                status: status ? status.trim() : 'New Walkin',
+                notes: notesVal !== undefined ? String(notesVal).trim() : '',
+                lossProductType: lossProductTypeVal !== undefined ? String(lossProductTypeVal).trim() : '',
+                lossSize: lossSizeVal !== undefined ? String(lossSizeVal).trim() : '',
+                lossColour: lossColourVal !== undefined ? String(lossColourVal).trim() : '',
+                lossSalesPrice: lossSalesPriceVal !== undefined ? String(lossSalesPriceVal).trim() : '',
+                lossSelectRemarks: lossSelectRemarksVal !== undefined ? String(lossSelectRemarksVal).trim() : '',
+                lossEnquiryTrailOption: lossEnquiryTrailOptionVal !== undefined ? String(lossEnquiryTrailOptionVal).trim() : '',
+                lossEnquiryRevisitDate: lossEnquiryRevisitDateVal !== undefined ? String(lossEnquiryRevisitDateVal).trim() : '',
+                lossReason: lossReasonVal !== undefined ? String(lossReasonVal).trim() : '',
                 repeatCount: nextRepeatCount,
                 date: todayStr
             });
+            updateStatusAndDates(newWalkin, initialStatus);
             await newWalkin.save();
             return res.status(201).json({
                 success: true,
@@ -468,7 +695,34 @@ export const getWalkins = async (req, res) => {
         }
 
         if (status && status !== 'All') {
-            baseQuery.status = status;
+            let statusCondition;
+            if (status === 'Cancelled' || status === 'Cancel') {
+                statusCondition = {
+                    $or: [
+                        { rentalStatus: { $in: ['Cancel', 'Cancelled'] } },
+                        { shoeStatus: { $in: ['Cancel', 'Cancelled'] } },
+                        { status: { $regex: '\\b(Cancel|Cancelled)\\b', $options: 'i' } }
+                    ]
+                };
+            } else {
+                const escapedStatus = status.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                statusCondition = {
+                    $or: [
+                        { rentalStatus: status },
+                        { shoeStatus: status },
+                        { status: { $regex: `\\b${escapedStatus}\\b`, $options: 'i' } }
+                    ]
+                };
+            }
+            if (baseQuery.$or) {
+                baseQuery.$and = [
+                    { $or: baseQuery.$or },
+                    statusCondition
+                ];
+                delete baseQuery.$or;
+            } else {
+                baseQuery.$or = statusCondition.$or;
+            }
         }
 
         if (store && store !== 'All') {
@@ -492,7 +746,7 @@ export const getWalkins = async (req, res) => {
         }
 
         // 3. Fetch filtered walkins directly from MongoDB
-        const baseProjection = 'date customerName contact functionDate store staff managerName category subCategory remarks repeatCount status storeId employeeId createdBy createdAt';
+        const baseProjection = 'date customerName contact functionDate store staff managerName category subCategory functionType remarks repeatCount status storeId employeeId createdBy createdAt updatedAt lastStatusChangeDate statusChangedToday bookingDate rentoutDate returnDate cancelDate cancellationDate lossReason lossProductType lossSize lossColour lossSalesPrice lossSelectRemarks lossEnquiryTrailOption lossEnquiryRevisitDate notes attachment attachmentName statusHistory rentalStatus shoeStatus billedDate billReturnedDate invoiceNo shoeInvoiceNo';
 
         const isCountOnlyFetch = String(countOnly).toLowerCase() === 'true';
         const isChartOnlyFetch = String(chartOnly).toLowerCase() === 'true';
@@ -540,7 +794,7 @@ export const getWalkins = async (req, res) => {
         }
 
         let findQuery = Walkin.find(secureQuery)
-            .sort({ createdAt: -1 })
+            .sort({ updatedAt: -1 })
             .select(baseProjection);
 
         if (limitNum > 0) {
@@ -552,13 +806,22 @@ export const getWalkins = async (req, res) => {
             findQuery.lean(),
         ]);
 
+        const todayStr = getLocalDateStringIST(new Date());
+        const mappedFiltered = filtered.map(w => {
+            const lastChangeStr = getLocalDateStringIST(w.lastStatusChangeDate);
+            return {
+                ...w,
+                statusChangedToday: !!(lastChangeStr && lastChangeStr === todayStr)
+            };
+        });
+
         return res.status(200).json({
             success: true,
             message: 'Walk-ins retrieved successfully',
             count: total,
             page: limitNum > 0 ? pageNum : 1,
             limit: limitNum > 0 ? limitNum : total,
-            data: filtered
+            data: mappedFiltered
         });
 
     } catch (error) {
@@ -579,8 +842,8 @@ export const getAllWalkinsPublic = async (req, res) => {
         const { startDate, endDate } = req.query;
 
         let filtered = await Walkin.find({})
-            .sort({ createdAt: -1 })
-            .select('date customerName contact functionDate store staff managerName category subCategory remarks repeatCount status storeId employeeId createdBy createdAt')
+            .sort({ updatedAt: -1 })
+            .select('date customerName contact functionDate store staff managerName category subCategory functionType remarks repeatCount status storeId employeeId createdBy createdAt updatedAt lastStatusChangeDate statusChangedToday bookingDate rentoutDate returnDate cancelDate cancellationDate lossReason lossProductType lossSize lossColour lossSalesPrice lossSelectRemarks lossEnquiryTrailOption lossEnquiryRevisitDate notes attachment attachmentName statusHistory rentalStatus shoeStatus billedDate billReturnedDate invoiceNo shoeInvoiceNo')
             .lean();
 
         // Date Range Filter
@@ -589,11 +852,20 @@ export const getAllWalkinsPublic = async (req, res) => {
             filtered = filtered.filter(w => w.date >= startDate && w.date <= `${endDate}${endOfDaySuffix}`);
         }
 
+        const todayStr = getLocalDateStringIST(new Date());
+        const mappedFiltered = filtered.map(w => {
+            const lastChangeStr = getLocalDateStringIST(w.lastStatusChangeDate);
+            return {
+                ...w,
+                statusChangedToday: !!(lastChangeStr && lastChangeStr === todayStr)
+            };
+        });
+
         return res.status(200).json({
             success: true,
             message: 'All walk-ins retrieved successfully for external view',
-            count: filtered.length,
-            data: filtered
+            count: mappedFiltered.length,
+            data: mappedFiltered
         });
 
     } catch (error) {

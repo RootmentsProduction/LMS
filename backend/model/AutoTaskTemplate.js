@@ -26,6 +26,9 @@ const autoTaskTemplateSchema = new mongoose.Schema(
       default: 'daily',
     },
 
+    weekDays:  [{ type: String }],
+    monthDays: [{ type: Number }],
+
     startDate: { type: String, required: true },  // YYYY-MM-DD
     startTime: { type: String, default: '' },      // e.g. '09:00am'
     endDate:   { type: String, default: '' },      // YYYY-MM-DD — empty = no end

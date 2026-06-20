@@ -68,6 +68,16 @@ const ROLES = [
   { value: 'employee', label: 'Staff' }
 ];
 
+const WEEK_DAYS = [
+  { value: 'Monday', label: 'Monday' },
+  { value: 'Tuesday', label: 'Tuesday' },
+  { value: 'Wednesday', label: 'Wednesday' },
+  { value: 'Thursday', label: 'Thursday' },
+  { value: 'Friday', label: 'Friday' },
+  { value: 'Saturday', label: 'Saturday' },
+  { value: 'Sunday', label: 'Sunday' }
+];
+
 const CheckboxOption = (props) => (
   <components.Option {...props}>
     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%' }}>
@@ -198,10 +208,11 @@ const FileField = ({ file, onChange }) => (
   </label>
 );
 
-const DateInput = ({ value, onChange, required, placeholder }) => {
+const DateInput = ({ value, onChange, required, placeholder, disabled }) => {
   const inputRef = useRef(null);
 
   const handleContainerClick = () => {
+    if (disabled) return;
     if (inputRef.current) {
       try {
         inputRef.current.showPicker();
@@ -214,8 +225,8 @@ const DateInput = ({ value, onChange, required, placeholder }) => {
   return (
     <div 
       onClick={handleContainerClick}
-      className="custom-date-container"
-      style={{ position: 'relative', cursor: 'pointer', width: '100%' }}
+      className={`custom-date-container ${disabled ? 'custom-date-container--disabled' : ''}`}
+      style={{ position: 'relative', cursor: disabled ? 'not-allowed' : 'pointer', width: '100%' }}
     >
       <input
         ref={inputRef}
@@ -224,15 +235,21 @@ const DateInput = ({ value, onChange, required, placeholder }) => {
         onChange={(e) => onChange(e.target.value)}
         required={required}
         placeholder={placeholder}
+        disabled={disabled}
         className="premium-input"
-        style={{ paddingRight: '40px', cursor: 'pointer' }}
+        style={{ 
+          paddingRight: '40px', 
+          cursor: disabled ? 'not-allowed' : 'pointer',
+          opacity: disabled ? 0.6 : 1,
+          backgroundColor: disabled ? '#f3f4f6' : '#fff'
+        }}
       />
       <div style={{
         position: 'absolute',
         right: '12px',
         top: '50%',
         transform: 'translateY(-50%)',
-        color: '#6b7280',
+        color: disabled ? '#d1d5db' : '#6b7280',
         pointerEvents: 'none',
         display: 'flex',
         alignItems: 'center',
@@ -265,13 +282,45 @@ const AutoTask = () => {
   const [subCategory, setSubCategory] = useState('');
   const [file, setFile] = useState(null);
   const [description, setDescription] = useState('');
-  const [priority, setPriority] = useState('Normal');
+  const [priority, setPriority] = useState('Urgent');
 
   // Repeat Scheduling
   const [repeatType, setRepeatType] = useState('Daily');
   const [startDate, setStartDate] = useState(getCurrentDate());
   const [startTime, setStartTime] = useState('09:00am');
   const [endDate, setEndDate] = useState('');
+  const [weekDays, setWeekDays] = useState([]);
+  const [monthDays, setMonthDays] = useState([]);
+  const [repeatContinuously, setRepeatContinuously] = useState(true);
+  const [isWeeklyModalOpen, setIsWeeklyModalOpen] = useState(false);
+  const [isMonthlyModalOpen, setIsMonthlyModalOpen] = useState(false);
+
+  const getSummaryText = () => {
+    let text = '';
+    if (repeatType === 'Daily') {
+      text = `Repeats daily at ${startTime}`;
+    } else if (repeatType === 'Weekly') {
+      if (weekDays.length > 0) {
+        text = `Repeats weekly on ${weekDays.map(d => d.label).join(', ')} at ${startTime}`;
+      } else {
+        text = `Repeats weekly at ${startTime}`;
+      }
+    } else if (repeatType === 'Monthly') {
+      if (monthDays.length > 0) {
+        const sortedDays = [...monthDays].sort((a, b) => a - b);
+        text = `Repeats monthly on the ${sortedDays.join(', ')} at ${startTime}`;
+      } else {
+        text = `Repeats monthly at ${startTime}`;
+      }
+    }
+    
+    if (endDate) {
+      text += ` until ${formatDateStr(endDate)}`;
+    } else if (repeatContinuously) {
+      text += ' continuously';
+    }
+    return text;
+  };
 
   // Assignment states
   const [assignTo, setAssignTo] = useState('store'); // Default to store like mockup
@@ -408,6 +457,16 @@ const AutoTask = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
+    // Recurrence validation
+    if (repeatType === 'Weekly' && weekDays.length === 0) {
+      toast.error('Please select at least one weekday.');
+      return;
+    }
+    if (repeatType === 'Monthly' && monthDays.length === 0) {
+      toast.error('Please select at least one day of the month.');
+      return;
+    }
+
     // Client-side validation for assignment targets
     if (assignTo === 'store' && selectedStores.length === 0) {
       toast.error('Please select at least one store.');
@@ -444,6 +503,8 @@ const AutoTask = () => {
         description: description.trim(),
         priority,
         repeatType:  repeatType.toLowerCase(),
+        weekDays:    repeatType === 'Weekly' ? weekDays.map(d => d.value) : [],
+        monthDays:   repeatType === 'Monthly' ? monthDays : [],
         startDate,
         startTime,
         endDate:     endDate || '',
@@ -600,18 +661,22 @@ const AutoTask = () => {
 
             <hr className="auto-task-divider" />
 
-            {/* Row 3: Repeat Type, Start Date & Time, End Date & Time */}
+            {/* Row 3: Repeat Type, Repeat Continuously, and End Date & Time */}
             <div className="auto-task-grid-12">
               
               {/* Repeat Type Button Group */}
-              <div className="auto-task-field col-span-1 md:col-span-4" style={{}}>
+              <div className="auto-task-field col-span-1 md:col-span-4">
                 <label className="auto-task-label">Repeat Type<span className="auto-task-req">*</span></label>
                 <div className="repeat-type-group">
-                  {['Daily', 'Weekly', 'Monthly', 'Custom'].map((type) => (
+                  {['Daily', 'Weekly', 'Monthly'].map((type) => (
                     <button
                       key={type}
                       type="button"
-                      onClick={() => setRepeatType(type)}
+                      onClick={() => {
+                        setRepeatType(type);
+                        if (type === 'Weekly') setIsWeeklyModalOpen(true);
+                        if (type === 'Monthly') setIsMonthlyModalOpen(true);
+                      }}
                       className={`repeat-btn ${repeatType === type ? 'repeat-btn--active' : ''}`}
                     >
                       {type}
@@ -620,49 +685,143 @@ const AutoTask = () => {
                 </div>
               </div>
 
-              {/* Start Date & Time Row */}
-              <div className="auto-task-field col-span-1 md:col-span-4" style={{}}>
-                <label className="auto-task-label">Start Date & Time<span className="auto-task-req">*</span></label>
-                <div className="dateTime-row">
-                  <div className="dateTime-col">
+              {/* Repeat Continuously Toggle & End Date & Time */}
+              <div className="auto-task-field col-span-1 md:col-span-8">
+                <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', gap: '24px' }}>
+                  
+                  {/* Repeat Continuously Switch */}
+                  <div className="active-toggle-wrap" style={{ height: '40px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <span style={{ fontSize: '13px', fontWeight: 600, color: '#374151', whiteSpace: 'nowrap' }}>Repeat Continuously</span>
+                    <label className="active-switch-container">
+                      <input
+                        type="checkbox"
+                        checked={repeatContinuously}
+                        onChange={(e) => {
+                          const val = e.target.checked;
+                          setRepeatContinuously(val);
+                          if (val) {
+                            setEndDate('');
+                          }
+                        }}
+                        className="active-switch-input"
+                      />
+                      <span className="active-switch-slider"></span>
+                    </label>
+                  </div>
+
+                  {/* End Date Picker */}
+                  <div style={{ flex: '1 1 200px' }}>
+                    <label className="auto-task-label">End Date & Time</label>
                     <DateInput 
-                      value={startDate} 
-                      onChange={setStartDate} 
-                      required 
+                      value={endDate} 
+                      onChange={(val) => {
+                        setEndDate(val);
+                        if (val) {
+                          setRepeatContinuously(false);
+                        }
+                      }} 
+                      placeholder="DD/MM/YYYY"
+                      disabled={repeatContinuously}
                     />
                   </div>
-                  <div className="dateTime-col">
-                    <div style={{ position: 'relative' }}>
-                      <select 
-                        value={startTime} 
-                        onChange={(e) => setStartTime(e.target.value)} 
-                        required 
-                        className="premium-input"
-                        style={{ cursor: 'pointer', appearance: 'none', paddingRight: '28px' }}
-                      >
-                        {TIMES.map((t) => <option key={t} value={t}>{t}</option>)}
-                      </select>
-                      <div style={{ pointerEvents: 'none', position: 'absolute', top: 0, bottom: 0, right: 0, display: 'flex', alignItems: 'center', paddingRight: '12px', color: '#6b7280' }}>
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                          <polyline points="6 9 12 15 18 9" />
-                        </svg>
-                      </div>
-                    </div>
-                  </div>
+
                 </div>
               </div>
 
-              {/* End Date & Time */}
-              <div className="auto-task-field col-span-1 md:col-span-4" style={{}}>
-                <label className="auto-task-label">End Date & Time</label>
-                <DateInput 
-                  value={endDate} 
-                  onChange={setEndDate} 
-                  placeholder="DD/MM/YYYY"
-                />
-              </div>
-
             </div>
+
+            {/* Recurrence Selection Previews */}
+            {repeatType === 'Weekly' && (
+              <div className="auto-task-grid-12" style={{ marginTop: '16px', marginBottom: '16px' }}>
+                <div className="auto-task-field col-span-1 md:col-span-12">
+                  <div className="recurrence-summary-row" style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                      <span style={{ fontSize: '11px', fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Selected Days</span>
+                      <span style={{ fontSize: '14px', fontWeight: 700, color: '#111827', marginTop: '2px' }}>
+                        {weekDays.length > 0 ? weekDays.map(d => d.label).join(', ') : 'None selected'}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setIsWeeklyModalOpen(true)}
+                      style={{
+                        background: '#ffffff',
+                        border: '1px solid #e5e7eb',
+                        borderRadius: '50%',
+                        width: '32px',
+                        height: '32px',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: '#374151',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s ease',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = '#f9fafb';
+                        e.currentTarget.style.borderColor = '#d1d5db';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = '#ffffff';
+                        e.currentTarget.style.borderColor = '#e5e7eb';
+                      }}
+                      title="Edit Days"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                        <path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {repeatType === 'Monthly' && (
+              <div className="auto-task-grid-12" style={{ marginTop: '16px', marginBottom: '16px' }}>
+                <div className="auto-task-field col-span-1 md:col-span-12">
+                  <div className="recurrence-summary-row" style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                      <span style={{ fontSize: '11px', fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Selected Dates</span>
+                      <span style={{ fontSize: '14px', fontWeight: 700, color: '#111827', marginTop: '2px' }}>
+                        {monthDays.length > 0 ? [...monthDays].sort((a, b) => a - b).join(', ') : 'None selected'}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setIsMonthlyModalOpen(true)}
+                      style={{
+                        background: '#ffffff',
+                        border: '1px solid #e5e7eb',
+                        borderRadius: '50%',
+                        width: '32px',
+                        height: '32px',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: '#374151',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s ease',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = '#f9fafb';
+                        e.currentTarget.style.borderColor = '#d1d5db';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = '#ffffff';
+                        e.currentTarget.style.borderColor = '#e5e7eb';
+                      }}
+                      title="Edit Dates"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                        <path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Row 4: Assign to Type & Targets dropdown */}
             <div className="auto-task-grid-12" style={{ marginTop: '24px' }}>
@@ -845,10 +1004,10 @@ const AutoTask = () => {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', flex: 1 }}>
                 
                 {/* Summary Box */}
-                <div className="auto-task-summary-card">
+                <div className="auto-task-summary-card" style={{ maxWidth: '400px' }}>
                   <span className="summary-card-title">Auto Task Scheduled</span>
                   <span className="summary-card-text">
-                    {formatDateStr(startDate)} to {repeatType} at {startTime}
+                    {getSummaryText()}
                   </span>
                 </div>
 
@@ -864,33 +1023,119 @@ const AutoTask = () => {
                 </div>
               </div>
 
-              {/* Bottom Right: Active Toggle Switch */}
-              <div className="active-toggle-wrap">
-                <div style={{ textAlign: 'right' }}>
-                  <span style={{ fontSize: '13px', fontWeight: 700, color: '#111827', display: 'block' }}>Auto Task Schedule</span>
-                  <span style={{ fontSize: '11px', color: '#9ca3af', display: 'block', marginTop: '2px' }}>
-                    Create a recurring rule that keeps assigning this task until you pause it
-                  </span>
-                </div>
-
-                <label className="active-switch-container">
-                  <input
-                    type="checkbox"
-                    checked={isActive}
-                    onChange={(e) => setIsActive(e.target.checked)}
-                    className="active-switch-input"
-                  />
-                  <span className="active-switch-slider"></span>
-                  <span className="active-switch-label">Active</span>
-                </label>
-              </div>
-
             </div>
 
           </form>
 
         </div>
       </div>
+
+      {/* Weekly Modal */}
+      {isWeeklyModalOpen && (
+        <div className="recurrence-modal-overlay">
+          <div className="recurrence-modal-card">
+            <div className="recurrence-modal-header">
+              <h3>Select Week Days</h3>
+              <button 
+                type="button" 
+                className="recurrence-modal-close" 
+                onClick={() => setIsWeeklyModalOpen(false)}
+              >
+                &times;
+              </button>
+            </div>
+            <div className="recurrence-modal-body">
+              <Select
+                isMulti
+                closeMenuOnSelect={false}
+                hideSelectedOptions={false}
+                components={{ Option: CheckboxOption }}
+                options={WEEK_DAYS}
+                value={weekDays}
+                onChange={setWeekDays}
+                placeholder="Select Days"
+                styles={selectStyles}
+              />
+              {weekDays.length > 0 && (
+                <div className="badge-tags-container" style={{ marginTop: '16px' }}>
+                  {weekDays.map((day) => (
+                    <div key={day.value} className="badge-tag">
+                      {day.label}
+                      <button
+                        type="button"
+                        className="badge-tag-remove"
+                        onClick={() => setWeekDays(weekDays.filter(d => d.value !== day.value))}
+                      >
+                        &times;
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="recurrence-modal-footer">
+              <button 
+                type="button" 
+                className="save-auto-task-btn" 
+                onClick={() => setIsWeeklyModalOpen(false)}
+              >
+                Confirm Selection
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Monthly Modal */}
+      {isMonthlyModalOpen && (
+        <div className="recurrence-modal-overlay">
+          <div className="recurrence-modal-card" style={{ maxWidth: '420px' }}>
+            <div className="recurrence-modal-header">
+              <h3>Select Days of Month</h3>
+              <button 
+                type="button" 
+                className="recurrence-modal-close" 
+                onClick={() => setIsMonthlyModalOpen(false)}
+              >
+                &times;
+              </button>
+            </div>
+            <div className="recurrence-modal-body">
+              <div className="monthly-day-grid" style={{ justifyContent: 'center' }}>
+                {Array.from({ length: 31 }, (_, i) => i + 1).map((day) => {
+                  const isSelected = monthDays.includes(day);
+                  return (
+                    <button
+                      key={day}
+                      type="button"
+                      className={`monthly-day-btn ${isSelected ? 'monthly-day-btn--selected' : ''}`}
+                      onClick={() => {
+                        if (isSelected) {
+                          setMonthDays(monthDays.filter(d => d !== day));
+                        } else {
+                          setMonthDays([...monthDays, day]);
+                        }
+                      }}
+                    >
+                      {day}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="recurrence-modal-footer" style={{ marginTop: '24px' }}>
+              <button 
+                type="button" 
+                className="save-auto-task-btn" 
+                onClick={() => setIsMonthlyModalOpen(false)}
+              >
+                Confirm Selection
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };

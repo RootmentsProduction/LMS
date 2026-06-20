@@ -250,6 +250,8 @@ const DashboardOverview = ({ range = "7", customRange }) => {
       subtitle:
         range === "7"
           ? `This week to date · ${stats.totalBranches} stores`
+          : range === "month"
+          ? `This month to date · ${stats.totalBranches} stores`
           : range === "custom" && customRange?.startDate && customRange?.endDate
           ? `${formatDateLabel(customRange.startDate)} to ${formatDateLabel(customRange.endDate)} · ${stats.totalBranches} stores`
           : `Last ${range} days · ${stats.totalBranches} stores`,

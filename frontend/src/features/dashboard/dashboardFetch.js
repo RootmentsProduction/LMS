@@ -40,7 +40,13 @@ const getPresetDateRange = (range) => {
     return { startDate: toDateOnly(start), endDate: toDateOnly(today) };
   }
 
-  if (key === "14" || key === "45") {
+  if (key === "month") {
+    // Current month: 1st of month through today
+    const start = new Date(today.getFullYear(), today.getMonth(), 1);
+    return { startDate: toDateOnly(start), endDate: toDateOnly(today) };
+  }
+
+  if (key === "14" || key === "30" || key === "45") {
     const totalDays = Number(key);
     const start = new Date(today);
     start.setDate(today.getDate() - (totalDays - 1));
