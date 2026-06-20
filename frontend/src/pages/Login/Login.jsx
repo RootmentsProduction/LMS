@@ -165,7 +165,11 @@ const Login = () => {
       });
       const data = await res.json();
       if (res.ok) {
-        dispatch(setUser({ userId: data.user?.userId, role: data.user?.role }));
+        dispatch(setUser({
+          userId: data.user?.userId,
+          role: data.user?.role,
+          username: data.user?.username
+        }));
         localStorage.setItem('token', data.token);
         toast.success('Login successful');
         navigate('/');

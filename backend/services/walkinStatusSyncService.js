@@ -302,10 +302,11 @@ export const syncWalkinStatuses = async () => {
 
                 let walkins = [];
                 if (queryFilters.length > 0) {
-                    walkins = await Walkin.find({
-                        storeId: storeId,
-                        $or: queryFilters
-                    }).sort({ createdAt: -1 });
+                    const walkinQuery = { $or: queryFilters };
+                    if (locCode !== '555') {
+                        walkinQuery.storeId = storeId;
+                    }
+                    walkins = await Walkin.find(walkinQuery).sort({ createdAt: -1 });
                 }
 
                 // Group retrieved walkins by invoiceNo, shoeInvoiceNo, and unassigned lists by phone

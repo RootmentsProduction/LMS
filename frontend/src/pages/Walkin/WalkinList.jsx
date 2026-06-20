@@ -2842,8 +2842,8 @@ const WalkinList = () => {
                                             required
                                             value={formData.functionDate}
                                             onChange={handleInputChange}
-                                            disabled={isRestrictedEdit}
-                                            className={`w-full h-11 border border-gray-200 rounded-lg px-3.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 font-semibold ${isRestrictedEdit
+                                            disabled={isRestrictedEdit && formData.status !== 'New Walkin'}
+                                            className={`w-full h-11 border border-gray-200 rounded-lg px-3.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 font-semibold ${(isRestrictedEdit && formData.status !== 'New Walkin')
                                                 ? 'bg-gray-100 text-gray-500 cursor-not-allowed border-gray-200'
                                                 : 'bg-white text-gray-800 cursor-pointer placeholder-gray-400'
                                                 }`}

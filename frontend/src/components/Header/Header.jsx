@@ -132,8 +132,10 @@ const Header = () => {
                                 {initials}
                             </div>
                             {/* Name + role */}
-                            <div className="hidden md:flex flex-col items-start leading-tight">
-                                <span className="text-[13px] font-semibold text-gray-900">{displayName}</span>
+                            <div className="hidden md:flex flex-col items-start leading-tight" style={{ maxWidth: '130px', width: 'max-content' }}>
+                                <div className="header-marquee-container">
+                                    <span className="text-[13px] font-semibold text-gray-900 header-marquee-text">{displayName}</span>
+                                </div>
                                 <span className="text-[11px] text-gray-400">{roleLabel}</span>
                             </div>
                             {/* Chevron */}
@@ -158,16 +160,7 @@ const Header = () => {
                                         Profile
                                     </div>
                                 </Link>
-                                {(user?.role === 'super_admin' || user?.role === 'admin') && (
-                                    <Link to="/settings" onClick={() => setDropOpen(false)}>
-                                        <div className="px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2">
-                                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                                <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-                                            </svg>
-                                            Settings
-                                        </div>
-                                    </Link>
-                                )}
+
                                 <div className="border-t border-gray-100" />
                                 <button
                                     onClick={() => { setDropOpen(false); setShowLogout(true); }}
@@ -188,6 +181,25 @@ const Header = () => {
                 @keyframes headerDropIn {
                     from { opacity: 0; transform: translateY(-6px) scale(0.97); }
                     to   { opacity: 1; transform: translateY(0) scale(1); }
+                }
+                .header-marquee-container {
+                    container-type: inline-size;
+                    overflow: hidden;
+                    white-space: nowrap;
+                    display: block;
+                    width: 100%;
+                }
+                .header-marquee-text {
+                    display: inline-block;
+                    min-width: 100%;
+                    animation: header-marquee-scroll 6s linear infinite;
+                }
+                .header-marquee-container:hover .header-marquee-text {
+                    animation-play-state: paused;
+                }
+                @keyframes header-marquee-scroll {
+                    0%, 15% { transform: translateX(0); }
+                    85%, 100% { transform: translateX(min(0px, calc(-100% + 100cqw))); }
                 }
             `}</style>
 

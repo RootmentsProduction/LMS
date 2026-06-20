@@ -216,6 +216,7 @@ function App() {
             dispatch(setUser({
               userId: request.user.userId,
               role: request.user.role,
+              username: request.user.username,
             }));
           } else {
             console.error('No user data in token verification response');
