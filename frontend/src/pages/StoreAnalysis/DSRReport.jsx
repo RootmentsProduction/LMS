@@ -897,16 +897,28 @@ const DSRReport = () => {
 
     const tryMatch = (name) => {
       if (!name) return null;
+      const dispName = displayBranchName(name);
       const snorm = name.replace(/[.\-]/g, '-');
       const normKey = normalizeForMatch(name);
+
+      const keysToTry = Array.from(new Set([name, dispName, snorm, normKey].filter(Boolean)));
+      for (const k of keysToTry) {
+        if (storeWeekRanges[k]) {
+          const storeVal = storeWeekRanges[k];
+          if (storeVal[monthName] && (storeVal[monthName][1] || storeVal[monthName][2] || storeVal[monthName][3] || storeVal[monthName][4])) {
+            return storeVal[monthName];
+          }
+          if (storeVal[1] || storeVal[2] || storeVal[3] || storeVal[4]) return storeVal;
+        }
+      }
+
       const matchKey = Object.keys(storeWeekRanges).find(
         k => k === name || k === snorm || (normKey && normalizeForMatch(k) === normKey)
       );
       if (matchKey && storeWeekRanges[matchKey]) {
         const storeVal = storeWeekRanges[matchKey];
-        if (storeVal[monthName]) {
-          const mVal = storeVal[monthName];
-          if (mVal[1] || mVal[2] || mVal[3] || mVal[4]) return mVal;
+        if (storeVal[monthName] && (storeVal[monthName][1] || storeVal[monthName][2] || storeVal[monthName][3] || storeVal[monthName][4])) {
+          return storeVal[monthName];
         }
         if (storeVal[1] || storeVal[2] || storeVal[3] || storeVal[4]) return storeVal;
       }
@@ -916,17 +928,7 @@ const DSRReport = () => {
     const exactMatch = tryMatch(storeName);
     const allMatch = tryMatch("All");
 
-    if (exactMatch && storeName !== "All") {
-      if (allMatch) {
-        const exact3 = String(exactMatch[3] || "");
-        const all3 = String(allMatch[3] || "");
-        if (exact3.includes("15 - 21") && !all3.includes("15 - 21")) {
-          return allMatch;
-        }
-      }
-      return exactMatch;
-    }
-
+    if (exactMatch && storeName !== "All") return exactMatch;
     if (allMatch) return allMatch;
     if (exactMatch) return exactMatch;
 
@@ -935,20 +937,48 @@ const DSRReport = () => {
 
   const getStoreEmployeeTargets = (storeName) => {
     if (!storeName || storeName === "All") return [];
+    if (employeeTargets[storeName] && employeeTargets[storeName].length > 0) return employeeTargets[storeName];
+    const dispName = displayBranchName(storeName);
+    if (dispName && employeeTargets[dispName] && employeeTargets[dispName].length > 0) return employeeTargets[dispName];
     const snorm = storeName.replace(/[.\-]/g, '-');
-    const matchKey = Object.keys(employeeTargets).find(
-      k => k === storeName || k === snorm || normalizeForMatch(k) === normalizeForMatch(storeName)
+    if (snorm && employeeTargets[snorm] && employeeTargets[snorm].length > 0) return employeeTargets[snorm];
+    const normKey = normalizeForMatch(storeName);
+    if (normKey && employeeTargets[normKey] && employeeTargets[normKey].length > 0) return employeeTargets[normKey];
+
+    const matchingKeys = Object.keys(employeeTargets).filter(
+      k => k === storeName || k === snorm || (normKey && normalizeForMatch(k) === normKey)
     );
-    return matchKey ? employeeTargets[matchKey] || [] : [];
+    if (matchingKeys.length === 0) return [];
+    const keyWithEmps = matchingKeys.find(k => employeeTargets[k] && employeeTargets[k].length > 0);
+    return keyWithEmps ? employeeTargets[keyWithEmps] : employeeTargets[matchingKeys[0]] || [];
   };
 
   const getStoreWeeklyTargets = (storeName) => {
     if (!storeName) return {};
+    // 1. Exact match
+    if (weeklyTargets[storeName]) return weeklyTargets[storeName];
+    // 2. Display branch name match
+    const dispName = displayBranchName(storeName);
+    if (dispName && weeklyTargets[dispName]) return weeklyTargets[dispName];
+    // 3. Dot-to-dash normalized match
     const snorm = storeName.replace(/[.\-]/g, '-');
-    const matchKey = Object.keys(weeklyTargets).find(
-      k => k === storeName || k === snorm || normalizeForMatch(k) === normalizeForMatch(storeName)
+    if (snorm && weeklyTargets[snorm]) return weeklyTargets[snorm];
+    // 4. Normalized key match
+    const normKey = normalizeForMatch(storeName);
+    if (normKey && weeklyTargets[normKey]) return weeklyTargets[normKey];
+
+    // 5. Fallback search prioritizing entries with non-zero weekly targets
+    const matchingKeys = Object.keys(weeklyTargets).filter(
+      k => k === storeName || k === snorm || (normKey && normalizeForMatch(k) === normKey)
     );
-    return matchKey ? weeklyTargets[matchKey] || {} : {};
+    if (matchingKeys.length === 0) return {};
+
+    const keyWithTargets = matchingKeys.find(k => {
+      const obj = weeklyTargets[k];
+      return obj && [1, 2, 3, 4].some(w => Number(obj[w] || 0) > 0);
+    });
+
+    return keyWithTargets ? weeklyTargets[keyWithTargets] : weeklyTargets[matchingKeys[0]] || {};
   };
 
   const getCurrentWeekId = (storeName = "All", targetMonthName = CURRENT_MONTH_LONG) => {
@@ -1304,7 +1334,10 @@ const DSRReport = () => {
 
       const storeNorm = store.replace(/[.\-]/g, '-');
       const normKey = normalizeForMatch(store);
-      const allKeysToUpdate = Array.from(new Set([store, storeNorm, normKey].filter(Boolean)));
+      const dispName = displayBranchName(store);
+      const matchingBranch = branches.find(b => displayBranchName(b.workingBranch) === store || b.workingBranch === store || normalizeForMatch(b.workingBranch) === normKey);
+      const branchWorking = matchingBranch ? matchingBranch.workingBranch : null;
+      const allKeysToUpdate = Array.from(new Set([store, dispName, branchWorking, storeNorm, normKey].filter(Boolean)));
       
       if (targetAssignMode === "Staff") {
         if (!modalStaff) {
@@ -1726,11 +1759,17 @@ const DSRReport = () => {
         let w3 = autoWeeks[3];
         let w4 = autoWeeks[4];
         
-        data.forEach((doc) => {
+        // Sort data by updatedAt ascending so newer updated documents overwrite older ones for all aliases
+        const sortedData = [...data].sort((a, b) => new Date(a.updatedAt || a.createdAt || 0) - new Date(b.updatedAt || b.createdAt || 0));
+
+        sortedData.forEach((doc) => {
           const store = doc.storeName;
-          // Normalize store name: treat dots and dashes as the same separator
           const storeNorm = store.replace(/[.\-]/g, '-');
           const normKey = normalizeForMatch(store);
+          const dispName = displayBranchName(store);
+          const matchingBranch = branches.find(b => displayBranchName(b.workingBranch) === store || b.workingBranch === store || normalizeForMatch(b.workingBranch) === normKey);
+          const branchWorking = matchingBranch ? matchingBranch.workingBranch : null;
+          const allStoreAliases = Array.from(new Set([store, dispName, branchWorking, storeNorm, normKey].filter(Boolean)));
 
           if (store === "All") {
             w1 = (doc.weekRanges?.[1] && doc.weekRanges?.[1] !== "Select Days") ? doc.weekRanges[1] : autoWeeks[1];
@@ -1758,22 +1797,19 @@ const DSRReport = () => {
             }
           };
 
-          // Store under exact DB key AND normalized key (dot→dash)
-          targetsMap[store] = targetEntry;
-          rangesMap[store] = rangeEntry;
-
-          if (storeNorm !== store) {
-            targetsMap[storeNorm] = targetEntry;
-            rangesMap[storeNorm] = rangeEntry;
-          }
-          if (normKey) {
-            targetsMap[normKey] = targetEntry;
-            rangesMap[normKey] = rangeEntry;
-          }
-
-          empTargetsMap[store] = doc.employeeTargets || [];
-          if (storeNorm !== store) empTargetsMap[storeNorm] = doc.employeeTargets || [];
-          if (normKey) empTargetsMap[normKey] = doc.employeeTargets || [];
+          // Populate across all store name aliases
+          allStoreAliases.forEach(aliasKey => {
+            // Only set or override if doc has non-zero targets or targetsMap[aliasKey] doesn't exist yet
+            const existing = targetsMap[aliasKey];
+            const hasTargets = [1, 2, 3, 4].some(w => Number(targetEntry[w] || 0) > 0);
+            if (!existing || hasTargets) {
+              targetsMap[aliasKey] = targetEntry;
+              rangesMap[aliasKey] = rangeEntry;
+            }
+            if (!empTargetsMap[aliasKey] || (doc.employeeTargets && doc.employeeTargets.length > 0)) {
+              empTargetsMap[aliasKey] = doc.employeeTargets || [];
+            }
+          });
         });
         
         setWeeklyTargets(targetsMap);

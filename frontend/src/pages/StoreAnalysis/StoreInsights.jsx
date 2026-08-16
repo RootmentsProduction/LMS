@@ -1775,11 +1775,32 @@ const StoreInsights = () => {
     if (!storeName) return {};
     const normKey = normalizeForMatch(storeName);
     const snorm = storeName.replace(/[.\-]/g, '-');
-    const matchKey = Object.keys(weeklyTargets).find(
+    const dispName = displayBranchName(storeName);
+
+    const keysToTry = Array.from(new Set([storeName, dispName, snorm, normKey].filter(Boolean)));
+    for (const k of keysToTry) {
+      const monthObj = weeklyTargets[k];
+      if (monthObj && monthObj[targetMonthName] && [1, 2, 3, 4].some(w => Number(monthObj[targetMonthName][w] || 0) > 0)) {
+        return monthObj[targetMonthName];
+      }
+      if (monthObj && (monthObj[1] || monthObj[2] || monthObj[3] || monthObj[4])) {
+        return monthObj;
+      }
+    }
+
+    const matchingKeys = Object.keys(weeklyTargets).filter(
       k => k === storeName || k === snorm || (normKey && normalizeForMatch(k) === normKey)
     );
-    if (!matchKey) return {};
-    const monthObj = weeklyTargets[matchKey];
+    if (matchingKeys.length === 0) return {};
+
+    const keyWithTargets = matchingKeys.find(k => {
+      const mObj = weeklyTargets[k];
+      const targetObj = (mObj && mObj[targetMonthName]) ? mObj[targetMonthName] : mObj;
+      return targetObj && [1, 2, 3, 4].some(w => Number(targetObj[w] || 0) > 0);
+    });
+
+    const finalKey = keyWithTargets || matchingKeys[0];
+    const monthObj = weeklyTargets[finalKey];
     if (monthObj && monthObj[targetMonthName]) return monthObj[targetMonthName];
     return monthObj || {};
   };
@@ -2135,44 +2156,35 @@ const StoreInsights = () => {
           const targetsMap = {};
           const rangesMap = {};
           const empTargetsMap = {};
-          list.forEach((t) => {
+          const sortedList = [...list].sort((a, b) => new Date(a.updatedAt || a.createdAt || 0) - new Date(b.updatedAt || b.createdAt || 0));
+
+          sortedList.forEach((t) => {
             const store = t.storeName;
             const storeNorm = store.replace(/[.\-]/g, '-');
             const normKey = normalizeForMatch(store);
+            const dispName = displayBranchName(store);
+            const matchingBranch = branches.find(b => displayBranchName(b.workingBranch) === store || b.workingBranch === store || normalizeForMatch(b.workingBranch) === normKey);
+            const branchWorking = matchingBranch ? matchingBranch.workingBranch : null;
+            const allStoreAliases = Array.from(new Set([store, dispName, branchWorking, storeNorm, normKey].filter(Boolean)));
             const month = t.month;
-            if (!targetsMap[store]) targetsMap[store] = {};
-            if (!rangesMap[store]) rangesMap[store] = {};
-            targetsMap[store][month] = t.weeklyTargets || {};
-            rangesMap[store][month] = t.weekRanges || {};
-            rangesMap[store] = { ...rangesMap[store], ...(t.weekRanges || {}) };
 
-            if (storeNorm !== store) {
-              if (!targetsMap[storeNorm]) targetsMap[storeNorm] = {};
-              if (!rangesMap[storeNorm]) rangesMap[storeNorm] = {};
-              targetsMap[storeNorm][month] = t.weeklyTargets || {};
-              rangesMap[storeNorm][month] = t.weekRanges || {};
-              rangesMap[storeNorm] = { ...rangesMap[storeNorm], ...(t.weekRanges || {}) };
-            }
-            if (normKey) {
-              if (!targetsMap[normKey]) targetsMap[normKey] = {};
-              if (!rangesMap[normKey]) rangesMap[normKey] = {};
-              targetsMap[normKey][month] = t.weeklyTargets || {};
-              rangesMap[normKey][month] = t.weekRanges || {};
-              rangesMap[normKey] = { ...rangesMap[normKey], ...(t.weekRanges || {}) };
-            }
+            allStoreAliases.forEach(aliasKey => {
+              if (!targetsMap[aliasKey]) targetsMap[aliasKey] = {};
+              if (!rangesMap[aliasKey]) rangesMap[aliasKey] = {};
+              
+              const existingTarget = targetsMap[aliasKey][month];
+              const hasNewTargets = [1, 2, 3, 4].some(w => Number(t.weeklyTargets?.[w] || 0) > 0);
+              if (!existingTarget || hasNewTargets) {
+                targetsMap[aliasKey][month] = t.weeklyTargets || {};
+                rangesMap[aliasKey][month] = t.weekRanges || {};
+                rangesMap[aliasKey] = { ...rangesMap[aliasKey], ...(t.weekRanges || {}) };
+              }
 
-            if (t.employeeTargets && t.employeeTargets.length > 0) {
-              if (!empTargetsMap[store]) empTargetsMap[store] = {};
-              empTargetsMap[store][month] = t.employeeTargets;
-              if (storeNorm !== store) {
-                if (!empTargetsMap[storeNorm]) empTargetsMap[storeNorm] = {};
-                empTargetsMap[storeNorm][month] = t.employeeTargets;
+              if (t.employeeTargets && t.employeeTargets.length > 0) {
+                if (!empTargetsMap[aliasKey]) empTargetsMap[aliasKey] = {};
+                empTargetsMap[aliasKey][month] = t.employeeTargets;
               }
-              if (normKey) {
-                if (!empTargetsMap[normKey]) empTargetsMap[normKey] = {};
-                empTargetsMap[normKey][month] = t.employeeTargets;
-              }
-            }
+            });
           });
           setWeeklyTargets(targetsMap);
           setStoreWeekRanges(rangesMap);

@@ -449,7 +449,17 @@ router.post('/', MiddilWare, async (req, res) => {
       return res.status(400).json({ success: false, message: "storeName and month are required" });
     }
 
-    const filter = { storeName, month, year: Number(year) || 2026 };
+    const targetYear = Number(year) || 2026;
+    const normKey = String(storeName).toLowerCase().replace(/[^a-z0-9]/g, "");
+
+    // Find all existing docs for this month & year that match storeName (exact or normalized)
+    const existingDocs = await StoreTarget.find({ month, year: targetYear }).lean();
+    const matchingDocs = existingDocs.filter(d => {
+      if (d.storeName === storeName) return true;
+      if (normKey && d.storeName.toLowerCase().replace(/[^a-z0-9]/g, "") === normKey) return true;
+      return false;
+    });
+
     const update = {
       weekRanges,
       weeklyTargets
@@ -458,15 +468,24 @@ router.post('/', MiddilWare, async (req, res) => {
       update.employeeTargets = employeeTargets;
     }
 
-    const doc = await StoreTarget.findOneAndUpdate(filter, update, {
-      new: true,
-      upsert: true,
-      setDefaultsOnInsert: true
-    });
+    let doc = null;
+    if (matchingDocs.length > 0) {
+      // Update all matching docs to keep alias documents in sync
+      const docIds = matchingDocs.map(d => d._id);
+      await StoreTarget.updateMany({ _id: { $in: docIds } }, { $set: update });
+      doc = await StoreTarget.findById(matchingDocs[0]._id).lean();
+    } else {
+      const filter = { storeName, month, year: targetYear };
+      doc = await StoreTarget.findOneAndUpdate(filter, update, {
+        new: true,
+        upsert: true,
+        setDefaultsOnInsert: true
+      }).lean();
+    }
 
     if (storeName === 'All' && weekRanges) {
       await StoreTarget.updateMany(
-        { month, year: Number(year) || 2026 },
+        { month, year: targetYear },
         { $set: { weekRanges } }
       );
     }
