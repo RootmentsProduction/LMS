@@ -762,7 +762,14 @@ const HomeBar = () => {
             if (!targetsMap[store]) targetsMap[store] = {};
             if (!rangesMap[store]) rangesMap[store] = {};
             if (!empTargetsMap[store]) empTargetsMap[store] = {};
-            targetsMap[store][month] = t.weeklyTargets || {};
+
+            const existingTgt = targetsMap[store][month] || {};
+            targetsMap[store][month] = {
+              1: Number(t.weeklyTargets?.[1]) > 0 ? t.weeklyTargets[1] : (existingTgt[1] || 0),
+              2: Number(t.weeklyTargets?.[2]) > 0 ? t.weeklyTargets[2] : (existingTgt[2] || 0),
+              3: Number(t.weeklyTargets?.[3]) > 0 ? t.weeklyTargets[3] : (existingTgt[3] || 0),
+              4: Number(t.weeklyTargets?.[4]) > 0 ? t.weeklyTargets[4] : (existingTgt[4] || 0),
+            };
             rangesMap[store][month] = t.weekRanges || {};
             empTargetsMap[store][month] = t.employeeTargets || [];
           });

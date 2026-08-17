@@ -436,7 +436,35 @@ router.get('/', MiddilWare, async (req, res) => {
   }
 });
 
-// POST save/update a store target config
+function canonStoreKey(raw) {
+  if (!raw) return "";
+  if (raw === "All") return "All";
+  let s = String(raw).toLowerCase().trim();
+  let isZ = s.startsWith('z') || s.startsWith('zorucci');
+  let clean = s.replace(/^(sg|g|z)[\.\-\s]*/i, '')
+               .replace(/^suitor\s*guy\s*/i, '')
+               .replace(/^zorucci\s*/i, '')
+               .replace(/\d+$/g, '')
+               .replace(/[^a-z0-9]/g, '');
+  if (clean.includes('edappally') || clean.includes('edapally') || clean.includes('edapaly')) clean = 'edappally';
+  else if (clean.includes('edappal') || clean.includes('edapal')) clean = 'edappal';
+  else if (clean.includes('perinthalmanna') || clean.includes('perinthalmana')) clean = 'perinthalmanna';
+  else if (clean.includes('kottakkal') || clean.includes('kottakal')) clean = 'kottakkal';
+  else if (clean.includes('kalpetta') || clean.includes('kalpeta')) clean = 'kalpetta';
+  else if (clean.includes('manjeri') || clean.includes('manjery')) clean = 'manjeri';
+  else if (clean.includes('vadakara') || clean.includes('vatakara')) clean = 'vadakara';
+  else if (clean.includes('calicut') || clean.includes('kozhikode')) clean = 'calicut';
+  else if (clean.includes('trivandrum') || clean.includes('thiruvananthapuram')) clean = 'trivandrum';
+  else if (clean.includes('mgroad') || clean.includes('mg_road')) clean = 'mgroad';
+  return (isZ ? 'z_' : 'sg_') + clean;
+}
+
+function staffCanon(name) {
+  if (!name) return "";
+  return String(name).toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+// POST save/update a store target config with week-preserving merge
 router.post('/', MiddilWare, async (req, res) => {
   try {
     const userRole = req.admin?.role;
@@ -450,22 +478,97 @@ router.post('/', MiddilWare, async (req, res) => {
     }
 
     const targetYear = Number(year) || 2026;
-    const normKey = String(storeName).toLowerCase().replace(/[^a-z0-9]/g, "");
+    const cKey = canonStoreKey(storeName);
 
-    // Find all existing docs for this month & year that match storeName (exact or normalized)
+    // Find all existing docs for this month & year that match storeName (exact or canonical)
     const existingDocs = await StoreTarget.find({ month, year: targetYear }).lean();
     const matchingDocs = existingDocs.filter(d => {
       if (d.storeName === storeName) return true;
-      if (normKey && d.storeName.toLowerCase().replace(/[^a-z0-9]/g, "") === normKey) return true;
+      if (cKey && cKey !== "All" && canonStoreKey(d.storeName) === cKey) return true;
       return false;
     });
 
-    const update = {
-      weekRanges,
-      weeklyTargets
-    };
+    // Merge weeklyTargets: preserve existing non-zero week targets unless non-zero provided
+    const mergedWeeklyTargets = { 1: 0, 2: 0, 3: 0, 4: 0 };
+    const mergedWeekRanges = { 1: "Select Days", 2: "Select Days", 3: "Select Days", 4: "Select Days" };
+    
+    // 1. Populate from existing matching docs
+    matchingDocs.forEach(d => {
+      for (const w of [1, 2, 3, 4]) {
+        const v = Number(d.weeklyTargets?.[w] || 0);
+        if (v > 0) mergedWeeklyTargets[w] = v;
+        const r = d.weekRanges?.[w];
+        if (r && r !== "Select Days") mergedWeekRanges[w] = r;
+      }
+    });
+
+    // 2. Apply incoming weeklyTargets & weekRanges
+    if (weeklyTargets) {
+      for (const w of [1, 2, 3, 4]) {
+        const v = Number(weeklyTargets[w] || 0);
+        if (v > 0) {
+          mergedWeeklyTargets[w] = v;
+        } else if (weeklyTargets[w] !== undefined && matchingDocs.length === 0) {
+          mergedWeeklyTargets[w] = 0;
+        }
+      }
+    }
+    if (weekRanges) {
+      for (const w of [1, 2, 3, 4]) {
+        const r = weekRanges[w];
+        if (r && r !== "Select Days") mergedWeekRanges[w] = r;
+      }
+    }
+
+    // 3. Merge employeeTargets if provided
+    let mergedEmployeeTargets = undefined;
     if (employeeTargets !== undefined) {
-      update.employeeTargets = employeeTargets;
+      const staffMap = new Map();
+      matchingDocs.forEach(d => {
+        (d.employeeTargets || []).forEach(emp => {
+          const sKey = staffCanon(emp.staffName);
+          if (!sKey) return;
+          if (!staffMap.has(sKey)) {
+            staffMap.set(sKey, {
+              staffName: emp.staffName,
+              weeklyTargets: { 1: 0, 2: 0, 3: 0, 4: 0 }
+            });
+          }
+          const cur = staffMap.get(sKey);
+          for (const w of [1, 2, 3, 4]) {
+            const v = Number(emp.weeklyTargets?.[w] || 0);
+            if (v > 0) cur.weeklyTargets[w] = v;
+          }
+        });
+      });
+
+      (employeeTargets || []).forEach(emp => {
+        const sKey = staffCanon(emp.staffName);
+        if (!sKey) return;
+        if (!staffMap.has(sKey)) {
+          staffMap.set(sKey, {
+            staffName: emp.staffName,
+            weeklyTargets: { 1: 0, 2: 0, 3: 0, 4: 0 }
+          });
+        }
+        const cur = staffMap.get(sKey);
+        for (const w of [1, 2, 3, 4]) {
+          const v = Number(emp.weeklyTargets?.[w] || 0);
+          if (v > 0) {
+            cur.weeklyTargets[w] = v;
+          }
+        }
+      });
+
+      mergedEmployeeTargets = Array.from(staffMap.values());
+    }
+
+    const update = {
+      weekRanges: mergedWeekRanges,
+      weeklyTargets: mergedWeeklyTargets
+    };
+    if (mergedEmployeeTargets !== undefined) {
+      update.employeeTargets = mergedEmployeeTargets;
     }
 
     let doc = null;
@@ -486,7 +589,7 @@ router.post('/', MiddilWare, async (req, res) => {
     if (storeName === 'All' && weekRanges) {
       await StoreTarget.updateMany(
         { month, year: targetYear },
-        { $set: { weekRanges } }
+        { $set: { weekRanges: mergedWeekRanges } }
       );
     }
 

@@ -2172,17 +2172,47 @@ const StoreInsights = () => {
               if (!targetsMap[aliasKey]) targetsMap[aliasKey] = {};
               if (!rangesMap[aliasKey]) rangesMap[aliasKey] = {};
               
-              const existingTarget = targetsMap[aliasKey][month];
-              const hasNewTargets = [1, 2, 3, 4].some(w => Number(t.weeklyTargets?.[w] || 0) > 0);
-              if (!existingTarget || hasNewTargets) {
-                targetsMap[aliasKey][month] = t.weeklyTargets || {};
-                rangesMap[aliasKey][month] = t.weekRanges || {};
-                rangesMap[aliasKey] = { ...rangesMap[aliasKey], ...(t.weekRanges || {}) };
-              }
+              const existingTarget = targetsMap[aliasKey][month] || {};
+              targetsMap[aliasKey][month] = {
+                1: Number(t.weeklyTargets?.[1]) > 0 ? t.weeklyTargets[1] : (existingTarget[1] || 0),
+                2: Number(t.weeklyTargets?.[2]) > 0 ? t.weeklyTargets[2] : (existingTarget[2] || 0),
+                3: Number(t.weeklyTargets?.[3]) > 0 ? t.weeklyTargets[3] : (existingTarget[3] || 0),
+                4: Number(t.weeklyTargets?.[4]) > 0 ? t.weeklyTargets[4] : (existingTarget[4] || 0),
+              };
+
+              const existingRanges = rangesMap[aliasKey][month] || {};
+              const mergedRanges = {
+                1: (t.weekRanges?.[1] && t.weekRanges?.[1] !== "Select Days") ? t.weekRanges[1] : (existingRanges[1] || "Select Days"),
+                2: (t.weekRanges?.[2] && t.weekRanges?.[2] !== "Select Days") ? t.weekRanges[2] : (existingRanges[2] || "Select Days"),
+                3: (t.weekRanges?.[3] && t.weekRanges?.[3] !== "Select Days") ? t.weekRanges[3] : (existingRanges[3] || "Select Days"),
+                4: (t.weekRanges?.[4] && t.weekRanges?.[4] !== "Select Days") ? t.weekRanges[4] : (existingRanges[4] || "Select Days"),
+              };
+              rangesMap[aliasKey][month] = mergedRanges;
+              rangesMap[aliasKey] = { ...rangesMap[aliasKey], ...mergedRanges };
 
               if (t.employeeTargets && t.employeeTargets.length > 0) {
                 if (!empTargetsMap[aliasKey]) empTargetsMap[aliasKey] = {};
-                empTargetsMap[aliasKey][month] = t.employeeTargets;
+                const existingStaff = empTargetsMap[aliasKey][month] ? [...empTargetsMap[aliasKey][month]] : [];
+                t.employeeTargets.forEach(emp => {
+                  const sName = emp.staffName;
+                  const idx = existingStaff.findIndex(e => e.staffName === sName || normalizeForMatch(e.staffName) === normalizeForMatch(sName));
+                  if (idx >= 0) {
+                    const prevEmp = existingStaff[idx];
+                    existingStaff[idx] = {
+                      ...prevEmp,
+                      staffName: sName,
+                      weeklyTargets: {
+                        1: Number(emp.weeklyTargets?.[1]) > 0 ? emp.weeklyTargets[1] : (prevEmp.weeklyTargets?.[1] || 0),
+                        2: Number(emp.weeklyTargets?.[2]) > 0 ? emp.weeklyTargets[2] : (prevEmp.weeklyTargets?.[2] || 0),
+                        3: Number(emp.weeklyTargets?.[3]) > 0 ? emp.weeklyTargets[3] : (prevEmp.weeklyTargets?.[3] || 0),
+                        4: Number(emp.weeklyTargets?.[4]) > 0 ? emp.weeklyTargets[4] : (prevEmp.weeklyTargets?.[4] || 0),
+                      }
+                    };
+                  } else {
+                    existingStaff.push(emp);
+                  }
+                });
+                empTargetsMap[aliasKey][month] = existingStaff;
               }
             });
           });

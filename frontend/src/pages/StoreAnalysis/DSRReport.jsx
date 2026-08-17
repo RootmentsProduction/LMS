@@ -1799,15 +1799,51 @@ const DSRReport = () => {
 
           // Populate across all store name aliases
           allStoreAliases.forEach(aliasKey => {
-            // Only set or override if doc has non-zero targets or targetsMap[aliasKey] doesn't exist yet
-            const existing = targetsMap[aliasKey];
-            const hasTargets = [1, 2, 3, 4].some(w => Number(targetEntry[w] || 0) > 0);
-            if (!existing || hasTargets) {
-              targetsMap[aliasKey] = targetEntry;
-              rangesMap[aliasKey] = rangeEntry;
-            }
-            if (!empTargetsMap[aliasKey] || (doc.employeeTargets && doc.employeeTargets.length > 0)) {
-              empTargetsMap[aliasKey] = doc.employeeTargets || [];
+            const existingTgt = targetsMap[aliasKey] || {};
+            targetsMap[aliasKey] = {
+              1: Number(targetEntry[1]) > 0 ? targetEntry[1] : (existingTgt[1] || 0),
+              2: Number(targetEntry[2]) > 0 ? targetEntry[2] : (existingTgt[2] || 0),
+              3: Number(targetEntry[3]) > 0 ? targetEntry[3] : (existingTgt[3] || 0),
+              4: Number(targetEntry[4]) > 0 ? targetEntry[4] : (existingTgt[4] || 0),
+            };
+
+            const existingRng = rangesMap[aliasKey] || {};
+            rangesMap[aliasKey] = {
+              1: (rangeEntry[1] && rangeEntry[1] !== "Select Days") ? rangeEntry[1] : (existingRng[1] || autoWeeks[1]),
+              2: (rangeEntry[2] && rangeEntry[2] !== "Select Days") ? rangeEntry[2] : (existingRng[2] || autoWeeks[2]),
+              3: (rangeEntry[3] && rangeEntry[3] !== "Select Days") ? rangeEntry[3] : (existingRng[3] || autoWeeks[3]),
+              4: (rangeEntry[4] && rangeEntry[4] !== "Select Days") ? rangeEntry[4] : (existingRng[4] || autoWeeks[4]),
+              [targetMonth]: {
+                1: (rangeEntry[1] && rangeEntry[1] !== "Select Days") ? rangeEntry[1] : (existingRng[1] || autoWeeks[1]),
+                2: (rangeEntry[2] && rangeEntry[2] !== "Select Days") ? rangeEntry[2] : (existingRng[2] || autoWeeks[2]),
+                3: (rangeEntry[3] && rangeEntry[3] !== "Select Days") ? rangeEntry[3] : (existingRng[3] || autoWeeks[3]),
+                4: (rangeEntry[4] && rangeEntry[4] !== "Select Days") ? rangeEntry[4] : (existingRng[4] || autoWeeks[4]),
+              }
+            };
+
+            // Merge employee targets per staff name
+            if (doc.employeeTargets && doc.employeeTargets.length > 0) {
+              const existingStaff = empTargetsMap[aliasKey] ? [...empTargetsMap[aliasKey]] : [];
+              doc.employeeTargets.forEach(emp => {
+                const sName = emp.staffName;
+                const idx = existingStaff.findIndex(e => e.staffName === sName || normalizeForMatch(e.staffName) === normalizeForMatch(sName));
+                if (idx >= 0) {
+                  const prevEmp = existingStaff[idx];
+                  existingStaff[idx] = {
+                    ...prevEmp,
+                    staffName: sName,
+                    weeklyTargets: {
+                      1: Number(emp.weeklyTargets?.[1]) > 0 ? emp.weeklyTargets[1] : (prevEmp.weeklyTargets?.[1] || 0),
+                      2: Number(emp.weeklyTargets?.[2]) > 0 ? emp.weeklyTargets[2] : (prevEmp.weeklyTargets?.[2] || 0),
+                      3: Number(emp.weeklyTargets?.[3]) > 0 ? emp.weeklyTargets[3] : (prevEmp.weeklyTargets?.[3] || 0),
+                      4: Number(emp.weeklyTargets?.[4]) > 0 ? emp.weeklyTargets[4] : (prevEmp.weeklyTargets?.[4] || 0),
+                    }
+                  };
+                } else {
+                  existingStaff.push(emp);
+                }
+              });
+              empTargetsMap[aliasKey] = existingStaff;
             }
           });
         });
@@ -5954,7 +5990,19 @@ const DSRReport = () => {
                         <button
                           key={w.id}
                           type="button"
-                          onClick={() => setActiveWeeks([w.id])}
+                          onClick={() => {
+                            setActiveWeeks([w.id]);
+                            const primaryWeek = w.id;
+                            let val;
+                            if (targetAssignMode === "Staff" && modalStaff) {
+                              const empObj = (employeeTargets[modalStore] || []).find(e => e.staffName === modalStaff || normalizeForMatch(e.staffName) === normalizeForMatch(modalStaff));
+                              val = empObj?.weeklyTargets?.[primaryWeek];
+                            } else {
+                              const storeTgtObj = getStoreWeeklyTargets(modalStore);
+                              val = storeTgtObj?.[primaryWeek];
+                            }
+                            setModalTarget(val !== undefined && val !== null ? val.toString() : "");
+                          }}
                           className={`relative flex flex-col items-center justify-center py-2.5 px-2 rounded-xl border transition-all duration-150 cursor-pointer ${
                             isActive
                               ? "bg-gray-900 border-gray-900 text-white shadow-sm"
@@ -5974,7 +6022,8 @@ const DSRReport = () => {
                   <div className="rounded-2xl overflow-hidden border border-gray-100">
                     {(() => {
                       const primaryWeek = activeWeeks[0];
-                      const stTgt = weeklyTargets[modalStore]?.[primaryWeek] || 0;
+                      const storeTgtObj = getStoreWeeklyTargets(modalStore);
+                      const stTgt = storeTgtObj?.[primaryWeek] || 0;
                       const allEmpTgt = (employeeTargets[modalStore] || []).reduce(
                         (sum, emp) => sum + (emp.weeklyTargets?.[primaryWeek] || 0), 0
                       );
@@ -6034,12 +6083,13 @@ const DSRReport = () => {
                     const primaryWeek = activeWeeks[0];
                     let customVal;
                     if (targetAssignMode === "Staff" && modalStaff) {
-                      const empObj = (employeeTargets[modalStore] || []).find(e => e.staffName === modalStaff);
+                      const empObj = (employeeTargets[modalStore] || []).find(e => e.staffName === modalStaff || normalizeForMatch(e.staffName) === normalizeForMatch(modalStaff));
                       customVal = empObj?.weeklyTargets?.[primaryWeek];
                     } else {
-                      customVal = weeklyTargets[modalStore]?.[primaryWeek];
+                      const storeTgtObj = getStoreWeeklyTargets(modalStore);
+                      customVal = storeTgtObj?.[primaryWeek];
                     }
-                    setModalTarget(customVal !== undefined ? customVal.toString() : "");
+                    setModalTarget(customVal !== undefined && customVal !== null ? customVal.toString() : "");
                     setTimeout(() => targetInputRef.current?.focus(), 50);
                   }}
                   className="flex items-center gap-1.5 text-[11px] font-bold text-gray-500 hover:text-gray-800 transition-colors px-1"
