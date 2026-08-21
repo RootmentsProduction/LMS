@@ -3996,7 +3996,7 @@ const StoreInsights = () => {
         if (!lower || lower === 'none' || lower === 'store total' || lower === 'store_total' || lower === 'store-total' || lower === 'total' || lower === 'unassigned') return true;
         const norm = normalizeForMatch(name);
         if (branches && branches.some(b => normalizeForMatch(b.workingBranch) === norm || normalizeForMatch(displayBranchName(b.workingBranch)) === norm)) return true;
-        if (lower.startsWith('suitor guy') || lower.startsWith('zorucci') || lower.startsWith('dappr squad') || lower === 'office' || lower === 'production' || lower === 'warehouse') return true;
+        if (lower.startsWith('dappr squad') || lower === 'office' || lower === 'production' || lower === 'warehouse') return true;
         return false;
       };
 
@@ -4296,7 +4296,7 @@ const StoreInsights = () => {
         if (lower === 'store total' || lower === 'store_total' || lower === 'store-total' || lower === 'total' || lower === 'unassigned') return false;
         const norm = normalizeForMatch(s.name);
         if (branches && branches.some(b => normalizeForMatch(b.workingBranch) === norm || normalizeForMatch(displayBranchName(b.workingBranch)) === norm)) return false;
-        if (lower.startsWith('suitor guy') || lower.startsWith('zorucci') || lower.startsWith('dappr squad') || lower === 'office' || lower === 'production' || lower === 'warehouse') return false;
+        if (lower.startsWith('dappr squad') || lower === 'office' || lower === 'production' || lower === 'warehouse') return false;
         return true;
       });
     }
