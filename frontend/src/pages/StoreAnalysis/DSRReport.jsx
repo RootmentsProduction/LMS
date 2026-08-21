@@ -258,23 +258,38 @@ const STORE_TO_LOC_CODE = {
   "gedappally": "702",
   "sgedappally": "702",
   "gtrivandrum": "700",
+  "sgtrivandrum": "700",
   "zedappal": "100",
   "zperinthalmanna": "133",
   "zkottakkal": "122",
   "gkottayam": "701",
+  "sgkottayam": "701",
   "gperumbavoor": "703",
+  "sgperumbavoor": "703",
   "gthrissur": "704",
+  "sgthrissur": "704",
   "gchavakkad": "706",
+  "sgchavakkad": "706",
   "gcalicut": "712",
+  "sgcalicut": "712",
   "gvadakara": "708",
+  "sgvadakara": "708",
   "gedappal": "707",
+  "sgedappal": "707",
   "gperinthalmanna": "709",
+  "sgperinthalmanna": "709",
   "gkottakkal": "711",
+  "sgkottakkal": "711",
   "gmanjeri": "710",
+  "sgmanjeri": "710",
   "gpalakkad": "705",
+  "sgpalakkad": "705",
   "gkalpetta": "717",
+  "sgkalpetta": "717",
   "gkannur": "716",
-  "gmgroad": "718"
+  "sgkannur": "716",
+  "gmgroad": "718",
+  "sgmgroad": "718"
 };
 
 function getBranchLocCode(workingBranch, branchesList) {
@@ -388,6 +403,32 @@ function isHiddenBranch(name) {
   );
 }
 
+function isStoreOrBranchName(name, branchesList = []) {
+  if (!name || typeof name !== "string") return false;
+  const str = name.trim();
+  if (!str || str.toLowerCase() === "none" || str.toLowerCase() === "unassigned") return false;
+
+  if (isHiddenBranch(str)) return true;
+
+  const normName = norm(str);
+  const legacyStoreNorms = [
+    norm("Suitor Guy Calicut"), norm("SG Calicut"), norm("Grooms Calicut"), norm("G-Calicut"), norm("SG-Calicut"), norm("Calicut"),
+    norm("Suitor Guy Kochi"), norm("SG Kochi"), norm("Grooms Kochi"), norm("G-Kochi"), norm("SG-Kochi"), norm("Kochi"),
+    "office", "production", "warehouse"
+  ];
+  if (legacyStoreNorms.includes(normName)) return true;
+
+  if (Array.isArray(branchesList) && branchesList.length > 0) {
+    const matchesBranch = branchesList.some(b => {
+      const bDisp = displayBranchName(b.workingBranch);
+      return norm(bDisp) === normName || norm(b.workingBranch) === normName;
+    });
+    if (matchesBranch) return true;
+  }
+
+  return false;
+}
+
 function normalizeForMatch(str) {
   if (!str) return "";
   return String(str)
@@ -396,19 +437,51 @@ function normalizeForMatch(str) {
     .replace(/^sg/, "g")
     .replace(/^dapper/, "dappr");
 }
-
 const STAFF_ALIAS_MAPPING = {
-  "sidheek": "SIDHEEQ",
-  "sidheeq": "SIDHEEQ",
-  "sidheek k": "SIDHEEQ",
-  "sidheeq k": "SIDHEEQ",
-  "sidheeqk": "SIDHEEQ",
-  "sidheekk": "SIDHEEQ",
+  // Ashiq
+  "mohammed ashiq s": "M ASHIQ S",
+  "mohammed ashiq": "M ASHIQ S",
+  "mohammedashiqs": "M ASHIQ S",
+  "mohammedashiq": "M ASHIQ S",
+  "mohammad ashiq s": "M ASHIQ S",
+  "mohammad ashiq": "M ASHIQ S",
+  "m ashiq s": "M ASHIQ S",
+  "mashiqs": "M ASHIQ S",
+  "m ashiq": "M ASHIQ S",
+  "mashiq": "M ASHIQ S",
+  "ashiq": "M ASHIQ S",
+
+  // Akash VK
+  "akash vk": "AKASH VK",
+  "akash v k": "AKASH VK",
+  "akashvk": "AKASH VK",
+  "akash": "AKASH VK",
+  "ak": "AKASH VK",
+
+  // Sajith K
+  "sajith k": "SAJITH K",
+  "sajithk": "SAJITH K",
+  "sajith": "SAJITH K",
+  "sk": "SAJITH K",
+
+  // Abdul Hadi
+  "abdul hadi rafeeque": "Abdul Hadi Rafeeque",
+  "abdul hadi": "Abdul Hadi Rafeeque",
+  "abdulhadi": "Abdul Hadi Rafeeque",
+  "hadi": "Abdul Hadi Rafeeque",
+
+  // Suvinesh
+  "suvinesh k": "SUVINESH",
+  "suvinesh": "SUVINESH",
+
+  // Niyas
   "niyas dinu nasar k": "NIYAS",
   "niyas dinu nasar": "NIYAS",
   "niyasdinunasark": "NIYAS",
   "niyasdinunasar": "NIYAS",
   "niyas": "NIYAS",
+
+  // Shamil
   "m shamil k p": "M SHAMIL K P",
   "mshamilkp": "M SHAMIL K P",
   "muhammed shamil k p": "M SHAMIL K P",
@@ -416,13 +489,21 @@ const STAFF_ALIAS_MAPPING = {
   "shamil k p": "M SHAMIL K P",
   "shamilkp": "M SHAMIL K P",
   "shamil": "M SHAMIL K P",
+
+  // Shahil
   "shahil shan v": "SHAHIL SHAN",
   "shahilshanv": "SHAHIL SHAN",
   "shahil shan": "SHAHIL SHAN",
   "shahilshan": "SHAHIL SHAN",
+
+  // Riswan
   "m riswan": "MOHAMMAD RISWAN",
   "mriswan": "MOHAMMAD RISWAN",
   "riswan": "MOHAMMAD RISWAN",
+  "mohammad riswan": "MOHAMMAD RISWAN",
+  "mohammed riswan": "MOHAMMAD RISWAN",
+
+  // Shan
   "m shan k": "M SHAN K",
   "mshank": "M SHAN K",
   "muhammed shan k": "M SHAN K",
@@ -430,6 +511,8 @@ const STAFF_ALIAS_MAPPING = {
   "shan k": "M SHAN K",
   "shank": "M SHAN K",
   "shan": "M SHAN K",
+
+  // Faris
   "s faris vk": "S FARIS VK",
   "sfarisvk": "S FARIS VK",
   "salmanul faris v k": "S FARIS VK",
@@ -439,26 +522,129 @@ const STAFF_ALIAS_MAPPING = {
   "salman faris": "S FARIS VK",
   "salmanfaris": "S FARIS VK",
   "faris": "S FARIS VK",
+
+  // Salman
   "salman muhammed v": "SALMAN MUHAMMED.V",
   "salmanmuhammedv": "SALMAN MUHAMMED.V",
   "salman muhammed": "SALMAN MUHAMMED.V",
   "salmanmuhammed": "SALMAN MUHAMMED.V",
+
+  // Basil
   "muhammed basil p k": "Muhammed Basil P K",
   "muhammedbasilpk": "Muhammed Basil P K",
   "muhammed basil": "Muhammed Basil P K",
   "muhammedbasil": "Muhammed Basil P K",
   "basil": "Muhammed Basil P K",
+
+  // Shabir
   "muhammad shabir vt": "SHABIR VT",
   "muhammadshabirvt": "SHABIR VT",
   "shabir vt": "SHABIR VT",
   "shabirvt": "SHABIR VT",
   "shabir": "SHABIR VT",
+
+  // Devadath
   "devadeth r": "DEVADATH",
   "devadethr": "DEVADATH",
   "devadeth": "DEVADATH",
   "devadath r": "DEVADATH",
   "devadathr": "DEVADATH",
+
+
+  // Anshif
+  "muhammed anshif c.k": "ANSHIF C.K",
+  "muhammed anshif ck": "ANSHIF C.K",
+  "muhammedanshifck": "ANSHIF C.K",
+  "m anshif ck": "ANSHIF C.K",
+  "manshifck": "ANSHIF C.K",
+  "anshif c.k": "ANSHIF C.K",
+  "anshif ck": "ANSHIF C.K",
+  "anshif": "ANSHIF C.K",
+
+  // Afsal
+  "mohammed afsal v l": "AFSAL",
+  "mohammed afsal": "AFSAL",
+  "mohammedafsal": "AFSAL",
+  "afsal": "AFSAL",
+
+  // Thahseen
+  "muhammad thahseen p": "THAHSEEN P",
+  "muhammadthahseenp": "THAHSEEN P",
+  "thahseen p": "THAHSEEN P",
+  "thahseen": "THAHSEEN P",
+  "thahaseen": "THAHSEEN P",
+
+  // Sidheeq
+  "sidheek": "SIDHEEQ",
+  "sidheeq": "SIDHEEQ",
+  "sidheek k": "SIDHEEQ",
+  "sidheeq k": "SIDHEEQ",
+  "sidheeqk": "SIDHEEQ",
+  "sidheekk": "SIDHEEQ",
+
+  // Deepak
+  "deepak nh": "DEEPAK N H",
+  "deepak n h": "DEEPAK N H",
+  "deepaknh": "DEEPAK N H",
+
+  // Shamnad
+  "shamnad as": "Shamnad A S",
+  "shamnad a s": "Shamnad A S",
+  "shamnadas": "Shamnad A S",
+
+  // Jaseena
+  "jaseena p": "JASEENA",
+  "jaseenap": "JASEENA",
+
+  // Nayana
+  "nayana t s": "NAYANA TS",
+  "nayanats": "NAYANA TS",
+
+  // Al Shifna
+  "al shifna v s": "AL SHIFNA VS",
+  "al shifna vs": "AL SHIFNA VS",
+  "alshifnavs": "AL SHIFNA VS",
+  "al shifna": "AL SHIFNA VS",
+  "alshifna": "AL SHIFNA VS",
+
+  // Angel
+  "angel p saji": "ANGEL P SAJI",
+  "angelpsaji": "ANGEL P SAJI",
+
+  // Alphin
+  "alphin biju": "ALPHIN BIJU",
+  "alphinbiju": "ALPHIN BIJU",
+  "alphin": "ALPHIN BIJU",
+
+  // Amal
+  "amal k manoj": "AMAL K MANOJ",
+  "amalkmanoj": "AMAL K MANOJ",
+  "amal k": "AMAL K MANOJ",
+  "amalk": "AMAL K MANOJ",
+  "amal": "AMAL K MANOJ",
+
+  // Abhijith
+  "abhijith kumar p a": "ABHIJITH KUMAR",
+  "abhijithkumarpa": "ABHIJITH KUMAR",
+  "abhijith kumar": "ABHIJITH KUMAR",
+  "abhijithkumar": "ABHIJITH KUMAR",
+  "abhijith": "ABHIJITH KUMAR",
+
+  // Aswin
+  "aswin raj m. r": "ASWIN RAJ M.R",
+  "aswin raj m.r": "ASWIN RAJ M.R",
+  "aswin raj m r": "ASWIN RAJ M.R",
+  "aswin raj mr": "ASWIN RAJ M.R",
+  "aswinrajmr": "ASWIN RAJ M.R",
+  "aswin raj": "ASWIN RAJ M.R",
+  "aswinraj": "ASWIN RAJ M.R",
+  "aswin": "ASWIN RAJ M.R",
+
+  // Reshma
+  "reshma m": "RESHMA M",
+  "reshmam": "RESHMA M"
 };
+
 
 function getCanonicalStaffName(rawName) {
   if (!rawName) return "";
@@ -494,7 +680,6 @@ function levenshteinDistance(a, b) {
 
 function isStaffNameMatch(strA, strB) {
   if (!strA || !strB) return false;
-  if (typeof isStoreAliasName === "function" && (isStoreAliasName(strA) || isStoreAliasName(strB))) return false;
 
   const rawA = String(strA).trim();
   const rawB = String(strB).trim();
@@ -508,6 +693,8 @@ function isStaffNameMatch(strA, strB) {
   const normB = normalizeForMatch(canonB);
   if (!normA || !normB) return false;
   if (normA === normB) return true;
+
+  if (typeof isStoreAliasName === "function" && (isStoreAliasName(strA) !== isStoreAliasName(strB))) return false;
 
   const cleanTokens = (str) =>
     String(str)
@@ -525,6 +712,16 @@ function isStaffNameMatch(strA, strB) {
 
   if (strAlphaA === strAlphaB) return true;
 
+  const TITLES = new Set(["muhammed", "mohammad", "mohammed", "md", "m"]);
+  const isTitleToken = (t) => TITLES.has(t);
+
+  // Core name match ignoring leading titles (e.g., "m ashiq s" vs "mohammed ashiq s")
+  const coreA = tokensA.filter(t => !isTitleToken(t)).join("");
+  const coreB = tokensB.filter(t => !isTitleToken(t)).join("");
+  if (coreA.length >= 4 && coreA === coreB) {
+    return true;
+  }
+
   // 1. Concatenated prefix/substring check (e.g., Jishnuraj vs Jishnu vs Jishnu Raj K)
   if (strAlphaA.length >= 5 && strAlphaB.length >= 5) {
     if (strAlphaA.startsWith(strAlphaB) || strAlphaB.startsWith(strAlphaA)) {
@@ -533,8 +730,8 @@ function isStaffNameMatch(strA, strB) {
     }
   }
 
-  // Helper to extract explicit initials
-  const initialsOf = (tokens) => tokens.filter(t => t.length <= 2).join("");
+  // Helper to extract explicit non-title initials
+  const initialsOf = (tokens) => tokens.filter(t => t.length <= 2 && !isTitleToken(t)).join("");
   const initA = initialsOf(tokensA);
   const initB = initialsOf(tokensB);
   if (initA.length > 0 && initB.length > 0 && initA !== initB) {
@@ -554,11 +751,20 @@ function isStaffNameMatch(strA, strB) {
   const unsharedA = tokensA.filter(t => !tokensB.includes(t));
   const unsharedB = tokensB.filter(t => !tokensA.includes(t));
 
-  const TITLES = new Set(["muhammed", "mohammad", "mohammed", "md", "m"]);
+  if (unsharedA.length > 0 && unsharedB.length > 0) {
+    if (
+      (unsharedA.length === 1 && isTitleToken(unsharedA[0]) && unsharedB.length === 1 && isTitleToken(unsharedB[0])) ||
+      (unsharedA.length === 1 && isTitleToken(unsharedA[0]) && unsharedB.every(isTitleToken)) ||
+      (unsharedB.length === 1 && isTitleToken(unsharedB[0]) && unsharedA.every(isTitleToken))
+    ) {
+      return true;
+    }
+  }
+
   const substantialCommon = common.filter(t => t.length >= 4 && !TITLES.has(t));
   if (substantialCommon.length > 0) {
     const isInitialsOrSuffix = (t) => TITLES.has(t) || t.length <= 2 || ["raj", "kumar"].includes(t);
-    if (unsharedA.every(isInitialsOrSuffix) || unsharedB.every(isInitialsOrSuffix)) {
+    if (unsharedA.every(isInitialsOrSuffix) && unsharedB.every(isInitialsOrSuffix)) {
       return true;
     }
   }
@@ -759,7 +965,7 @@ const sortStoresGThenZ = (a, b) => {
 
 const DSRReport = () => {
   const user = useSelector((state) => state.auth.user);
-  const isAdminOrSuperAdmin = user?.role === "super_admin" || user?.role === "admin";
+  const isAdminOrSuperAdmin = user?.role === "super_admin" || user?.role === "admin" || user?.role === "it_admin";
   const isStoreAdmin = user?.role === "store_admin";
   const isClusterAdmin = user?.role === "cluster_admin";
   const [branches, setBranches] = useState([]);
@@ -1983,9 +2189,8 @@ const DSRReport = () => {
       const targetMonth = activeTab === "Custom" ? getMonthNameFromDateStr(appliedEndDate || customEndDate || customStartDate) : CURRENT_MONTH_LONG;
       const targetYear = activeTab === "Custom" ? getYearFromDateStr(appliedEndDate || customEndDate || customStartDate) : CURRENT_YEAR;
       const storeParam = (!targetStore || targetStore === "All") ? "All" : targetStore;
-      const currentWeek = storeParam !== "All" ? (getCurrentWeekId(storeParam) || "All") : "All";
 
-      const queryUrl = `${baseUrl.baseUrl}api/customization-attributions?storeName=${encodeURIComponent(storeParam)}&month=${targetMonth}&year=${targetYear}${currentWeek !== "All" ? `&week=${currentWeek}` : ''}`;
+      const queryUrl = `${baseUrl.baseUrl}api/customization-attributions?storeName=${encodeURIComponent(storeParam)}&month=${targetMonth}&year=${targetYear}`;
       console.log("[Customization] Fetching:", queryUrl);
       const res = await fetch(queryUrl, {
         headers: {
@@ -2005,10 +2210,17 @@ const DSRReport = () => {
 
         docs.forEach(doc => {
           if (!doc || !doc.storeName) return;
-          const storeKey = normalizeForMatch(doc.storeName);
-          if (!storeTotals[storeKey]) {
-            storeTotals[storeKey] = { val: 0, bills: 0, qty: 0, valFtd: 0, billsFtd: 0, qtyFtd: 0 };
-          }
+          const rawKey = normalizeForMatch(doc.storeName);
+          const dispKey = normalizeForMatch(displayBranchName(doc.storeName));
+          const edapKey = rawKey.replace(/edappally/g, "edapally");
+          const dispEdapKey = dispKey.replace(/edappally/g, "edapally");
+          const keysToAdd = Array.from(new Set([rawKey, dispKey, edapKey, dispEdapKey])).filter(Boolean);
+
+          keysToAdd.forEach(k => {
+            if (!storeTotals[k]) {
+              storeTotals[k] = { val: 0, bills: 0, qty: 0, valFtd: 0, billsFtd: 0, qtyFtd: 0 };
+            }
+          });
 
           const docDateStr = doc.date || (doc.updatedAt ? getLocalDateString(doc.updatedAt) : (doc.createdAt ? getLocalDateString(doc.createdAt) : ""));
           const isTodayDoc = docDateStr === ftdTargetDate;
@@ -2047,15 +2259,17 @@ const DSRReport = () => {
             });
           }
 
-          storeTotals[storeKey].val += valAdd;
-          storeTotals[storeKey].bills += billsAdd;
-          storeTotals[storeKey].qty += qtyAdd;
+          keysToAdd.forEach(k => {
+            storeTotals[k].val += valAdd;
+            storeTotals[k].bills += billsAdd;
+            storeTotals[k].qty += qtyAdd;
 
-          if (isTodayDoc) {
-            storeTotals[storeKey].valFtd += valAdd;
-            storeTotals[storeKey].billsFtd += billsAdd;
-            storeTotals[storeKey].qtyFtd += qtyAdd;
-          }
+            if (isTodayDoc) {
+              storeTotals[k].valFtd += valAdd;
+              storeTotals[k].billsFtd += billsAdd;
+              storeTotals[k].qtyFtd += qtyAdd;
+            }
+          });
         });
         console.log("[Customization] storeTotals keys:", Object.keys(storeTotals));
       }
@@ -2227,6 +2441,14 @@ const DSRReport = () => {
           nameToCodeMap.set(cleanKey, normCode);
           nameToCodeMap.set(cleanKey.replace(/q/g, 'k'), normCode);
           nameToCodeMap.set(cleanKey.replace(/k/g, 'q'), normCode);
+        }
+
+        const tokens = rawName.trim().split(/\s+/).filter(Boolean);
+        if (tokens.length >= 2) {
+          const initials = tokens.map(t => t[0]).join('').toLowerCase();
+          if (initials.length >= 2 && !nameToCodeMap.has(initials)) {
+            nameToCodeMap.set(initials, normCode);
+          }
         }
       });
     });
@@ -4333,6 +4555,7 @@ const DSRReport = () => {
                   const targetStore = (isStoreAdmin && branches.length > 0) ? displayBranchName(branches[0].workingBranch) : selectedStore;
                   let freshAttribution = { ...customizationAttribution };
                   try {
+                    await fetchCustomizationAttribution();
                     const token = localStorage.getItem("token");
                     const targetMonth = activeTab === "Custom" ? getMonthNameFromDateStr(customStartDate) : CURRENT_MONTH_LONG;
                     const targetYear = activeTab === "Custom" ? getYearFromDateStr(customStartDate) : CURRENT_YEAR;
@@ -4343,13 +4566,18 @@ const DSRReport = () => {
                     const json = await res.json();
                     if (json.success && json.data) {
                       freshAttribution = {};
-                      (json.data.attributions || []).forEach(attr => {
-                        freshAttribution[attr.staffName] = {
-                          billWtd: attr.billWtd,
-                          valWtd: attr.valWtd,
-                          qtyWtd: attr.qtyWtd
-                        };
-                      });
+                      const docs = Array.isArray(json.data) ? json.data : [json.data];
+                      const doc = docs[0];
+                      if (doc) {
+                        (doc.attributions || []).forEach(attr => {
+                          if (!attr?.staffName) return;
+                          freshAttribution[attr.staffName] = {
+                            billWtd: attr.billWtd,
+                            valWtd: attr.valWtd,
+                            qtyWtd: attr.qtyWtd
+                          };
+                        });
+                      }
                       setCustomizationAttribution(freshAttribution);
                     }
                   } catch (err) {
@@ -5625,9 +5853,9 @@ const DSRReport = () => {
 
           const targetStoreName = (isStoreAdmin && branches.length > 0) ? displayBranchName(branches[0].workingBranch) : selectedStore;
           const storeCustObj = getStoreCustomizationTotal(targetStoreName, storeCustomizationTotals);
-          const customizationTotalValue = storeCustObj?.val || 0;
-          const customizationTotalBills = storeCustObj?.bills || 0;
-          const customizationTotalQty   = storeCustObj?.qty || 0;
+          const customizationTotalValue = (activeTab === "FTD" && (storeCustObj?.valFtd > 0 || storeCustObj?.billsFtd > 0)) ? (storeCustObj.valFtd || 0) : (storeCustObj?.val || 0);
+          const customizationTotalBills = (activeTab === "FTD" && (storeCustObj?.valFtd > 0 || storeCustObj?.billsFtd > 0)) ? (storeCustObj.billsFtd || 0) : (storeCustObj?.bills || 0);
+          const customizationTotalQty   = (activeTab === "FTD" && (storeCustObj?.valFtd > 0 || storeCustObj?.billsFtd > 0)) ? (storeCustObj.qtyFtd || 0) : (storeCustObj?.qty || 0);
 
           let allocatedValue = 0;
           let allocatedBills = 0;
@@ -5810,9 +6038,13 @@ const DSRReport = () => {
                             month: targetMonth,
                             year: Number(targetYear),
                             week: Number(currentWeek),
+                            totalValue: customizationTotalValue,
+                            totalBills: customizationTotalBills,
+                            totalQuantity: customizationTotalQty,
                             attributions: attributionsList
                           })
                         });
+                        await fetchCustomizationAttribution();
                       } catch (err) {
                         console.error("Error saving Customization attribution to MongoDB:", err);
                       }

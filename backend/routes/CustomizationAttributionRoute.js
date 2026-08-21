@@ -20,6 +20,58 @@ const getMonthAndYearFromDate = (dateStr) => {
   return { month, year, week };
 };
 
+// Helper to build flexible store name matching regexes
+const buildStoreRegexes = (storeName) => {
+  if (!storeName || storeName === 'All') return null;
+
+  const raw = String(storeName).trim();
+  const lower = raw.toLowerCase();
+  const escaped = raw.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
+
+  const isZ = lower.startsWith('z');
+  const cleanLoc = lower
+    .replace(/^(zorucci|suitor\s*guy|grooms|sg|g|z)[\.\-\s]*/i, '')
+    .replace(/\d+$/g, '')
+    .trim();
+
+  let locRegexStr = cleanLoc.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
+  if (/edap{1,3}a?l{1,3}[yi]*/i.test(cleanLoc)) {
+    locRegexStr = 'edap{1,3}a?l{1,3}[yi]*\\d*';
+  } else if (/edap{1,3}a?l/i.test(cleanLoc)) {
+    locRegexStr = 'edap{1,3}a?l';
+  } else if (/kottaka?l/i.test(cleanLoc)) {
+    locRegexStr = 'kottaka?l';
+  } else if (/perinthalman*a/i.test(cleanLoc)) {
+    locRegexStr = 'perinthalman+a';
+  } else if (/kalpeta|kalpetta/i.test(cleanLoc)) {
+    locRegexStr = 'kalpet+a';
+  } else if (/manjer[yi]/i.test(cleanLoc)) {
+    locRegexStr = 'manjer[yi]';
+  } else if (/perumbav[ou]{1,2}r/i.test(cleanLoc)) {
+    locRegexStr = 'perumbav[ou]{1,2}r';
+  } else if (/trivandrum|thiruvananthapuram|tvm/i.test(cleanLoc)) {
+    locRegexStr = '(trivandrum|thiruvananthapuram|tvm)';
+  } else if (/calicut|kozhikode/i.test(cleanLoc)) {
+    locRegexStr = '(calicut|kozhikode)';
+  } else if (/vadakara|vatakara/i.test(cleanLoc)) {
+    locRegexStr = '(vadakara|vatakara)';
+  } else if (/thrissur|tsr/i.test(cleanLoc)) {
+    locRegexStr = '(thrissur|tsr)';
+  }
+
+  const prefixRegex = isZ 
+    ? '^(z|zorucci)[\\.\\-\\s]*' 
+    : '^(sg|g|suitor\\s*guy|grooms)?[\\.\\-\\s]*';
+
+  const fullRegexPattern = `${prefixRegex}${locRegexStr}$`;
+
+  return [
+    { storeName: raw },
+    { storeName: { $regex: new RegExp(`^${escaped}$`, 'i') } },
+    { storeName: { $regex: new RegExp(fullRegexPattern, 'i') } }
+  ];
+};
+
 // GET attribution entries by date, storeName, month, year, week
 router.get('/', MiddilWare, async (req, res) => {
   try {
@@ -36,31 +88,10 @@ router.get('/', MiddilWare, async (req, res) => {
       query.year = Number(year);
     }
     if (storeName && storeName !== 'All') {
-      const escaped = storeName.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
-      const clean = storeName.replace(/[^a-zA-Z0-9]/g, '');
-      const collapsed = clean.replace(/(.)\1+/gi, '$1');
-
-      let flexPattern = '^';
-      for (let i = 0; i < collapsed.length; i++) {
-        const c = collapsed[i];
-        const lower = c.toLowerCase();
-        if (lower === 'p' || lower === 'l' || lower === 'm' || lower === 't' || lower === 's' || lower === 'r') {
-          flexPattern += c + '+[\\s._-]*';
-        } else if (lower === 'y' || lower === 'i') {
-          flexPattern += '[yi]+[\\s._-]*';
-        } else {
-          flexPattern += c + '[\\s._-]*';
-        }
+      const storeConditions = buildStoreRegexes(storeName);
+      if (storeConditions) {
+        query.$or = storeConditions;
       }
-      flexPattern += '$';
-
-      const conditions = [
-        { storeName: storeName },
-        { storeName: { $regex: new RegExp(`^${escaped}$`, 'i') } },
-        { storeName: { $regex: new RegExp(flexPattern, 'i') } }
-      ];
-
-      query.$or = conditions;
     }
     if (week !== undefined && week !== null && week !== '' && week !== 'All') {
       query.week = { $in: [Number(week), String(week)] };
@@ -91,40 +122,55 @@ router.post('/', MiddilWare, async (req, res) => {
     year = year ? Number(year) : derived.year;
     week = (week !== undefined && week !== null && week !== '') ? Number(week) : derived.week;
 
-    const val = Number(totalValue || 0);
-    const bills = Number(totalBills || 0);
-    const qty = Number(totalQuantity || 0);
-
-    // Look for an existing document for the same date and store (flexible store name matching)
+    // Look for an existing document for the same store and date/week
     let existingDoc = null;
-    if (storeName && entryDate) {
-      const isEdappally = /edap{1,2}a?l{1,3}/i.test(storeName);
-      const storeOr = [
-        { storeName: storeName },
-        { storeName: { $regex: new RegExp(`^${storeName.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&")}$`, 'i') } }
-      ];
-      if (isEdappally) {
-        storeOr.push({ storeName: { $regex: /edap{1,2}a?l{1,3}[yi]?\d*/i } });
-      }
+    const storeOr = buildStoreRegexes(storeName);
+
+    if (date && storeOr) {
       existingDoc = await CustomizationAttribution.findOne({
         date: entryDate,
         $or: storeOr
       });
     }
 
-    const filter = existingDoc ? { _id: existingDoc._id } : { storeName, date: entryDate };
+    if (!existingDoc && week && month && year && storeOr) {
+      existingDoc = await CustomizationAttribution.findOne({
+        week: Number(week),
+        month,
+        year: Number(year),
+        $or: storeOr
+      });
+    }
+
     const finalAttributions = (attributions && Array.isArray(attributions) && attributions.length > 0) 
       ? attributions 
-      : [{
-          staffName: 'Store Total',
-          billWtd: val,
-          valWtd: bills,
-          qtyWtd: qty
-        }];
+      : (existingDoc?.attributions && existingDoc.attributions.length > 0)
+        ? existingDoc.attributions
+        : [{
+            staffName: 'Store Total',
+            billWtd: Number(totalValue || 0),
+            valWtd: Number(totalBills || 0),
+            qtyWtd: Number(totalQuantity || 0)
+          }];
+
+    // Preserve existing totals if not explicitly sent in the update
+    const val = (totalValue !== undefined && totalValue !== null)
+      ? Number(totalValue)
+      : (existingDoc?.totalValue ?? finalAttributions.reduce((s, a) => s + (Number(a.billWtd) || 0), 0));
+
+    const bills = (totalBills !== undefined && totalBills !== null)
+      ? Number(totalBills)
+      : (existingDoc?.totalBills ?? finalAttributions.reduce((s, a) => s + (Number(a.valWtd) || 0), 0));
+
+    const qty = (totalQuantity !== undefined && totalQuantity !== null)
+      ? Number(totalQuantity)
+      : (existingDoc?.totalQuantity ?? finalAttributions.reduce((s, a) => s + (Number(a.qtyWtd) || 0), 0));
+
+    const filter = existingDoc ? { _id: existingDoc._id } : { storeName, date: entryDate };
 
     const update = {
-      storeName,
-      date: entryDate,
+      storeName: existingDoc ? existingDoc.storeName : storeName,
+      date: existingDoc ? (existingDoc.date || entryDate) : entryDate,
       month,
       year: Number(year),
       week: Number(week),

@@ -1,6 +1,6 @@
 import express from 'express';
 import mongoose from 'mongoose';
-import { handlePermissions, CreatingAdminUsers, getTopUsers, HomeBar, HomeProgressSummary, getAccessibleStores, getAccessibleEmployees, getAdminUsers, updateAdminUser, deleteAdminUser } from '../controllers/DestinationController.js';
+import { handlePermissions, CreatingAdminUsers, getTopUsers, HomeBar, HomeProgressSummary, getAccessibleStores, getAccessibleEmployees, getAdminUsers, updateAdminUser, deleteAdminUser, getPendingRegistrations, handleRegistrationApproval } from '../controllers/DestinationController.js';
 import { createBranchAudit, getBranchAudits, getBranchAuditById, getStaffRatingSummary } from '../controllers/BranchAuditController.js';
 import { AdminLogin, changeAdminPassword, ChangeVisibility, getAllNotifications, getEscalationLevel, getNotifications, GetSubroles, getVisibility, Subroles, upsertEscalationLevel } from '../controllers/moduleController.js';
 import { VerifyToken } from '../lib/VerifyJwt.js';
@@ -11,6 +11,61 @@ import { createCluster, getClusters } from '../controllers/ClusterController.js'
 import User from '../model/User.js';
 
 const router = express.Router();
+
+/**
+ * @swagger
+ * /api/admin/pending-registrations:
+ *   get:
+ *     tags: [Admin]
+ *     summary: Retrieve pending user registration requests
+ *     description: Returns a list of mobile app self-registrations waiting for admin accept/decline approval.
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: List of pending registration requests
+ *       500:
+ *         description: Internal server error
+ */
+router.get('/pending-registrations', MiddilWare, getPendingRegistrations);
+
+/**
+ * @swagger
+ * /api/admin/approve-registration:
+ *   post:
+ *     tags: [Admin]
+ *     summary: Accept or decline a user registration
+ *     description: Approves or declines a pending user self-registration request.
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               userId:
+ *                 type: string
+ *                 description: ID of the pending user
+ *               action:
+ *                 type: string
+ *                 enum: [accept, decline]
+ *                 description: Action to take
+ *             required:
+ *               - userId
+ *               - action
+ *     responses:
+ *       200:
+ *         description: User registration accepted or declined successfully
+ *       400:
+ *         description: Missing or invalid parameters
+ *       404:
+ *         description: User not found
+ *       500:
+ *         description: Internal server error
+ */
+router.post('/approve-registration', MiddilWare, handleRegistrationApproval);
 
 // RBAC Routes
 /**
@@ -189,8 +244,8 @@ router.get('/branch-audit/:id', MiddilWare, getBranchAuditById);
  * /api/admin/admin/createadmin:
  *   post:
  *     tags: [Admin]
- *     summary: Create a new admin user
- *     description: Allows the creation of a new administrator with specific credentials and roles.
+ *     summary: Create a new admin or employee user (Web Dashboard)
+ *     description: Creates an administrator or employee account with assigned permissions, store branches, and credentials.
  *     requestBody:
  *       required: true
  *       content:
@@ -198,22 +253,41 @@ router.get('/branch-audit/:id', MiddilWare, getBranchAuditById);
  *           schema:
  *             type: object
  *             properties:
- *               username:
+ *               userName:
  *                 type: string
- *                 description: Admin username
- *               password:
+ *                 description: Full name of the user
+ *               userId:
  *                 type: string
- *                 description: Admin password
+ *                 description: Employee ID (auto-generated if omitted)
  *               email:
  *                 type: string
- *                 description: Admin email
- *               branch:
- *                     type:array
+ *                 description: Email address
+ *               phoneNumber:
+ *                 type: string
+ *                 description: Contact phone number
+ *               password:
+ *                 type: string
+ *                 description: Account password
+ *               userRole:
+ *                 type: string
+ *                 enum: [super_admin, admin, hr_admin, cluster_admin, store_admin, warehouse_admin, telecaller, employee]
+ *                 description: Role assigned to the user
+ *               Branch:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                 description: Array of branch ObjectIds assigned to the user
+ *             required:
+ *               - userName
+ *               - email
+ *               - userRole
  *     responses:
  *       200:
- *         description: Admin user created successfully.
+ *         description: User created or updated successfully.
  *       400:
  *         description: Bad request, missing or invalid data.
+ *       403:
+ *         description: Forbidden - unauthorized role assignment.
  *       500:
  *         description: Internal server error.
  */

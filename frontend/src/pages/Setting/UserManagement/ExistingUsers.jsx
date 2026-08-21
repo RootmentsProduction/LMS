@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { useSelector } from "react-redux";
 import Select from "react-select";
 import { toast } from "react-toastify";
-import { FaRegEye, FaPlus, FaSearch, FaChevronDown, FaChevronLeft, FaChevronRight, FaTimes } from "react-icons/fa";
+import { FaRegEye, FaPlus, FaSearch, FaChevronDown, FaChevronLeft, FaChevronRight, FaTimes, FaCheck, FaUserClock } from "react-icons/fa";
 import baseUrl from "../../../api/api";
 import SideNav from "../../../components/SideNav/SideNav";
 import ModileNav from "../../../components/SideNav/ModileNav";
@@ -15,6 +15,10 @@ const ExistingUsers = () => {
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState("");
     const [roleFilter, setRoleFilter] = useState("All");
+    
+    // Pending Registration States
+    const [pendingRegistrations, setPendingRegistrations] = useState([]);
+    const [actionLoadingId, setActionLoadingId] = useState(null);
     
     // Pagination states
     const [currentPage, setCurrentPage] = useState(1);
@@ -32,6 +36,51 @@ const ExistingUsers = () => {
     const [editRole, setEditRole] = useState("");
 
     const token = localStorage.getItem("token");
+
+    const fetchPendingRegistrations = async () => {
+        try {
+            const response = await fetch(`${baseUrl.baseUrl}api/admin/pending-registrations`, {
+                method: "GET",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`,
+                },
+            });
+            if (response.ok) {
+                const data = await response.json();
+                setPendingRegistrations(data.data || []);
+            }
+        } catch (error) {
+            console.error("Error fetching pending registrations:", error);
+        }
+    };
+
+    const handleApprovalAction = async (userId, action) => {
+        setActionLoadingId(userId);
+        try {
+            const response = await fetch(`${baseUrl.baseUrl}api/admin/approve-registration`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({ userId, action }),
+            });
+            const data = await response.json();
+            if (response.ok) {
+                toast.success(data.message || `Registration ${action === 'accept' ? 'accepted' : 'declined'}.`);
+                fetchPendingRegistrations();
+                fetchAdmins();
+            } else {
+                toast.error(data.message || `Failed to ${action} registration.`);
+            }
+        } catch (error) {
+            console.error(`Error during ${action} registration:`, error);
+            toast.error("An error occurred during approval process.");
+        } finally {
+            setActionLoadingId(null);
+        }
+    };
 
     const fetchAdmins = async () => {
         setLoading(true);
@@ -78,6 +127,7 @@ const ExistingUsers = () => {
     useEffect(() => {
         fetchAdmins();
         fetchBranches();
+        fetchPendingRegistrations();
     }, [token]);
 
     const formatRole = (role) => {
@@ -336,6 +386,68 @@ const ExistingUsers = () => {
             <div className="flex-1 min-w-0 ml-0 md:ml-[110px] p-4 md:p-6 pb-24 md:pb-6 flex flex-col min-h-screen">
                 <div className="bg-white rounded-2xl p-4 sm:p-6 shadow-sm border border-gray-100 flex-1 flex flex-col justify-between">
                     <div>
+                        {/* Pending Registration Requests Banner */}
+                        {pendingRegistrations.length > 0 && (
+                            <div className="mb-6 bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-amber-500/10 border border-amber-500/30 rounded-2xl p-4 shadow-sm">
+                                <div className="flex items-center justify-between gap-3 mb-3">
+                                    <div className="flex items-center gap-2 text-amber-900 font-semibold text-sm">
+                                        <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-ping inline-block" />
+                                        <FaUserClock size={16} className="text-amber-600" />
+                                        <span>New User Registration Requests ({pendingRegistrations.length})</span>
+                                    </div>
+                                    <span className="text-xs text-amber-800 bg-amber-100/80 px-2.5 py-1 rounded-full font-medium border border-amber-200">
+                                        Action Required
+                                    </span>
+                                </div>
+
+                                <div className="flex flex-col gap-2.5 max-h-60 overflow-y-auto pr-1">
+                                    {pendingRegistrations.map((pUser) => (
+                                        <div
+                                            key={pUser.id || pUser._id}
+                                            className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-white/90 backdrop-blur border border-amber-200/60 rounded-xl p-3.5 shadow-xs"
+                                        >
+                                            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 text-xs">
+                                                <div>
+                                                    <span className="font-semibold text-gray-900 text-sm">{pUser.username || pUser.name}</span>
+                                                    <span className="ml-2 text-xs font-mono font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200/50">
+                                                        {pUser.empID || 'No ID'}
+                                                    </span>
+                                                    <span className="ml-2 text-xs font-medium text-purple-700 bg-purple-50 px-2 py-0.5 rounded-md border border-purple-200/50">
+                                                        {formatRole(pUser.role || pUser.designation)}
+                                                    </span>
+                                                </div>
+                                                <div className="text-gray-600">
+                                                    {pUser.email} {pUser.phoneNumber ? `• ${pUser.phoneNumber}` : ''}
+                                                </div>
+                                                <div className="inline-flex items-center px-2 py-0.5 rounded bg-gray-100 text-gray-700 font-medium">
+                                                    Store: {pUser.workingBranch || 'Default'}
+                                                </div>
+                                            </div>
+
+                                            <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                                                <button
+                                                    onClick={() => handleApprovalAction(pUser.id || pUser._id, 'accept')}
+                                                    disabled={actionLoadingId === (pUser.id || pUser._id)}
+                                                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-semibold rounded-xl transition-all shadow-xs disabled:opacity-50 cursor-pointer"
+                                                >
+                                                    <FaCheck size={11} />
+                                                    Accept
+                                                </button>
+                                                <button
+                                                    onClick={() => handleApprovalAction(pUser.id || pUser._id, 'decline')}
+                                                    disabled={actionLoadingId === (pUser.id || pUser._id)}
+                                                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white text-xs font-semibold rounded-xl transition-all shadow-xs disabled:opacity-50 cursor-pointer"
+                                                >
+                                                    <FaTimes size={11} />
+                                                    Decline
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
                         {/* Title & Add User Header */}
                         <div className="flex justify-between items-center mb-6">
                             <h1 className="text-xl font-semibold text-gray-900">Existing Users & Roles</h1>

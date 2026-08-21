@@ -4,6 +4,7 @@ import SideNav from "../../components/SideNav/SideNav";
 import ModileNav from "../../components/SideNav/ModileNav";
 import { FiSearch, FiDownload } from "react-icons/fi";
 import baseUrl, { formatStoreDisplayName } from "../../api/api";
+import { getHardcodedWalkin } from "../../utils/hardcodedWalkins";
 
 const CACHE_TTL_MS = 2 * 60 * 1000;
 
@@ -795,10 +796,15 @@ const GrowthComparison = () => {
             return wFmt === fmtName || norm(w.store) === norm(rawName);
           }).length;
 
-          const lyCount = lyWalkinList.filter((w) => {
+          let lyCount = lyWalkinList.filter((w) => {
             const wFmt = formatStoreDisplayName(w.store);
             return wFmt === fmtName || norm(w.store) === norm(rawName);
           }).length;
+
+          const hCount = getHardcodedWalkin(rawName, lyStart, lyEnd);
+          if (hCount !== undefined && hCount !== null) {
+            lyCount = hCount;
+          }
 
           tyWalkMap[rawName] = tyCount;
           lyWalkMap[rawName] = lyCount;

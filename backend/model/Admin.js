@@ -21,6 +21,12 @@ const adminSchema = new mongoose.Schema({
     assignedClusters: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Cluster' }],
     employeeId: { type: String, default: "" },
     isActive: { type: Boolean, default: true },
+    registrationStatus: {
+        type: String,
+        enum: ['pending', 'approved', 'declined'],
+        default: 'approved',
+        index: true,
+    },
     fcmToken: { type: String, default: '' },
 }, { timestamps: true });
 

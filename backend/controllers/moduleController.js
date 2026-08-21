@@ -339,6 +339,15 @@ export const AdminLogin = async (req, res) => {
 
         console.log('✅ [LOGIN] Admin found:', user.name);
 
+        if (user.registrationStatus === 'pending' || user.isActive === false) {
+            console.log('❌ [LOGIN] Admin registration pending approval');
+            return res.status(403).json({ message: 'Your registration request is pending approval by Admin.' });
+        }
+        if (user.registrationStatus === 'declined') {
+            console.log('❌ [LOGIN] Admin registration declined');
+            return res.status(403).json({ message: 'Your registration request was declined by Admin.' });
+        }
+
         // Verify role against database if role is provided
         if (role && user.role !== role) {
             console.log('❌ [LOGIN] Role mismatch - expected:', user.role, 'got:', role);

@@ -6,10 +6,14 @@ import { useDispatch } from 'react-redux';
 import { setUser } from '../../features/auth/authSlice';
 
 const ROLES = [
-  { value: 'super_admin',   label: 'Super Admin' },
-  { value: 'admin',         label: 'Admin' },
-  { value: 'hr_admin',      label: 'HR Admin' },
+  { value: 'super_admin', label: 'Super Admin' },
+  { value: 'admin', label: 'Admin' },
+  { value: 'hr_admin', label: 'HR Admin' },
+  { value: 'cluster_admin', label: 'Cluster Admin' },
+  { value: 'store_admin', label: 'Store Admin' },
   { value: 'warehouse_admin', label: 'Warehouse Admin' },
+  { value: 'telecaller', label: 'Telecaller' },
+  { value: 'employee', label: 'Employee' },
 ];
 
 /* ── Animated face SVG ─────────────────────────────────────────────────────── */
@@ -96,10 +100,10 @@ const Particles = () => (
         key={i}
         className="absolute rounded-full bg-white/5"
         style={{
-          width:  `${Math.random() * 6 + 2}px`,
+          width: `${Math.random() * 6 + 2}px`,
           height: `${Math.random() * 6 + 2}px`,
-          left:   `${Math.random() * 100}%`,
-          top:    `${Math.random() * 100}%`,
+          left: `${Math.random() * 100}%`,
+          top: `${Math.random() * 100}%`,
           animation: `float ${4 + Math.random() * 6}s ease-in-out infinite`,
           animationDelay: `${Math.random() * 4}s`,
         }}
@@ -110,20 +114,20 @@ const Particles = () => (
 
 /* ── Main component ─────────────────────────────────────────────────────────── */
 const Login = () => {
-  const [mode, setMode]               = useState('login');
-  const [loading, setLoading]         = useState(false);
+  const [mode, setMode] = useState('login');
+  const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [passwordFocused, setPasswordFocused] = useState(false);
-  const [mounted, setMounted]         = useState(false);
+  const [mounted, setMounted] = useState(false);
 
   // Login fields
-  const [email, setEmail]       = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loginRole, setLoginRole] = useState('');
 
   // Signup fields
   const [signup, setSignup] = useState({
-    userName: '', userId: '', email: '', password: '', userRole: '', Branch: [],
+    userName: '', userId: '', email: '', phoneNumber: '', password: '', userRole: '', Branch: [],
   });
 
   const [branches, setBranches] = useState([]);
@@ -138,7 +142,7 @@ const Login = () => {
     fetch(`${baseUrl.baseUrl}api/usercreate/getBranch/public`)
       .then((r) => r.json())
       .then((d) => setBranches(d.data || []))
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   const set = (field) => (e) => setSignup((p) => ({ ...p, [field]: e.target.value }));
@@ -150,7 +154,7 @@ const Login = () => {
     }));
   };
 
-  const needsBranch  = signup.userRole === 'cluster_admin' || signup.userRole === 'store_admin';
+  const needsBranch = signup.userRole === 'cluster_admin' || signup.userRole === 'store_admin';
   const singleBranch = signup.userRole === 'store_admin';
 
   // is the user actively typing in a password field?
@@ -165,7 +169,7 @@ const Login = () => {
       if (loginRole) {
         payload.role = loginRole;
       }
-      const res  = await fetch(`${baseUrl.baseUrl}api/admin/admin/login`, {
+      const res = await fetch(`${baseUrl.baseUrl}api/admin/admin/login`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
@@ -187,7 +191,7 @@ const Login = () => {
       console.error('Login network error:', err);
       toast.error('Unable to connect to server. Please check your connection or wait a moment if server is starting up.');
     }
-    finally   { setLoading(false); }
+    finally { setLoading(false); }
   };
 
   // ── Sign Up ────────────────────────────────────────────────────────────────
@@ -195,18 +199,18 @@ const Login = () => {
     e.preventDefault();
     if (!signup.userRole) { toast.error('Please select a role'); return; }
     if (needsBranch && signup.Branch.length === 0) { toast.error('Please select at least one branch'); return; }
-    if (singleBranch && signup.Branch.length > 1)  { toast.error('Store Admin can only be assigned to one store'); return; }
+    if (singleBranch && signup.Branch.length > 1) { toast.error('Store Admin can only be assigned to one store'); return; }
     setLoading(true);
     try {
-      const res  = await fetch(`${baseUrl.baseUrl}api/admin/admin/createadmin`, {
+      const res = await fetch(`${baseUrl.baseUrl}api/admin/admin/createadmin`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(signup),
       });
       const data = await res.json();
       if (res.ok) { toast.success('Admin account created! Please sign in.'); setMode('login'); }
-      else        { toast.error(data.message || 'Sign up failed'); }
+      else { toast.error(data.message || 'Sign up failed'); }
     } catch { toast.error('An error occurred during sign up'); }
-    finally   { setLoading(false); }
+    finally { setLoading(false); }
   };
 
   // ── Shared styles ──────────────────────────────────────────────────────────
@@ -257,7 +261,7 @@ const Login = () => {
         <div
           className="relative w-full max-w-sm"
           style={{
-            opacity:   mounted ? 1 : 0,
+            opacity: mounted ? 1 : 0,
             transform: mounted ? 'translateY(0)' : 'translateY(32px)',
             transition: 'opacity 0.6s ease, transform 0.6s cubic-bezier(.22,1,.36,1)',
           }}
@@ -381,13 +385,14 @@ const Login = () => {
 
                 <form onSubmit={handleSignup} className="flex flex-col gap-3">
                   {[
-                    { placeholder: 'Full name',               field: 'userName', type: 'text',  delay: '0.05s' },
-                    { placeholder: 'Employee ID (e.g. Emp123)', field: 'userId',  type: 'text',  delay: '0.08s' },
-                    { placeholder: 'Email address',           field: 'email',    type: 'email', delay: '0.11s' },
-                  ].map(({ placeholder, field, type, delay }) => (
+                    { placeholder: 'Full name', field: 'userName', type: 'text', delay: '0.05s', required: true },
+                    { placeholder: 'Employee ID (e.g. Emp123)', field: 'userId', type: 'text', delay: '0.07s', required: false },
+                    { placeholder: 'Email address', field: 'email', type: 'email', delay: '0.09s', required: true },
+                    { placeholder: 'Phone number', field: 'phoneNumber', type: 'tel', delay: '0.11s', required: false },
+                  ].map(({ placeholder, field, type, delay, required }) => (
                     <div key={field} className="input-row" style={{ animationDelay: delay }}>
                       <input
-                        type={type} placeholder={placeholder} value={signup[field]} required
+                        type={type} placeholder={placeholder} value={signup[field]} required={required}
                         onChange={set(field)} className={inputCls}
                       />
                     </div>
@@ -442,8 +447,8 @@ const Login = () => {
                   <div
                     style={{
                       maxHeight: needsBranch ? '220px' : '0px',
-                      opacity:   needsBranch ? 1 : 0,
-                      overflow:  'hidden',
+                      opacity: needsBranch ? 1 : 0,
+                      overflow: 'hidden',
                       transition: 'max-height 0.4s cubic-bezier(.22,1,.36,1), opacity 0.3s ease',
                     }}
                   >

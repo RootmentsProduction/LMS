@@ -3,6 +3,7 @@ import Permission from "../model/AdminPermission.js";
 import Branch from "../model/Branch.js";
 import Designation from "../model/designation.js"; // Import the destination model
 import User from "../model/User.js";
+import Notification from "../model/Notification.js";
 import TrainingProgress from "../model/Trainingprocessschema.js";
 import mongoose from "mongoose";
 import bcrypt from 'bcrypt'
@@ -602,12 +603,16 @@ export const getTopUsers = async (req, res) => {
 
 export const CreatingAdminUsers = async (req, res) => {
     try {
-        const { userName: name, email, userId, userRole: role, Branch: branches, password, phoneNumber
-        } = req.body;
+        const name = req.body.name || req.body.userName || req.body.username;
+        const email = req.body.email;
+        const role = req.body.role || req.body.userRole;
+        const branches = req.body.branches || req.body.Branch;
+        const password = req.body.password;
+        const phoneNumber = req.body.phoneNumber;
         let { subRole } = req.body;
 
-        let EmpId = userId;
-        if (!EmpId || EmpId.trim() === "") {
+        let EmpId = req.body.EmpId || req.body.empID || req.body.userId;
+        if (!EmpId || String(EmpId).trim() === "") {
             const adminCount = await Admin.countDocuments();
             const userCount = await User.countDocuments();
             let unique = false;
@@ -663,7 +668,14 @@ export const CreatingAdminUsers = async (req, res) => {
                 }
             }
 
-            const existingUser = await User.findOne({ $or: [{ empID: EmpId }, { email }] });
+            const escapedEmp = EmpId ? EmpId.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&') : '';
+            const escapedEmail = email ? email.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&') : '';
+            const existingUser = await User.findOne({
+                $or: [
+                    { empID: { $regex: `^${escapedEmp}$`, $options: 'i' } },
+                    { email: { $regex: `^${escapedEmail}$`, $options: 'i' } }
+                ]
+            });
             if (existingUser) {
                 // Update existing employee
                 existingUser.username = name;
@@ -687,6 +699,7 @@ export const CreatingAdminUsers = async (req, res) => {
                 });
             }
 
+            const isPublicSignup = !req.admin;
             const newUser = new User({
                 username: name,
                 email,
@@ -696,9 +709,35 @@ export const CreatingAdminUsers = async (req, res) => {
                 designation: "Employee",
                 workingBranch,
                 locCode,
-                source: "admin"
+                source: isPublicSignup ? "app" : "admin",
+                registrationStatus: isPublicSignup ? "pending" : "approved"
             });
             const savedUser = await newUser.save();
+
+            if (isPublicSignup) {
+                try {
+                    const notify = new Notification({
+                        title: 'New Web Employee Registration Request',
+                        body: `${name} (${EmpId}) has requested employee registration via webpage. Please accept or decline.`,
+                        Role: ['super_admin', 'admin', 'hr_admin'],
+                        category: 'Registration'
+                    });
+                    await notify.save();
+                } catch (e) {}
+
+                return res.status(201).json({
+                    message: "Registration request submitted successfully! Your account is pending admin approval.",
+                    data: {
+                        id: savedUser._id,
+                        name: savedUser.username,
+                        email: savedUser.email,
+                        EmpId: savedUser.empID,
+                        role: "employee",
+                        registrationStatus: savedUser.registrationStatus
+                    }
+                });
+            }
+
             return res.status(201).json({
                 message: "Employee user created successfully.",
                 data: {
@@ -707,15 +746,8 @@ export const CreatingAdminUsers = async (req, res) => {
                     email: savedUser.email,
                     EmpId: savedUser.empID,
                     role: "employee",
+                    registrationStatus: savedUser.registrationStatus
                 }
-            });
-        }
-
-        // Public signup restrict to super_admin, admin, and hr_admin
-        // If they want to create cluster/store admin, they must be authenticated
-        if (!req.admin && !['super_admin', 'admin', 'hr_admin'].includes(role)) {
-            return res.status(403).json({
-                message: "Public signup is only allowed for super_admin, admin, and hr_admin. To create cluster/store admins, please log in first.",
             });
         }
 
@@ -775,7 +807,14 @@ export const CreatingAdminUsers = async (req, res) => {
         }
 
         // Check if Admin already exists by EmpId or email
-        let existingAdmin = await Admin.findOne({ $or: [{ EmpId }, { email }] });
+        const escapedAdminEmp = EmpId ? EmpId.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&') : '';
+        const escapedAdminEmail = email ? email.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&') : '';
+        let existingAdmin = await Admin.findOne({
+            $or: [
+                { EmpId: { $regex: `^${escapedAdminEmp}$`, $options: 'i' } },
+                { email: { $regex: `^${escapedAdminEmail}$`, $options: 'i' } }
+            ]
+        });
         if (existingAdmin) {
             // Update existing Admin
             existingAdmin.name = name;
@@ -818,6 +857,7 @@ export const CreatingAdminUsers = async (req, res) => {
         }
 
         // Create the admin user with the fetched permissions
+        const isPublicAdminSignup = !req.admin;
         const newAdmin = new Admin({
             name,
             email,
@@ -829,10 +869,24 @@ export const CreatingAdminUsers = async (req, res) => {
             permissions: rolePermissions._id,
             branches: finalBranches,
             assignedClusters: finalClusters,
+            isActive: !isPublicAdminSignup,
+            registrationStatus: isPublicAdminSignup ? "pending" : "approved"
         });
 
         // Save the admin user
         const savedAdmin = await newAdmin.save();
+
+        if (isPublicAdminSignup) {
+            try {
+                const notify = new Notification({
+                    title: 'New Web Admin Registration Request',
+                    body: `${name} (${EmpId}) has requested registration for role "${role}". Please accept or decline.`,
+                    Role: ['super_admin', 'admin', 'hr_admin'],
+                    category: 'Registration'
+                });
+                await notify.save();
+            } catch (e) {}
+        }
 
         // Also check and update the corresponding User record if it exists
         const userRecord = await User.findOne({ $or: [{ empID: EmpId }, { email }] });
@@ -1493,3 +1547,117 @@ export const deleteAdminUser = async (req, res) => {
         res.status(500).json({ success: false, message: error.message });
     }
 };
+
+export const getPendingRegistrations = async (req, res) => {
+    try {
+        const pendingUsers = await User.find({ registrationStatus: 'pending' }).sort({ createdAt: -1 });
+        const pendingAdmins = await Admin.find({
+            $or: [{ registrationStatus: 'pending' }, { isActive: false }]
+        }).populate('branches').sort({ createdAt: -1 });
+
+        const formattedUsers = pendingUsers.map((u) => ({
+            id: u._id,
+            _id: u._id,
+            username: u.username,
+            name: u.username,
+            email: u.email,
+            empID: u.empID,
+            phoneNumber: u.phoneNumber,
+            workingBranch: u.workingBranch || 'Default Store',
+            designation: u.designation || 'Employee',
+            role: u.designation || 'employee',
+            type: 'user',
+            createdAt: u.createdAt,
+            registrationStatus: u.registrationStatus
+        }));
+
+        const formattedAdmins = pendingAdmins.map((a) => {
+            let branchName = 'All Stores';
+            if (a.branches && a.branches.length > 0) {
+                branchName = a.branches.map(b => b.workingBranch || b.locCode).join(', ');
+            }
+            return {
+                id: a._id,
+                _id: a._id,
+                username: a.name,
+                name: a.name,
+                email: a.email,
+                empID: a.EmpId,
+                phoneNumber: a.phoneNumber,
+                workingBranch: branchName,
+                designation: a.role,
+                role: a.role,
+                type: 'admin',
+                createdAt: a.createdAt,
+                registrationStatus: a.registrationStatus || (a.isActive ? 'approved' : 'pending')
+            };
+        });
+
+        return res.status(200).json({
+            success: true,
+            data: [...formattedUsers, ...formattedAdmins]
+        });
+    } catch (error) {
+        console.error('Error fetching pending registrations:', error);
+        return res.status(500).json({ success: false, message: 'Failed to fetch pending registrations' });
+    }
+};
+
+export const handleRegistrationApproval = async (req, res) => {
+    try {
+        const { userId, action } = req.body;
+        if (!userId || !['accept', 'decline'].includes(action)) {
+            return res.status(400).json({ success: false, message: 'userId and action ("accept" or "decline") are required.' });
+        }
+
+        let user = await User.findById(userId);
+        if (user) {
+            if (action === 'accept') {
+                user.registrationStatus = 'approved';
+                await user.save();
+                return res.status(200).json({
+                    success: true,
+                    message: `Registration for ${user.username} (${user.empID}) has been accepted.`,
+                    user
+                });
+            } else {
+                user.registrationStatus = 'declined';
+                await user.save();
+                return res.status(200).json({
+                    success: true,
+                    message: `Registration for ${user.username} (${user.empID}) has been declined.`,
+                    user
+                });
+            }
+        }
+
+        let admin = await Admin.findById(userId);
+        if (admin) {
+            if (action === 'accept') {
+                admin.registrationStatus = 'approved';
+                admin.isActive = true;
+                await admin.save();
+                return res.status(200).json({
+                    success: true,
+                    message: `Admin registration for ${admin.name} (${admin.EmpId}) has been accepted.`,
+                    user: admin
+                });
+            } else {
+                admin.registrationStatus = 'declined';
+                admin.isActive = false;
+                await admin.save();
+                return res.status(200).json({
+                    success: true,
+                    message: `Admin registration for ${admin.name} (${admin.EmpId}) has been declined.`,
+                    user: admin
+                });
+            }
+        }
+
+        return res.status(404).json({ success: false, message: 'Registration request not found' });
+    } catch (error) {
+        console.error('Error processing registration approval:', error);
+        return res.status(500).json({ success: false, message: error.message });
+    }
+};
+

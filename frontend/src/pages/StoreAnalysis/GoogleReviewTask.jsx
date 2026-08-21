@@ -386,7 +386,7 @@ const GoogleReviewTask = () => {
             <div className="flex flex-wrap items-center gap-3">
 
               {/* Multi-Select Cluster Filter Selector */}
-              {(user?.role === 'super_admin' || user?.role === 'admin') && (
+              {(user?.role === 'super_admin' || user?.role === 'admin' || user?.role === 'it_admin') && (
                 <div ref={clusterDropdownRef} className="relative">
                   <button
                     type="button"

@@ -1,8 +1,168 @@
 import express from 'express';
-import { flutterLogin, loginUser, saveFcmToken } from '../controllers/CreateUser.js'; // Import the login controller
+import { appSignUp, flutterLogin, loginUser, saveFcmToken, sendOtp, verifyOtp } from '../controllers/CreateUser.js'; // Import the login controller
 import { verifyJWT } from '../lib/JWT.js';
 
 const router = express.Router();
+
+/**
+ * @swagger
+ * /api/auth/send-otp:
+ *   post:
+ *     tags: [Authentication]
+ *     summary: Send OTP code to user's email
+ *     description: Generates a 6-digit verification code and emails it to the user. Valid for 5 minutes.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 example: employee@company.com
+ *             required:
+ *               - email
+ *     responses:
+ *       200:
+ *         description: OTP sent successfully
+ *       400:
+ *         description: Email is required
+ *       500:
+ *         description: Server error
+ */
+router.post('/send-otp', sendOtp);
+
+/**
+ * @swagger
+ * /api/auth/verify-otp:
+ *   post:
+ *     tags: [Authentication]
+ *     summary: Verify email OTP code
+ *     description: Validates the 6-digit OTP code sent to the specified email address.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 example: employee@company.com
+ *               otp:
+ *                 type: string
+ *                 example: "123456"
+ *             required:
+ *               - email
+ *               - otp
+ *     responses:
+ *       200:
+ *         description: OTP verified successfully
+ *       400:
+ *         description: Invalid or expired OTP code
+ *       500:
+ *         description: Server error
+ */
+router.post('/verify-otp', verifyOtp);
+
+/**
+ * @swagger
+ * /api/auth/signup:
+ *   post:
+ *     tags: [User Management]
+ *     summary: User self-registration (App/Mobile)
+ *     description: Creates a new user account for mobile app / web users and returns an authentication token.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               username:
+ *                 type: string
+ *                 description: Full name of the user
+ *               email:
+ *                 type: string
+ *                 description: Email address
+ *               empID:
+ *                 type: string
+ *                 description: Optional employee ID (auto-generated if omitted)
+ *               password:
+ *                 type: string
+ *                 description: Account password
+ *               phoneNumber:
+ *                 type: string
+ *                 description: Contact phone number
+ *               workingBranch:
+ *                 type: string
+ *                 description: Name of the assigned store/branch
+ *               locCode:
+ *                 type: string
+ *                 description: Location code of the branch
+ *             required:
+ *               - username
+ *               - email
+ *               - password
+ *     responses:
+ *       201:
+ *         description: Account created successfully, returns JWT token and user profile.
+ *       400:
+ *         description: Validation error or duplicate account.
+ *       500:
+ *         description: Internal server error.
+ */
+router.post('/signup', appSignUp);
+
+/**
+ * @swagger
+ * /api/auth/flutter-signup:
+ *   post:
+ *     tags: [User Management]
+ *     summary: Employee self-registration for mobile app (Flutter)
+ *     description: Registers a new employee user account via the Flutter mobile app and returns a JWT authentication token.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               username:
+ *                 type: string
+ *                 description: Full name of the employee
+ *               email:
+ *                 type: string
+ *                 description: Email address
+ *               empID:
+ *                 type: string
+ *                 description: Optional employee ID (auto-generated if omitted)
+ *               password:
+ *                 type: string
+ *                 description: Account password
+ *               phoneNumber:
+ *                 type: string
+ *                 description: Contact phone number
+ *               workingBranch:
+ *                 type: string
+ *                 description: Name of the assigned store/branch
+ *               locCode:
+ *                 type: string
+ *                 description: Location code of the branch
+ *             required:
+ *               - username
+ *               - email
+ *               - password
+ *     responses:
+ *       201:
+ *         description: Account created successfully, returns JWT token and user profile.
+ *       400:
+ *         description: Validation error or duplicate account.
+ *       500:
+ *         description: Internal server error.
+ */
+router.post('/flutter-signup', appSignUp);
 
 /**
  * @swagger

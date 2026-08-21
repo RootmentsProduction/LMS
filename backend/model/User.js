@@ -40,6 +40,12 @@ const userSchema = new mongoose.Schema({
         default: 'app',
         index: true,
     },
+    registrationStatus: {
+        type: String,
+        enum: ['pending', 'approved', 'declined'],
+        default: 'approved',
+        index: true,
+    },
     fcmToken: { type: String, default: '' },
     assignedModules: [assignedModuleSchema], // Array of assigned modules
     assignedAssessments: [assignedAssessmentSchema],

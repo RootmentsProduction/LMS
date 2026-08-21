@@ -52,6 +52,26 @@ function computeTargetSummary(weekRanges, weeklyTargets, todayDate) {
   return { totalMTD, wtdTarget, dailyTarget, currentWeek, mtdAchievableSoFar };
 }
 
+export function normalizeStoreKey(storeName) {
+  if (!storeName) return '';
+  const trimmed = String(storeName).trim();
+  if (trimmed.toLowerCase() === 'all') return 'all';
+  const isZ = /^z/i.test(trimmed);
+  let loc = trimmed
+    .replace(/^(sg|g|z|zorucci|suitor guy|grooms)[\.\-\s]*/i, '')
+    .replace(/\d+$/g, '')
+    .trim();
+  loc = loc
+    .replace(/\bedap{1,3}a?l{1,3}[yi]\b/i, 'edappally')
+    .replace(/\bedap{1,3}a?l\b/i, 'edappal')
+    .replace(/\bkottaka?l\b/i, 'kottakkal')
+    .replace(/\bperinthalman+a\b/i, 'perinthalmanna')
+    .replace(/\bkalpeta\b/i, 'kalpetta')
+    .replace(/\bmanjer[yi]\b/i, 'manjeri');
+  const cleanLoc = loc.toLowerCase().replace(/[^a-z0-9]/g, '');
+  return `${isZ ? 'z' : 'g'}_${cleanLoc}`;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/store-targets/flutter
 //
@@ -74,11 +94,15 @@ router.get('/flutter', MiddilWare, async (req, res) => {
       return res.status(400).json({ success: false, message: "storeName query param is required" });
     }
 
+    const storeKey = normalizeStoreKey(storeName);
     // Fetch store-specific + global ("All") config for week ranges fallback
-    const [storeDoc, globalDoc] = await Promise.all([
-      StoreTarget.findOne({ storeName, month, year: Number(year) }).lean(),
+    const [existingDocs, globalDoc] = await Promise.all([
+      StoreTarget.find({ month, year: Number(year) }).lean(),
       StoreTarget.findOne({ storeName: 'All', month, year: Number(year) }).lean()
     ]);
+
+    const storeDoc = existingDocs.find(d => d.storeName === storeName || (storeKey && normalizeStoreKey(d.storeName) === storeKey)) || null;
+
 
     const doc = storeDoc || globalDoc || null;
 
@@ -187,11 +211,15 @@ const getWeekByDateHandler = async (req, res) => {
     const month = req.query.month || req.body.month || defaultMonthName;
     const year = Number(req.query.year || req.body.year || defaultYear);
 
+    const storeKey = normalizeStoreKey(storeName);
     // Fetch store-specific + global ("All") config for week ranges fallback
-    const [storeDoc, globalDoc] = await Promise.all([
-      StoreTarget.findOne({ storeName, month, year }).lean(),
+    const [existingDocs, globalDoc] = await Promise.all([
+      StoreTarget.find({ month, year }).lean(),
       StoreTarget.findOne({ storeName: 'All', month, year }).lean()
     ]);
+
+    const storeDoc = existingDocs.find(d => d.storeName === storeName || (storeKey && normalizeStoreKey(d.storeName) === storeKey)) || null;
+
 
     const weekRanges = {
       1: storeDoc?.weekRanges?.[1] || globalDoc?.weekRanges?.[1] || 'Select Days',
