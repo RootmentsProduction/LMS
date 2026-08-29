@@ -304,7 +304,12 @@ const STAFF_ALIAS_MAPPING = {
 
   // Reshma
   "reshma m": "RESHMA M",
-  "reshmam": "RESHMA M"
+  "reshmam": "RESHMA M",
+
+  // Sumesh
+  "sumesh mohan": "SUMESH MOHAN",
+  "sumeshmohan": "SUMESH MOHAN",
+  "sumesh": "SUMESH MOHAN"
 };
 
 

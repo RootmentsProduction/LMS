@@ -1450,7 +1450,12 @@ const StoreInsights = () => {
 
     // Reshma
     "reshma m": "RESHMA M",
-    "reshmam": "RESHMA M"
+    "reshmam": "RESHMA M",
+
+    // Sumesh
+    "sumesh mohan": "SUMESH MOHAN",
+    "sumeshmohan": "SUMESH MOHAN",
+    "sumesh": "SUMESH MOHAN"
   };
 
 
@@ -3242,8 +3247,8 @@ const StoreInsights = () => {
 
       let entry = null;
 
-      // 1. Match by employee code / ID first (Universal single source of truth!)
-      if (normCode) {
+      // 1. Match by employee code / ID first
+      if (normCode && normCode.startsWith("EMP") && normCode.length > 4) {
         for (const e of staffMap.values()) {
           if (e.empCodes.includes(normCode)) {
             entry = e;
@@ -3276,13 +3281,15 @@ const StoreInsights = () => {
         staffMap.set(key, entry);
       } else {
         if (normCode && !entry.empCodes.includes(normCode)) {
-          entry.empCodes.push(normCode);
+          const isEmpCodeValid = normCode.startsWith("EMP") && normCode.length > 4;
+          if (isEmpCodeValid) {
+            entry.empCodes.push(normCode);
+          }
         }
-        if (trimmedName && !entry.rawNames.includes(trimmedName)) {
+        if (trimmedName && !entry.rawNames.includes(trimmedName) && (isStaffNameMatch(entry.displayName, trimmedName) || entry.displayName === "Unassigned")) {
           entry.rawNames.push(trimmedName);
         }
-        // Prefer the longer/more complete display name if matching
-        if (canonName && canonName.length > entry.displayName.length && !isDapprSquadName(canonName)) {
+        if (canonName && canonName.length > entry.displayName.length && !isDapprSquadName(canonName) && isStaffNameMatch(entry.displayName, canonName)) {
           entry.displayName = canonName;
         }
       }
@@ -3408,9 +3415,16 @@ const StoreInsights = () => {
 
       const staffRentalItems = includeRental ? locPeriodList.filter(x => {
         if (!x) return false;
-        const xCode = normalizeEmpCode(x.empCode) || systemEmpNameToCodeMap?.get(getCanonicalStaffName(x.bookingBy).toLowerCase()) || systemEmpNameToCodeMap?.get(normalizeForMatch(x.bookingBy));
-        if (xCode && entry.empCodes.includes(xCode)) return true;
-        return entry.rawNames.some(rn => isStaffNameMatch(rn, x.bookingBy)) || isStaffNameMatch(fullName, x.bookingBy);
+        const xCode = normalizeEmpCode(x.empCode);
+        if (xCode && xCode.startsWith("EMP") && xCode.length > 4 && entry.empCodes.includes(xCode)) {
+          return true;
+        }
+        const xName = x.bookingBy ? String(x.bookingBy).trim() : "";
+        if (xName) {
+          const nameMatches = isStaffNameMatch(fullName, xName) || entry.rawNames.some(rn => isStaffNameMatch(rn, xName));
+          if (!nameMatches) return false;
+        }
+        return xName ? (isStaffNameMatch(fullName, xName) || entry.rawNames.some(rn => isStaffNameMatch(rn, xName))) : false;
       }) : [];
 
       let achieved = staffRentalItems.reduce((sum, item) => sum + (item.totalValue || 0), 0);
@@ -3828,9 +3842,7 @@ const StoreInsights = () => {
       }, 0);
     })();
 
-    const activeAchievedValue = ((isStoreAdmin || (selectedStores.length === 1 && !selectedStores.includes("All"))) && employeeChartData.length > 0)
-      ? employeeChartData.reduce((sum, emp) => sum + emp.achieved, 0)
-      : totalAchieved;
+    const activeAchievedValue = totalAchieved;
     const activeBills = rentalBills + dapprSquadBills + shoeBills + shirtBills;
     const activeTotalQty = rentalQty + dapprSquadQty + shoeQty + shirtQty;
 

@@ -1,8 +1,6 @@
 import mongoose from 'mongoose';
 import connectMongoDB from './db/database.js';
 import User from './model/User.js';
-import Admin from './model/Admin.js';
-import Branch from './model/Branch.js';
 import Employee from './model/Employee.js';
 import dotenv from 'dotenv';
 dotenv.config();
@@ -10,13 +8,13 @@ dotenv.config();
 async function run() {
   await connectMongoDB();
   try {
-    const emp = await Employee.findOne({ $or: [{ employeeId: 'Emp515' }, { firstName: /farsin/i }] }).lean();
-    console.log('--- Employee Record (Employee collection) ---');
-    console.log(emp ? JSON.stringify(emp, null, 2) : 'Not found in Employee collection');
+    const employees = await Employee.find({ $or: [{ firstName: /sumesh/i }, { lastName: /sumesh/i }] }).lean();
+    console.log('--- Matching Employees in Employee collection ---');
+    console.log(JSON.stringify(employees, null, 2));
 
-    const user = await User.findOne({ $or: [{ empID: 'Emp515' }, { username: /farsin/i }] }).lean();
-    console.log('--- User Record (User collection) ---');
-    console.log(user ? JSON.stringify(user, null, 2) : 'Not found in User collection');
+    const users = await User.find({ $or: [{ username: /sumesh/i }, { email: /sumesh/i }] }).lean();
+    console.log('--- Matching Users in User collection ---');
+    console.log(JSON.stringify(users, null, 2));
   } catch (err) {
     console.error(err);
   } finally {

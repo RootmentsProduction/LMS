@@ -642,7 +642,12 @@ const STAFF_ALIAS_MAPPING = {
 
   // Reshma
   "reshma m": "RESHMA M",
-  "reshmam": "RESHMA M"
+  "reshmam": "RESHMA M",
+
+  // Sumesh
+  "sumesh mohan": "SUMESH MOHAN",
+  "sumeshmohan": "SUMESH MOHAN",
+  "sumesh": "SUMESH MOHAN"
 };
 
 
@@ -3126,6 +3131,16 @@ const DSRReport = () => {
         // Add shoe/shirt sales (same lookup as funnelRows)
         const salesPeriodItem = salesData.period[locCode] || salesData.period[storeKeyVal] || { value: 0 };
         achieved += salesPeriodItem.value || 0;
+
+        if (dapprAttribution && Object.keys(dapprAttribution).length > 0) {
+          Object.keys(dapprAttribution).forEach(k => {
+            const dAttr = dapprAttribution[k] || {};
+            const isStaffInStore = mergedPeriodList.some(x => isStaffNameMatch(x.bookingBy, k));
+            if (isStaffInStore) {
+              achieved += Number(dAttr.billWtd) || 0;
+            }
+          });
+        }
       }
 
       const balance = target - achieved;
@@ -3228,7 +3243,7 @@ const DSRReport = () => {
 
         let entry = null;
 
-        if (normCode) {
+        if (normCode && normCode.startsWith("EMP") && normCode.length > 4) {
           for (const e of staffMap.values()) {
             if (e.empCodes.includes(normCode)) {
               entry = e;
@@ -3261,12 +3276,15 @@ const DSRReport = () => {
           staffMap.set(key, entry);
         } else {
           if (normCode && !entry.empCodes.includes(normCode)) {
-            entry.empCodes.push(normCode);
+            const isEmpCodeValid = normCode.startsWith("EMP") && normCode.length > 4;
+            if (isEmpCodeValid) {
+              entry.empCodes.push(normCode);
+            }
           }
-          if (rentalName && !entry.rentalNames.includes(rentalName)) {
+          if (rentalName && !entry.rentalNames.includes(rentalName) && (isStaffNameMatch(entry.displayName, rentalName) || entry.displayName === "Unassigned")) {
             entry.rentalNames.push(rentalName);
           }
-          if (rentalName && rentalName.length > entry.displayName.length) {
+          if (rentalName && rentalName.length > entry.displayName.length && isStaffNameMatch(entry.displayName, rentalName)) {
             entry.displayName = rentalName;
           }
         }
@@ -3375,15 +3393,29 @@ const DSRReport = () => {
         const staffFtdList = locFtdList.filter(x => {
           if (!x) return false;
           const xCode = normalizeEmpCode(x.empCode);
-          if (xCode && entry.empCodes.includes(xCode)) return true;
-          return entry.rentalNames.some(rn => isStaffNameMatch(rn, x.bookingBy)) || isStaffNameMatch(entry.displayName, x.bookingBy);
+          if (xCode && xCode.startsWith("EMP") && xCode.length > 4 && entry.empCodes.includes(xCode)) {
+            return true;
+          }
+          const xName = x.bookingBy ? String(x.bookingBy).trim() : "";
+          if (xName) {
+            const nameMatches = isStaffNameMatch(entry.displayName, xName) || entry.rentalNames.some(rn => isStaffNameMatch(rn, xName));
+            if (!nameMatches) return false;
+          }
+          return xName ? (isStaffNameMatch(entry.displayName, xName) || entry.rentalNames.some(rn => isStaffNameMatch(rn, xName))) : false;
         });
 
         const staffPeriodList = locPeriodList.filter(x => {
           if (!x) return false;
           const xCode = normalizeEmpCode(x.empCode);
-          if (xCode && entry.empCodes.includes(xCode)) return true;
-          return entry.rentalNames.some(rn => isStaffNameMatch(rn, x.bookingBy)) || isStaffNameMatch(entry.displayName, x.bookingBy);
+          if (xCode && xCode.startsWith("EMP") && xCode.length > 4 && entry.empCodes.includes(xCode)) {
+            return true;
+          }
+          const xName = x.bookingBy ? String(x.bookingBy).trim() : "";
+          if (xName) {
+            const nameMatches = isStaffNameMatch(entry.displayName, xName) || entry.rentalNames.some(rn => isStaffNameMatch(rn, xName));
+            if (!nameMatches) return false;
+          }
+          return xName ? (isStaffNameMatch(entry.displayName, xName) || entry.rentalNames.some(rn => isStaffNameMatch(rn, xName))) : false;
         });
 
         const staffWalkinsList = storeWalkins.filter(w => {
@@ -3583,7 +3615,17 @@ const DSRReport = () => {
             qtyFtd += salesFtdItem.qty || 0;
             qtyWtd += salesPeriodItem.qty || 0;
 
-
+            if (dapprAttribution && Object.keys(dapprAttribution).length > 0) {
+              Object.keys(dapprAttribution).forEach(k => {
+                const dAttr = dapprAttribution[k] || {};
+                const isStaffInStore = mergedPeriodList.some(x => isStaffNameMatch(x.bookingBy, k));
+                if (isStaffInStore) {
+                  valWtd += Number(dAttr.billWtd) || 0;
+                  billWtd += Number(dAttr.valWtd) || 0;
+                  qtyWtd += Number(dAttr.qtyWtd) || 0;
+                }
+              });
+            }
           }
 
           const createdValFtd = mergedFtdList.reduce((sum, item) => sum + (item.created_Number_Of_Bill || 0), 0);
