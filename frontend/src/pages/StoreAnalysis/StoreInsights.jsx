@@ -1599,7 +1599,7 @@ const StoreInsights = () => {
     return matrix[a.length][b.length];
   }
 
-  function isStaffNameMatch(strA, strB) {
+  function isStaffNameMatch(strA, strB, empNameToCodeMap = null) {
     if (!strA || !strB) return false;
 
     const rawA = String(strA).trim();
@@ -1614,6 +1614,14 @@ const StoreInsights = () => {
     const normB = normalizeForMatch(canonB);
     if (!normA || !normB) return false;
     if (normA === normB) return true;
+
+    if (empNameToCodeMap) {
+      const codeA = empNameToCodeMap.get(canonA.toLowerCase()) || empNameToCodeMap.get(normA);
+      const codeB = empNameToCodeMap.get(canonB.toLowerCase()) || empNameToCodeMap.get(normB);
+      if (codeA && codeB && /^EMP\d+$/.test(codeA) && /^EMP\d+$/.test(codeB) && codeA !== codeB) {
+        return false;
+      }
+    }
 
     const isDapprA = isDapprSquadName(strA);
     const isDapprB = isDapprSquadName(strB);
@@ -1661,11 +1669,16 @@ const StoreInsights = () => {
       return false; // Conflicting initials e.g. A S vs V B -> DIFFERENT STAFF!
     }
 
-    // 2. Levenshtein distance for spelling typos (e.g., THAHSEEN P vs THAHASEEN)
+    // 2. Refined Levenshtein distance for spelling typos (e.g., THAHSEEN P vs THAHASEEN)
     if (Math.abs(strAlphaA.length - strAlphaB.length) <= 3) {
       const dist = levenshteinDistance(strAlphaA, strAlphaB);
-      if (dist <= 2 && Math.min(strAlphaA.length, strAlphaB.length) >= 5) {
-        return true;
+      if (dist <= 2 && Math.min(strAlphaA.length, strAlphaB.length) >= 6) {
+        if (strAlphaA[0] === strAlphaB[0]) {
+          const isInsertionDeletion = strAlphaA.includes(strAlphaB.slice(0, 4)) || strAlphaB.includes(strAlphaA.slice(0, 4));
+          if (isInsertionDeletion) {
+            return true;
+          }
+        }
       }
     }
 
@@ -3248,7 +3261,7 @@ const StoreInsights = () => {
       let entry = null;
 
       // 1. Match by employee code / ID first
-      if (normCode && normCode.startsWith("EMP") && normCode.length > 4) {
+      if (normCode && /^EMP\d+$/.test(normCode)) {
         for (const e of staffMap.values()) {
           if (e.empCodes.includes(normCode)) {
             entry = e;
@@ -3281,9 +3294,12 @@ const StoreInsights = () => {
         staffMap.set(key, entry);
       } else {
         if (normCode && !entry.empCodes.includes(normCode)) {
-          const isEmpCodeValid = normCode.startsWith("EMP") && normCode.length > 4;
-          if (isEmpCodeValid) {
-            entry.empCodes.push(normCode);
+          const isEmpCodeValid = /^EMP\d+$/.test(normCode);
+          if (isEmpCodeValid && entry.empCodes.length === 0) {
+            const isUsedByOther = Array.from(staffMap.values()).some(e => e !== entry && e.empCodes.includes(normCode));
+            if (!isUsedByOther) {
+              entry.empCodes.push(normCode);
+            }
           }
         }
         if (trimmedName && !entry.rawNames.includes(trimmedName) && (isStaffNameMatch(entry.displayName, trimmedName) || entry.displayName === "Unassigned")) {
@@ -3416,7 +3432,7 @@ const StoreInsights = () => {
       const staffRentalItems = includeRental ? locPeriodList.filter(x => {
         if (!x) return false;
         const xCode = normalizeEmpCode(x.empCode);
-        if (xCode && xCode.startsWith("EMP") && xCode.length > 4 && entry.empCodes.includes(xCode)) {
+        if (xCode && /^EMP\d+$/.test(xCode) && entry.empCodes.includes(xCode)) {
           return true;
         }
         const xName = x.bookingBy ? String(x.bookingBy).trim() : "";

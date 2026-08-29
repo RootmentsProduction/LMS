@@ -683,7 +683,7 @@ function levenshteinDistance(a, b) {
   return matrix[a.length][b.length];
 }
 
-function isStaffNameMatch(strA, strB) {
+function isStaffNameMatch(strA, strB, empNameToCodeMap = null) {
   if (!strA || !strB) return false;
 
   const rawA = String(strA).trim();
@@ -698,6 +698,15 @@ function isStaffNameMatch(strA, strB) {
   const normB = normalizeForMatch(canonB);
   if (!normA || !normB) return false;
   if (normA === normB) return true;
+
+  // Check if system employee codes differ
+  if (empNameToCodeMap) {
+    const codeA = empNameToCodeMap.get(canonA.toLowerCase()) || empNameToCodeMap.get(normA);
+    const codeB = empNameToCodeMap.get(canonB.toLowerCase()) || empNameToCodeMap.get(normB);
+    if (codeA && codeB && /^EMP\d+$/.test(codeA) && /^EMP\d+$/.test(codeB) && codeA !== codeB) {
+      return false;
+    }
+  }
 
   if (typeof isStoreAliasName === "function" && (isStoreAliasName(strA) !== isStoreAliasName(strB))) return false;
 
@@ -743,11 +752,16 @@ function isStaffNameMatch(strA, strB) {
     return false; // Conflicting initials e.g. A S vs V B -> DIFFERENT STAFF!
   }
 
-  // 2. Levenshtein distance for spelling typos (e.g., THAHSEEN P vs THAHASEEN)
+  // 2. Refined Levenshtein distance for spelling typos (e.g., THAHSEEN P vs THAHASEEN)
   if (Math.abs(strAlphaA.length - strAlphaB.length) <= 3) {
     const dist = levenshteinDistance(strAlphaA, strAlphaB);
-    if (dist <= 2 && Math.min(strAlphaA.length, strAlphaB.length) >= 5) {
-      return true;
+    if (dist <= 2 && Math.min(strAlphaA.length, strAlphaB.length) >= 6) {
+      if (strAlphaA[0] === strAlphaB[0]) {
+        const isInsertionDeletion = strAlphaA.includes(strAlphaB.slice(0, 4)) || strAlphaB.includes(strAlphaA.slice(0, 4));
+        if (isInsertionDeletion) {
+          return true;
+        }
+      }
     }
   }
 
@@ -3051,8 +3065,16 @@ const DSRReport = () => {
         let rentalVal = mergedPeriodList.filter(x => {
           if (!x) return false;
           const xCode = normalizeEmpCode(x.empCode) || systemEmpNameToCodeMap.get(getCanonicalStaffName(x.bookingBy).toLowerCase()) || systemEmpNameToCodeMap.get(normalizeForMatch(x.bookingBy));
-          if (xCode && entry.empCodes.includes(xCode)) return true;
-          return entry.rawNames.some(rn => isStaffNameMatch(rn, x.bookingBy)) || isStaffNameMatch(fullName, x.bookingBy);
+          const xHasCode = xCode && /^EMP\d+$/.test(xCode);
+          const entryHasCode = entry.empCodes && entry.empCodes.some(c => /^EMP\d+$/.test(c));
+
+          if (xHasCode && entryHasCode) {
+            return entry.empCodes.includes(xCode);
+          }
+          if (xHasCode && !entryHasCode) {
+            return entry.empCodes.includes(xCode);
+          }
+          return entry.rawNames.some(rn => isStaffNameMatch(rn, x.bookingBy, systemEmpNameToCodeMap)) || isStaffNameMatch(fullName, x.bookingBy, systemEmpNameToCodeMap);
         }).reduce((sum, x) => sum + (x.totalValue || 0), 0);
 
         if (funnelView === "Consolidated") {
@@ -3243,7 +3265,7 @@ const DSRReport = () => {
 
         let entry = null;
 
-        if (normCode && normCode.startsWith("EMP") && normCode.length > 4) {
+        if (normCode && /^EMP\d+$/.test(normCode)) {
           for (const e of staffMap.values()) {
             if (e.empCodes.includes(normCode)) {
               entry = e;
@@ -3255,9 +3277,8 @@ const DSRReport = () => {
         if (!entry && (rentalName || canonName)) {
           for (const e of staffMap.values()) {
             if (
-              isStaffNameMatch(e.displayName, rentalName) ||
-              isStaffNameMatch(e.displayName, canonName) ||
-              e.rentalNames.some(rn => isStaffNameMatch(rn, rentalName) || isStaffNameMatch(rn, canonName))
+              isStaffNameMatch(e.displayName, rentalName, systemEmpNameToCodeMap) ||
+              isStaffNameMatch(e.displayName, canonName, systemEmpNameToCodeMap)
             ) {
               entry = e;
               break;
@@ -3276,15 +3297,18 @@ const DSRReport = () => {
           staffMap.set(key, entry);
         } else {
           if (normCode && !entry.empCodes.includes(normCode)) {
-            const isEmpCodeValid = normCode.startsWith("EMP") && normCode.length > 4;
-            if (isEmpCodeValid) {
-              entry.empCodes.push(normCode);
+            const isEmpCodeValid = /^EMP\d+$/.test(normCode);
+            if (isEmpCodeValid && entry.empCodes.length === 0) {
+              const isUsedByOther = Array.from(staffMap.values()).some(e => e !== entry && e.empCodes.includes(normCode));
+              if (!isUsedByOther) {
+                entry.empCodes.push(normCode);
+              }
             }
           }
-          if (rentalName && !entry.rentalNames.includes(rentalName) && (isStaffNameMatch(entry.displayName, rentalName) || entry.displayName === "Unassigned")) {
+          if (rentalName && !entry.rentalNames.includes(rentalName) && (isStaffNameMatch(entry.displayName, rentalName, systemEmpNameToCodeMap) || entry.displayName === "Unassigned")) {
             entry.rentalNames.push(rentalName);
           }
-          if (rentalName && rentalName.length > entry.displayName.length && isStaffNameMatch(entry.displayName, rentalName)) {
+          if (rentalName && rentalName.length > entry.displayName.length && isStaffNameMatch(entry.displayName, rentalName, systemEmpNameToCodeMap)) {
             entry.displayName = rentalName;
           }
         }
@@ -3342,9 +3366,9 @@ const DSRReport = () => {
         if (!entry && wStaff) {
           for (const e of staffMap.values()) {
             if (
-              isStaffNameMatch(e.displayName, wStaff) ||
-              e.rentalNames.some(rn => isStaffNameMatch(rn, wStaff)) ||
-              e.siteNames.some(sn => isStaffNameMatch(sn, wStaff))
+              isStaffNameMatch(e.displayName, wStaff, systemEmpNameToCodeMap) ||
+              e.rentalNames.some(rn => isStaffNameMatch(rn, wStaff, systemEmpNameToCodeMap)) ||
+              e.siteNames.some(sn => isStaffNameMatch(sn, wStaff, systemEmpNameToCodeMap))
             ) {
               entry = e;
               break;
@@ -3364,7 +3388,10 @@ const DSRReport = () => {
           staffMap.set(key, entry);
         } else {
           wCodes.forEach(c => {
-            if (!entry.empCodes.includes(c)) entry.empCodes.push(c);
+            const isUsedByOther = Array.from(staffMap.values()).some(e => e !== entry && e.empCodes.includes(c));
+            if (!isUsedByOther && entry.empCodes.length === 0 && !entry.empCodes.includes(c)) {
+              entry.empCodes.push(c);
+            }
           });
           if (wStaff && !entry.siteNames.includes(wStaff)) {
             entry.siteNames.push(wStaff);
@@ -3392,30 +3419,36 @@ const DSRReport = () => {
       return Array.from(staffMap.values()).map(entry => {
         const staffFtdList = locFtdList.filter(x => {
           if (!x) return false;
-          const xCode = normalizeEmpCode(x.empCode);
-          if (xCode && xCode.startsWith("EMP") && xCode.length > 4 && entry.empCodes.includes(xCode)) {
-            return true;
+          const xCode = normalizeEmpCode(x.empCode) || systemEmpNameToCodeMap.get(getCanonicalStaffName(x.bookingBy).toLowerCase()) || systemEmpNameToCodeMap.get(normalizeForMatch(x.bookingBy));
+          const xHasCode = xCode && /^EMP\d+$/.test(xCode);
+          const entryHasCode = entry.empCodes && entry.empCodes.some(c => /^EMP\d+$/.test(c));
+
+          if (xHasCode && entryHasCode) {
+            return entry.empCodes.includes(xCode);
+          }
+          if (xHasCode && !entryHasCode) {
+            return entry.empCodes.includes(xCode);
           }
           const xName = x.bookingBy ? String(x.bookingBy).trim() : "";
-          if (xName) {
-            const nameMatches = isStaffNameMatch(entry.displayName, xName) || entry.rentalNames.some(rn => isStaffNameMatch(rn, xName));
-            if (!nameMatches) return false;
-          }
-          return xName ? (isStaffNameMatch(entry.displayName, xName) || entry.rentalNames.some(rn => isStaffNameMatch(rn, xName))) : false;
+          if (!xName) return false;
+          return isStaffNameMatch(entry.displayName, xName, systemEmpNameToCodeMap) || entry.rentalNames.some(rn => isStaffNameMatch(rn, xName, systemEmpNameToCodeMap));
         });
 
         const staffPeriodList = locPeriodList.filter(x => {
           if (!x) return false;
-          const xCode = normalizeEmpCode(x.empCode);
-          if (xCode && xCode.startsWith("EMP") && xCode.length > 4 && entry.empCodes.includes(xCode)) {
-            return true;
+          const xCode = normalizeEmpCode(x.empCode) || systemEmpNameToCodeMap.get(getCanonicalStaffName(x.bookingBy).toLowerCase()) || systemEmpNameToCodeMap.get(normalizeForMatch(x.bookingBy));
+          const xHasCode = xCode && /^EMP\d+$/.test(xCode);
+          const entryHasCode = entry.empCodes && entry.empCodes.some(c => /^EMP\d+$/.test(c));
+
+          if (xHasCode && entryHasCode) {
+            return entry.empCodes.includes(xCode);
+          }
+          if (xHasCode && !entryHasCode) {
+            return entry.empCodes.includes(xCode);
           }
           const xName = x.bookingBy ? String(x.bookingBy).trim() : "";
-          if (xName) {
-            const nameMatches = isStaffNameMatch(entry.displayName, xName) || entry.rentalNames.some(rn => isStaffNameMatch(rn, xName));
-            if (!nameMatches) return false;
-          }
-          return xName ? (isStaffNameMatch(entry.displayName, xName) || entry.rentalNames.some(rn => isStaffNameMatch(rn, xName))) : false;
+          if (!xName) return false;
+          return isStaffNameMatch(entry.displayName, xName, systemEmpNameToCodeMap) || entry.rentalNames.some(rn => isStaffNameMatch(rn, xName, systemEmpNameToCodeMap));
         });
 
         const staffWalkinsList = storeWalkins.filter(w => {
