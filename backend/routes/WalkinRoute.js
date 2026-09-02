@@ -189,7 +189,30 @@ router.get('/check/:contact', OptionalMiddilWare, checkCustomerExists);
  *                 example: "Budget restriction"
  *               lossReason:
  *                 type: string
- *                 example: "design and color unavailable"
+ *                 description: "Reason for Loss (e.g. 'Design Not Available', 'Colour Not Available', 'Product Already Booked', 'Price', 'Size', 'Confirm Later')"
+ *                 example: "Design Not Available"
+ *               productCategory:
+ *                 type: string
+ *                 description: "Product Category dropdown for loss reasons 'Design Not Available' and 'Colour Not Available'"
+ *                 enum:
+ *                   - "Premium"
+ *                   - "Non Premium"
+ *                   - "Ultra Luxury"
+ *                   - "Luxury"
+ *                 example: "Premium"
+ *               workType:
+ *                 type: string
+ *                 description: "Work type description (text box) for loss reason 'Design Not Available'"
+ *                 example: "Custom Handwork"
+ *               workSize:
+ *                 type: string
+ *                 description: "Alias for productCategory ('Premium', 'Non Premium', 'Ultra Luxury', 'Luxury')"
+ *                 enum:
+ *                   - "Premium"
+ *                   - "Non Premium"
+ *                   - "Ultra Luxury"
+ *                   - "Luxury"
+ *                 example: "Premium"
  *               lossEnquiryTrailOption:
  *                 type: string
  *                 example: "Just Visit"
@@ -609,8 +632,132 @@ router.get('/walkin-count', MiddilWare, getWalkinCountPageData);
  */
 router.post('/walkin-count/save', MiddilWare, saveWalkinCountPageData);
 
+/**
+ * @swagger
+ * /api/walkin/camera-check:
+ *   post:
+ *     tags: [Walkin]
+ *     summary: Save Camera Checker Log entries (Used by Telecaller Portal / Mobile App)
+ *     description: >
+ *       Saves or replaces the list of camera check entries for a specific date and store branch.
+ *       Automatically syncs the total inCam counts in WalkinCount model.
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - date
+ *               - store
+ *               - entries
+ *             properties:
+ *               date:
+ *                 type: string
+ *                 description: "Date for camera check log (YYYY-MM-DD)"
+ *                 example: "2026-08-25"
+ *               store:
+ *                 type: string
+ *                 description: "Branch / Store name"
+ *                 example: "SG Edappally"
+ *               entries:
+ *                 type: array
+ *                 description: "Array of camera check entries"
+ *                 items:
+ *                   type: object
+ *                   required:
+ *                     - statusKey
+ *                   properties:
+ *                     inTime:
+ *                       type: string
+ *                       example: "10:00 AM"
+ *                     outTime:
+ *                       type: string
+ *                       example: "10:15 AM"
+ *                     identification:
+ *                       type: string
+ *                       maxLength: 20
+ *                       example: "Red Shirt Customer"
+ *                     statusKey:
+ *                       type: string
+ *                       description: "Category / Status key (e.g. 'walkin', 'total_walkin', 'new_loss')"
+ *                       example: "walkin"
+ *     responses:
+ *       200:
+ *         description: Camera check logs saved successfully
+ *       400:
+ *         description: Bad request - missing date, store, or entries
+ *       404:
+ *         description: Store not found
+ *       500:
+ *         description: Internal server error
+ */
 router.post('/camera-check', MiddilWare, saveCameraCheckEntry);
+
+/**
+ * @swagger
+ * /api/walkin/camera-check:
+ *   get:
+ *     tags: [Walkin]
+ *     summary: Retrieve Camera Checker Log entries for a date and store
+ *     description: Returns all saved camera check log entries for the specified date and store branch.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: date
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Date string (YYYY-MM-DD)
+ *         example: "2026-08-25"
+ *       - in: query
+ *         name: store
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Store / Branch name
+ *         example: "SG Edappally"
+ *     responses:
+ *       200:
+ *         description: Camera check entries retrieved successfully
+ *       400:
+ *         description: Bad request - missing date or store
+ *       404:
+ *         description: Store not found
+ *       500:
+ *         description: Internal server error
+ */
 router.get('/camera-check', MiddilWare, getCameraCheckEntries);
+
+/**
+ * @swagger
+ * /api/walkin/camera-check/{id}:
+ *   delete:
+ *     tags: [Walkin]
+ *     summary: Delete a single Camera Checker Log entry by ID
+ *     description: Deletes an individual camera check log entry by its database ID and updates aggregated counts.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ObjectId of the camera check entry to delete
+ *     responses:
+ *       200:
+ *         description: Entry deleted successfully
+ *       403:
+ *         description: Access denied (Telecallers cannot delete entries)
+ *       404:
+ *         description: Entry not found
+ *       500:
+ *         description: Internal server error
+ */
 router.delete('/camera-check/:id', MiddilWare, deleteCameraCheckEntry);
 
 /**

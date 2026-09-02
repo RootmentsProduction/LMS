@@ -65,6 +65,7 @@ export const upsertGoogleReview = async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 export const getGoogleReviewDashboard = async (req, res) => {
   try {
+    const { startDate, endDate } = req.query;
     const today = getTodayIST();
     const todayDate = new Date(today);
 
@@ -78,22 +79,48 @@ export const getGoogleReviewDashboard = async (req, res) => {
     // Month start
     const monthStartStr = today.slice(0, 7) + '-01';
 
-    // Fetch all entries from the start of the month onwards (covers week + month + today)
-    const entries = await GoogleReviewEntry.find({
-      date: { $gte: monthStartStr },
+    // Determine query range
+    const qStart = startDate || monthStartStr;
+    const qEnd = endDate || today;
+
+    // Fetch entries for the specified date range
+    const rangeEntries = await GoogleReviewEntry.find({
+      date: { $gte: qStart, $lte: qEnd },
     }).lean();
+
+    // Fetch all entries from the start of the month onwards as well (for today/week/month metrics)
+    const monthEntries = (qStart === monthStartStr && qEnd === today)
+      ? rangeEntries
+      : await GoogleReviewEntry.find({ date: { $gte: monthStartStr } }).lean();
 
     // Fetch last year actual reviews for the same range
-    const lyYear = Number(today.slice(0, 4)) - 1;
-    const lyMonthStartStr = lyYear + today.slice(4, 7) + '-01';
-    const lyToday = lyYear + today.slice(4);
+    let lyStart = "";
+    let lyEnd = "";
+    if (startDate && endDate && startDate.length >= 10 && endDate.length >= 10) {
+      const startYear = Number(startDate.slice(0, 4)) - 1;
+      const endYear = Number(endDate.slice(0, 4)) - 1;
+      lyStart = startYear + startDate.slice(4);
+      lyEnd = endYear + endDate.slice(4);
+    } else {
+      const lyYear = Number(today.slice(0, 4)) - 1;
+      lyStart = lyYear + today.slice(4, 7) + '-01';
+      lyEnd = lyYear + today.slice(4);
+    }
+
     const lyEntries = await GoogleReviewEntry.find({
-      date: { $gte: lyMonthStartStr, $lte: lyToday },
+      date: { $gte: lyStart, $lte: lyEnd },
     }).lean();
 
-    // Group by branchName
+    // Group period entries by branchName
+    const periodByBranch = {};
+    for (const entry of rangeEntries) {
+      if (!periodByBranch[entry.branchName]) periodByBranch[entry.branchName] = 0;
+      periodByBranch[entry.branchName] += entry.count;
+    }
+
+    // Group month/week/today entries by branchName
     const byBranch = {};
-    for (const entry of entries) {
+    for (const entry of monthEntries) {
       if (!byBranch[entry.branchName]) {
         byBranch[entry.branchName] = { today: 0, thisWeek: 0, thisMonth: 0 };
       }
@@ -106,9 +133,9 @@ export const getGoogleReviewDashboard = async (req, res) => {
     const lyByBranch = {};
     for (const entry of lyEntries) {
       if (!lyByBranch[entry.branchName]) {
-        lyByBranch[entry.branchName] = { thisMonth: 0 };
+        lyByBranch[entry.branchName] = { count: 0 };
       }
-      lyByBranch[entry.branchName].thisMonth += entry.count;
+      lyByBranch[entry.branchName].count += entry.count;
     }
 
     // Fetch total for all time (separate query)
@@ -138,6 +165,7 @@ export const getGoogleReviewDashboard = async (req, res) => {
 
     // Merge
     const allBranches = new Set([
+      ...Object.keys(periodByBranch),
       ...Object.keys(byBranch),
       ...Object.keys(totalByBranch),
     ]);
@@ -145,12 +173,13 @@ export const getGoogleReviewDashboard = async (req, res) => {
     const result = {};
     for (const branch of allBranches) {
       result[branch] = {
-        today:     byBranch[branch]?.today    || 0,
-        thisWeek:  byBranch[branch]?.thisWeek  || 0,
-        thisMonth: byBranch[branch]?.thisMonth || 0,
-        lyThisMonth: lyByBranch[branch]?.thisMonth || 0,
-        total:     totalByBranch[branch]       || 0,
-        rating:    ratingByBranch[branch]      || 0,
+        periodCount: periodByBranch[branch]     || 0,
+        today:       byBranch[branch]?.today    || 0,
+        thisWeek:    byBranch[branch]?.thisWeek  || 0,
+        thisMonth:   byBranch[branch]?.thisMonth || 0,
+        lyThisMonth: lyByBranch[branch]?.count   || 0,
+        total:       totalByBranch[branch]       || 0,
+        rating:      ratingByBranch[branch]      || 0,
       };
     }
 

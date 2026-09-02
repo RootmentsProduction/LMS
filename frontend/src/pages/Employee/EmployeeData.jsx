@@ -23,13 +23,20 @@ const getRoleRank = (roleOrDesignation) => {
   return 1; // Default
 };
 
-const exportCSV = (data) => {
+const exportCSV = (data, storeFilter) => {
   const headers = ["#","Emp ID","Name","Role","Store","Training Progress","Tasks Done","Tasks Overdue","Training Done","Training Overdue"];
   const rows = data.map((e, i) => [i+1, e.empID, e.username, e.designation, e.workingBranch, `${e.trainingCompletionPercentage}%`, e.passCountTask, e.taskDue, e.passCountTraining, e.Trainingdue]);
   const csv = [headers, ...rows].map(r => r.map(c => `"${String(c||'').replace(/"/g,'""')}"`).join(",")).join("\n");
+  
+  const d = new Date();
+  const dateStr = `${d.getDate()}-${d.getMonth() + 1}-${d.getFullYear()}`;
+  const storeLabel = storeFilter && storeFilter !== 'All' ? storeFilter : 'ALL STORES';
+  const sanitizedStoreName = String(storeLabel).toUpperCase().replace(/[/\\?%*:|"<>]/g, '').trim();
+  const fileName = `${sanitizedStoreName} - EMPLOYEE DATA REPORT - ${dateStr}.csv`;
+
   const a = document.createElement("a");
   a.href = "data:text/csv;charset=utf-8," + encodeURIComponent(csv);
-  a.download = "employees.csv";
+  a.download = fileName;
   a.click();
 };
 
@@ -188,7 +195,7 @@ const EmployeeData = () => {
         const empRank = getRoleRank(e.designation);
         return empRank < userRank;
       }) : mapped;
-      exportCSV(filtered);
+      exportCSV(filtered, storeFilter);
     }
   };
 

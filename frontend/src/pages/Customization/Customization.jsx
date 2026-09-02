@@ -350,8 +350,11 @@ const Customization = () => {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    const storeLabel = selectedStore && selectedStore !== 'All' ? selectedStore : 'All_Stores';
-    link.setAttribute("download", `Customization_Entries_${storeLabel}_${selectedMonth}_${selectedYear}.csv`);
+    const storeLabel = selectedStore && selectedStore !== 'All' ? selectedStore : 'ALL STORES';
+    const sanitizedStoreName = String(storeLabel).toUpperCase().replace(/[/\\?%*:|"<>]/g, '').trim();
+    const dateStr = `${selectedMonth}-${selectedYear}`;
+    const fileName = `${sanitizedStoreName} - CUSTOMIZATION ENTRIES REPORT - ${dateStr}.csv`;
+    link.setAttribute("download", fileName);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);

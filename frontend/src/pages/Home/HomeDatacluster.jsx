@@ -1,4 +1,5 @@
 import SideNav from "../../components/SideNav/SideNav";
+import WelcomeBanner from "../../components/WelcomeBanner/WelcomeBanner";
 import HomeBar from "../../components/HomeBar/HomeBar";
 import TopEmployeeAndBranch from "../../components/TopEmployeeAndBranch/TopEmployeeAndBranch";
 import Quick from "../../components/Quick/Quick";
@@ -12,6 +13,9 @@ const HomeDatacluster = ({ user }) => {
                 <SideNav />
                 <div className="md:ml-[120px] w-full">
                     <div className="px-6 mt-6">
+                        <WelcomeBanner />
+                    </div>
+                    <div className="px-6 mt-5">
                         <DashboardOverview />
                     </div>
                 </div>

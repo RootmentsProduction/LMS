@@ -5,29 +5,82 @@ import DapprAttribution from '../model/DapprAttribution.js';
 
 const router = express.Router();
 
+// Helper to build flexible store name matching regexes
+const buildStoreRegexes = (storeName) => {
+  if (!storeName || storeName === 'All') return null;
+
+  const raw = String(storeName).trim();
+  const lower = raw.toLowerCase();
+  const escaped = raw.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
+
+  const isZ = lower.startsWith('z');
+  const cleanLoc = lower
+    .replace(/^(zorucci|suitor\s*guy|grooms|sg|g|z)[\.\-\s]*/i, '')
+    .replace(/\d+$/g, '')
+    .trim();
+
+  let locRegexStr = cleanLoc.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
+  if (/edap{1,3}a?l{1,3}[yi]*/i.test(cleanLoc)) {
+    locRegexStr = 'edap{1,3}a?l{1,3}[yi]*\\d*';
+  } else if (/edap{1,3}a?l/i.test(cleanLoc)) {
+    locRegexStr = 'edap{1,3}a?l';
+  } else if (/kottaka?l/i.test(cleanLoc)) {
+    locRegexStr = 'kottaka?l';
+  } else if (/perinthalman*a/i.test(cleanLoc)) {
+    locRegexStr = 'perinthalman+a';
+  } else if (/kalpeta|kalpetta/i.test(cleanLoc)) {
+    locRegexStr = 'kalpet+a';
+  } else if (/manjer[yi]/i.test(cleanLoc)) {
+    locRegexStr = 'manjer[yi]';
+  } else if (/perumbav[ou]{1,2}r/i.test(cleanLoc)) {
+    locRegexStr = 'perumbav[ou]{1,2}r';
+  } else if (/trivandrum|thiruvananthapuram|tvm/i.test(cleanLoc)) {
+    locRegexStr = '(trivandrum|thiruvananthapuram|tvm)';
+  } else if (/calicut|kozhikode/i.test(cleanLoc)) {
+    locRegexStr = '(calicut|kozhikode)';
+  } else if (/vadakara|vatakara/i.test(cleanLoc)) {
+    locRegexStr = '(vadakara|vatakara)';
+  } else if (/thrissur|tsr/i.test(cleanLoc)) {
+    locRegexStr = '(thrissur|tsr)';
+  }
+
+  const prefixRegex = isZ 
+    ? '^(z|zorucci)[\\.\\-\\s]*' 
+    : '^(sg|g|suitor\\s*guy|grooms)?[\\.\\-\\s]*';
+
+  const fullRegexPattern = `${prefixRegex}${locRegexStr}$`;
+
+  return [
+    { storeName: raw },
+    { storeName: { $regex: new RegExp(`^${escaped}$`, 'i') } },
+    { storeName: { $regex: new RegExp(fullRegexPattern, 'i') } }
+  ];
+};
+
 // GET attribution for specific store (or all stores), week, month, year
 router.get('/', MiddilWare, async (req, res) => {
   try {
     const { storeName, month, year, week } = req.query;
-    if (!month || !year) {
-      return res.status(400).json({ success: false, message: "month and year are required" });
+    if (!year) {
+      return res.status(400).json({ success: false, message: "year is required" });
     }
 
-    const query = { month, year: Number(year) };
+    const query = { year: Number(year) };
+    if (month && month !== 'All') {
+      query.month = month;
+    }
     if (storeName && storeName !== 'All') {
-      query.storeName = storeName;
+      const storeConditions = buildStoreRegexes(storeName);
+      if (storeConditions) {
+        query.$or = storeConditions;
+      }
     }
     if (week !== undefined && week !== null && week !== '' && week !== 'All') {
       query.week = Number(week);
     }
 
-    if (storeName && storeName !== 'All' && week !== undefined && week !== null && week !== '' && week !== 'All') {
-      const doc = await DapprAttribution.findOne(query).lean();
-      return res.status(200).json({ success: true, data: doc });
-    } else {
-      const docs = await DapprAttribution.find(query).lean();
-      return res.status(200).json({ success: true, data: docs });
-    }
+    const docs = await DapprAttribution.find(query).lean();
+    return res.status(200).json({ success: true, data: docs });
   } catch (error) {
     console.error("Error fetching DapprAttribution:", error);
     return res.status(500).json({ success: false, message: "Internal server error" });

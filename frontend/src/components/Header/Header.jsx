@@ -106,13 +106,29 @@ const Header = () => {
                 style={{ height: '60px', padding: '0 24px' }}
             >
                 {/* ── Left: Logo + brand name ── */}
-                <Link to="/" className="flex items-center gap-3 no-underline select-none">
-                    <img src="/logo.png" alt="Brynex LMS" className="w-12 h-12 object-contain select-none" />
-                    <div className="flex flex-col ml-3">
-                        <h1 className="text-xl font-bold text-gray-800 tracking-wide">
-                            BRYNEX ONE
+                <Link to="/" className="flex items-center gap-3 no-underline select-none group">
+                    <div className="brand-logo-ambient relative flex items-center justify-center p-0.5 rounded-full" style={{ perspective: '1000px' }}>
+                        <img 
+                            src="/logo.png" 
+                            alt="Brynex LMS" 
+                            className="w-11 h-11 object-contain select-none relative z-10 brand-logo-choreographed transition-transform duration-300 group-hover:scale-110" 
+                        />
+                    </div>
+                    <div className="flex flex-col ml-1 brand-text-perspective">
+                        <h1 className="text-xl font-bold tracking-wide brand-title-container flex items-center">
+                            {"BRYNEX ONE".split('').map((char, index) => (
+                                <span
+                                    key={index}
+                                    className="brand-letter inline-block"
+                                    style={{
+                                        animationDelay: `${(index * 0.07).toFixed(2)}s`
+                                    }}
+                                >
+                                    {char === ' ' ? '\u00A0' : char}
+                                </span>
+                            ))}
                         </h1>
-                        <span className="text-[9px] font-medium tracking-widest uppercase text-gray-400" style={{ letterSpacing: '0.18em' }}>
+                        <span className="text-[9px] font-medium tracking-widest uppercase text-gray-400 group-hover:text-gray-600 transition-all duration-300" style={{ letterSpacing: '0.18em' }}>
                             BRYNEX APPAREL PVT.LTD
                         </span>
                     </div>

@@ -4,6 +4,7 @@ import SideNav from "../../components/SideNav/SideNav";
 import ModileNav from "../../components/SideNav/ModileNav";
 import baseUrl, { formatStoreDisplayName } from "../../api/api";
 import { FaChevronLeft, FaChevronRight, FaDownload } from 'react-icons/fa';
+import * as XLSX from 'xlsx';
 
 /* ── helpers ─────────────────────────────────────────────────────────────── */
 const BRAND_TOKENS = new Set(["zorucci", "grooms", "suitor", "guy", "sg"]);
@@ -58,6 +59,8 @@ const matchEventType = (actualValue, targetFilter) => {
 
 const NON_SALES_REASONS = new Set([
     'Product Already Booked',
+    'Design Not Available',
+    'Colour Not Available',
     'Design and Colour Not Available',
     'Model, Design and Colour Not Available',
     'Design and Color Unavailable',
@@ -217,11 +220,26 @@ const getCombinedStateAt = (w, endDateStr, startDateStr, statusFilterOrList) => 
     date: initialDate
   });
 
-  const sortedHistory = [...(w.statusHistory || [])].sort((a, b) => new Date(a.date) - new Date(b.date));
+  // Collect explicit status milestone dates as fallback events
+  const milestones = [];
+  if (w.bookingDate) milestones.push({ status: 'Booked', date: w.bookingDate });
+  if (w.rentoutDate) milestones.push({ status: 'Rentout', date: w.rentoutDate });
+  if (w.returnDate) milestones.push({ status: 'Return', date: w.returnDate });
+  if (w.cancelDate || w.cancellationDate) milestones.push({ status: 'Cancelled', date: w.cancelDate || w.cancellationDate });
+  if (w.billedDate) milestones.push({ status: 'Billed', date: w.billedDate });
+  if (w.billReturnedDate) milestones.push({ status: 'Bill Returned', date: w.billReturnedDate });
+  if (w.lastStatusChangeDate && w.status) milestones.push({ status: w.status, date: w.lastStatusChangeDate });
+
+  const rawEvents = [
+    ...(w.statusHistory || []).map(h => ({ status: h.status, category: h.category, date: h.date })),
+    ...milestones
+  ];
+
+  rawEvents.sort((a, b) => new Date(a.date) - new Date(b.date));
 
   const rentalStatuses = ['New Walkin', 'Booked', 'Rentout', 'Return', 'Cancelled', 'Cancel'];
 
-  sortedHistory.forEach(h => {
+  rawEvents.forEach(h => {
     const s = String(h.status || '').trim();
     const isRental = rentalStatuses.includes(s) || (h.category && h.category !== 'Sales');
     if (isRental) {
@@ -295,8 +313,20 @@ const getCombinedStateAt = (w, endDateStr, startDateStr, statusFilterOrList) => 
   return statesBeforeCutoff[statesBeforeCutoff.length - 1];
 };
 
-/* ── Export to CSV ───────────────────────────────────────────────────────── */
-const exportCSV = (data, getState) => {
+const formatDateForFileName = (dateStr) => {
+  if (!dateStr) return '';
+  const parts = String(dateStr).split('-');
+  if (parts.length === 3) {
+    const year = parts[0];
+    const month = parts[1];
+    const day = String(parseInt(parts[2], 10));
+    return `${day}-${month}-${year}`;
+  }
+  return dateStr;
+};
+
+/* ── Export to CSV & Excel ───────────────────────────────────────────────── */
+const getExportRows = (data, getState) => {
   const headers = [
     '#', 
     'DATE', 
@@ -313,6 +343,9 @@ const exportCSV = (data, getState) => {
     'REMARKS', 
     'SIZE', 
     'COLOR', 
+    'WORK TYPE',
+    'PRODUCT CATEGORY',
+    'WORK SIZE',
     'NOTES', 
     'STORE', 
     'STAFF', 
@@ -325,9 +358,8 @@ const exportCSV = (data, getState) => {
     'NEXT VISIT DATE'
   ];
 
-
   const rows = data.map((w, i) => {
-    const itemState = getState(w) || w;
+    const itemState = getState ? (getState(w) || w) : w;
     const productType = w.lossProductType || '-';
     const notesText = w.notes || '-';
 
@@ -358,7 +390,7 @@ const exportCSV = (data, getState) => {
       displaySubCategory = w.subCategory || '-';
     }
 
-    const walkinDate = itemState.date ? fmtDate(itemState.date) : '-';
+    const walkinDate = itemState.date ? fmtDate(itemState.date) : (w.createdAt || w.date ? fmtDate(w.createdAt || w.date) : '-');
     const functionDate = w.functionDate ? fmtDate(w.functionDate) : '-';
 
     return [
@@ -377,6 +409,9 @@ const exportCSV = (data, getState) => {
       w.remarks || '-',
       w.lossSize || '-',
       w.lossColour || '-',
+      w.workType || '-',
+      w.productCategory || w.workSize || '-',
+      w.workSize || w.productCategory || '-',
       notesText,
       w.store || '-',
       w.staff || '-',
@@ -390,6 +425,71 @@ const exportCSV = (data, getState) => {
     ];
   });
 
+  return { headers, rows };
+};
+
+const buildExportFilename = (filters = {}, ext = 'csv') => {
+  const {
+    selectedStores = [],
+    selectedStatuses = [],
+    selectedTableStatuses = [],
+    startDate = '',
+    endDate = '',
+    filterStartDate = '',
+    filterEndDate = ''
+  } = filters;
+
+  const validStores = (selectedStores || []).filter(s => s && s !== 'All');
+  let storeStr = 'all store';
+  if (validStores.length === 1) {
+    storeStr = formatStoreDisplayName(validStores[0]) || validStores[0];
+  } else {
+    storeStr = 'all store';
+  }
+
+  const tableStatuses = (selectedTableStatuses || []).filter(s => s && s !== 'All');
+  const generalStatuses = (selectedStatuses || []).filter(s => s && s !== 'All');
+  const activeStatuses = tableStatuses.length > 0 ? tableStatuses : generalStatuses;
+
+  let statusStr = 'all status';
+  if (activeStatuses.length === 1) {
+    statusStr = activeStatuses[0];
+  } else if (activeStatuses.length > 1) {
+    statusStr = activeStatuses.join('-');
+  } else {
+    statusStr = 'all status';
+  }
+
+  const sDate = (startDate || filterStartDate || '').trim();
+  const eDate = (endDate || filterEndDate || '').trim();
+
+  let dateStr = 'all time';
+  if (sDate && eDate) {
+    if (sDate === eDate) {
+      dateStr = sDate;
+    } else {
+      dateStr = `${sDate}_to_${eDate}`;
+    }
+  } else if (sDate) {
+    dateStr = `from_${sDate}`;
+  } else if (eDate) {
+    dateStr = `until_${eDate}`;
+  } else {
+    dateStr = 'all time';
+  }
+
+  const sanitize = (str) => String(str || '').replace(/[\/\\?%*:|"<>]/g, '-').trim();
+
+  const cleanStore = sanitize(storeStr);
+  const cleanStatus = sanitize(statusStr);
+  const cleanDate = sanitize(dateStr);
+
+  return `${cleanStore}_${cleanStatus}_report_${cleanDate}.${ext}`;
+};
+
+const exportCSV = (data, getState, filters = {}) => {
+  const { headers, rows } = getExportRows(data, getState);
+
   const csv = [headers, ...rows].map((r, rowIdx) => r.map((c, colIdx) => {
     let s = String(c ?? '');
     // Strip any en/em dashes that were used as placeholders (use plain hyphen instead)
@@ -400,14 +500,60 @@ const exportCSV = (data, getState) => {
     return `"${s.replace(/"/g, '""')}"`;
   }).join(',')).join('\n');
 
+  let storeNameStr = 'ALL STORES';
+  if (filters.selectedStores && filters.selectedStores.length === 1 && filters.selectedStores[0] !== 'All') {
+    const selectedId = filters.selectedStores[0];
+    // We assume branches is passed via filters or it falls back to empty
+    const branchesArr = filters.branches || [];
+    const bObj = branchesArr.find(b => String(b._id) === String(selectedId) || b.workingBranch === selectedId || norm(b.workingBranch) === norm(selectedId));
+    if (bObj) {
+      storeNameStr = formatStoreDisplayName(bObj.workingBranch);
+    } else {
+      storeNameStr = String(selectedId);
+    }
+  } else if (filters.selectedStores && filters.selectedStores.length > 1) {
+    storeNameStr = `${filters.selectedStores.length} STORES`;
+  }
+
+  const sanitizedStoreName = String(storeNameStr || 'ALL STORES').toUpperCase().replace(/[/\\?%*:|"<>]/g, '').trim();
+
+  const startFmt = formatDateForFileName(filters.startDate || filters.filterStartDate);
+  const endFmt = formatDateForFileName(filters.endDate || filters.filterEndDate);
+  
+  let dateRangeStr = startFmt;
+  if (startFmt && endFmt && startFmt !== endFmt) {
+    dateRangeStr = `${startFmt} TO ${endFmt}`;
+  }
+
+  const filename = `${sanitizedStoreName} - WALKIN REPORT - ${dateRangeStr}`.trim() + '.csv';
   // Prefixing with UTF-8 BOM (\uFEFF) forces Excel to read the CSV as UTF-8 encoding
   const blob = new Blob(["\ufeff" + csv], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a'); 
   a.href = url; 
-  a.download = 'walkin-report.csv'; 
+  a.download = filename;
   a.click();
   URL.revokeObjectURL(url);
+};
+
+const exportExcel = (data, getState, filters = {}) => {
+  const { headers, rows } = getExportRows(data, getState);
+  const worksheet = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+
+  const colWidths = headers.map((h, i) => {
+    let maxLen = h.length;
+    rows.forEach(r => {
+      const valStr = String(r[i] ?? '');
+      if (valStr.length > maxLen) maxLen = valStr.length;
+    });
+    return { wch: Math.min(Math.max(maxLen + 3, 10), 50) };
+  });
+  worksheet['!cols'] = colWidths;
+
+  const filename = buildExportFilename(filters, 'xlsx');
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Walkin Report');
+  XLSX.writeFile(workbook, filename);
 };
 /* ── CustomSelect Dropdown Component ────────────────────────────────────────── */
 const CustomSelect = ({
@@ -1290,11 +1436,15 @@ const WalkinReport = () => {
                   <input type="text" placeholder="Search" value={tableSearch} onChange={e=>{setTableSearch(e.target.value);setCurrentPage(1);}} style={{ border:'none', outline:'none', fontSize:'13px', color:'#374151', background:'transparent', width:'180px' }} />
                 </div>
               </div>
-              {/* Export button – single button only */}
+              {/* Export buttons */}
               <div style={{ display:'flex', alignItems:'center', gap:'8px' }}>
-                <button onClick={()=>exportCSV(displayed, getDisplayedState)} style={{ display:'flex', alignItems:'center', gap:'6px', border:'1px solid #e5e7eb', borderRadius:'8px', padding:'7px 14px', fontSize:'13px', fontWeight:500, color:'#374151', background:'#f9fafb', cursor:'pointer' }}>
+                <button onClick={()=>exportCSV(displayed, getDisplayedState, { selectedStores, selectedStatuses, selectedTableStatuses, startDate: formData.startDate, endDate: formData.endDate, branches })} style={{ display:'flex', alignItems:'center', gap:'6px', border:'1px solid #e5e7eb', borderRadius:'8px', padding:'7px 14px', fontSize:'13px', fontWeight:500, color:'#374151', background:'#f9fafb', cursor:'pointer' }}>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                   Export CSV
+                </button>
+                <button onClick={()=>exportExcel(displayed, getDisplayedState, { selectedStores, selectedStatuses, selectedTableStatuses, startDate: formData.startDate, endDate: formData.endDate })} style={{ display:'flex', alignItems:'center', gap:'6px', border:'1px solid #86efac', borderRadius:'8px', padding:'7px 14px', fontSize:'13px', fontWeight:500, color:'#15803d', background:'#dcfce7', cursor:'pointer' }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                  Export Excel
                 </button>
               </div>
             </div>
@@ -1307,11 +1457,11 @@ const WalkinReport = () => {
             ) : displayed.length === 0 ? (
               <div style={{ textAlign:'center', padding:'48px', color:'#9ca3af', fontSize:'13px' }}>No records found.</div>
             ) : (
-              <div style={{ overflowX:'auto' }}>
-                <table style={{ width: '3265px', tableLayout: 'fixed', borderCollapse: 'collapse', fontSize: '12px', fontFamily: "DM Sans, sans-serif" }}>
-                  <thead>
-                    <tr style={{ background:'#fafafa', borderBottom:'1px solid #f3f4f6' }}>
-                      {['#', 'DATE', 'CUSTOMER', 'CONTACT', 'REPEAT COUNT', 'STATUS', 'FUNCTION DATE', 'FUNCTION TYPE', 'CATEGORY', 'PRODUCT TYPE', 'LOSS REASON', 'SUB CATEGORY', 'REMARKS', 'SIZE', 'COLOR', 'NOTES', 'STORE', 'STAFF', 'ATTACHMENT', 'BOOKING DATE', 'RENTOUT DATE', 'RETURN DATE', 'BILLED DATE', 'BILL RETURNED DATE', 'NEXT VISIT DATE'].map((h, i) => {
+              <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 'calc(100vh - 220px)' }}>
+                <table style={{ width: '3655px', tableLayout: 'fixed', borderCollapse: 'separate', borderSpacing: 0, fontSize: '12px', fontFamily: "DM Sans, sans-serif" }}>
+                  <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: '#fafafa' }}>
+                    <tr style={{ background:'#fafafa' }}>
+                      {['#', 'DATE', 'CUSTOMER', 'CONTACT', 'REPEAT COUNT', 'STATUS', 'FUNCTION DATE', 'FUNCTION TYPE', 'CATEGORY', 'PRODUCT TYPE', 'LOSS REASON', 'SUB CATEGORY', 'REMARKS', 'SIZE', 'COLOR', 'WORK TYPE', 'PRODUCT CATEGORY', 'WORK SIZE', 'NOTES', 'STORE', 'STAFF', 'ATTACHMENT', 'BOOKING DATE', 'RENTOUT DATE', 'RETURN DATE', 'BILLED DATE', 'BILL RETURNED DATE', 'NEXT VISIT DATE'].map((h, i) => {
                           const getColWidth = (header) => {
                             const widths = {
                               '#': '50px',
@@ -1330,6 +1480,9 @@ const WalkinReport = () => {
                               'REMARKS': '200px',
                               'SIZE': '70px',
                               'COLOR': '85px',
+                              'WORK TYPE': '130px',
+                              'PRODUCT CATEGORY': '140px',
+                              'WORK SIZE': '120px',
                               'NOTES': '200px',
                               'STORE': '140px',
                               'STAFF': '155px',
@@ -1347,6 +1500,11 @@ const WalkinReport = () => {
                               <th
                                   key={i}
                                   style={{
+                                      position: 'sticky',
+                                      top: 0,
+                                      zIndex: 10,
+                                      background: '#fafafa',
+                                      borderBottom: '1px solid #f3f4f6',
                                       padding: '12px 12px',
                                       textAlign: 'center',
                                       fontSize: '11px',
@@ -1493,8 +1651,23 @@ const WalkinReport = () => {
                                     <span className="walkin-marquee-text walkin-anim-scroll">{w.lossColour || '–'}</span>
                                 </div>
                               </td>
-                          <td style={{textAlign: 'center',  padding: '11px 12px', color: '#6b7280', boxSizing: 'border-box' }}>
+                              <td style={{textAlign: 'center', padding: '11px 12px', color: '#374151', boxSizing: 'border-box' }}>
+                                <div className="walkin-marquee-container" title={w.workType}>
+                                    <span className="walkin-marquee-text walkin-anim-scroll">{w.workType || '–'}</span>
+                                </div>
+                              </td>
+                              <td style={{textAlign: 'center', padding: '11px 12px', color: '#374151', boxSizing: 'border-box' }}>
                                 <div className="walkin-marquee-container">
+                                    <span className="walkin-marquee-text walkin-anim-scroll">{w.productCategory || '–'}</span>
+                                </div>
+                              </td>
+                              <td style={{textAlign: 'center', padding: '11px 12px', color: '#374151', boxSizing: 'border-box' }}>
+                                <div className="walkin-marquee-container">
+                                    <span className="walkin-marquee-text walkin-anim-scroll">{w.workSize || '–'}</span>
+                                </div>
+                              </td>
+                          <td style={{textAlign: 'center',  padding: '11px 12px', color: '#6b7280', boxSizing: 'border-box' }}>
+                                <div className="walkin-marquee-container" title={notesText}>
                                     <span className="walkin-marquee-text walkin-anim-scroll">{notesText}</span>
                                 </div>
                               </td>
@@ -1681,58 +1854,6 @@ const WalkinReport = () => {
                       </div>
                     </>
                   )}
-                </div>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <button
-                    type="button"
-                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                    disabled={currentPage === 1}
-                    style={{
-                      width: '36px',
-                      height: '36px',
-                      border: '1px solid #e5e7eb',
-                      borderRadius: '8px',
-                      background: '#fff',
-                      cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
-                      opacity: currentPage === 1 ? 0.4 : 1,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
-                      color: '#374151'
-                    }}
-                    onMouseEnter={e => { if (currentPage !== 1) e.currentTarget.style.background = '#f9fafb'; }}
-                    onMouseLeave={e => { e.currentTarget.style.background = '#fff'; }}
-                  >
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="15 18 9 12 15 6" />
-                    </svg>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                    disabled={currentPage === totalPages || totalPages === 0}
-                    style={{
-                      width: '36px',
-                      height: '36px',
-                      border: '1px solid #e5e7eb',
-                      borderRadius: '8px',
-                      background: '#fff',
-                      cursor: (currentPage === totalPages || totalPages === 0) ? 'not-allowed' : 'pointer',
-                      opacity: (currentPage === totalPages || totalPages === 0) ? 0.4 : 1,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
-                      color: '#374151'
-                    }}
-                    onMouseEnter={e => { if (currentPage !== totalPages && totalPages !== 0) e.currentTarget.style.background = '#f9fafb'; }}
-                    onMouseLeave={e => { e.currentTarget.style.background = '#fff'; }}
-                  >
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="9 18 15 12 9 6" />
-                    </svg>
-                  </button>
                 </div>
               </div>
             </div>

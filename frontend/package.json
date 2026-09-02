@@ -22,7 +22,8 @@
     "react-spinners": "^0.15.0",
     "react-toastify": "^11.0.2",
     "recharts": "^2.15.0",
-    "redux-persist": "^6.0.0"
+    "redux-persist": "^6.0.0",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",

@@ -188,3 +188,255 @@ html.dark .recharts-default-tooltip {
   border-color: #1e293b !important;
 }
 
+/* ── Modern Minimal Pointer & Micro-Interaction Animations ── */
+button, 
+a, 
+input[type="button"], 
+input[type="submit"], 
+.cursor-pointer,
+select {
+  transition: transform 0.15s cubic-bezier(0.4, 0, 0.2, 1), 
+              box-shadow 0.15s cubic-bezier(0.4, 0, 0.2, 1),
+              border-color 0.15s ease,
+              background-color 0.15s ease;
+}
+
+/* Subtle button press feedback when clicked */
+button:active:not(:disabled), 
+a:active, 
+.cursor-pointer:active {
+  transform: scale(0.975);
+}
+
+/* Subtle glow outline focus on active form inputs */
+input:focus, 
+select:focus, 
+textarea:focus {
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+/* Table row pointer hover elevation */
+tr, tbody tr {
+  transition: background-color 0.15s ease, transform 0.15s ease;
+}
+
+/* Custom interactive ripple / pointer glow effect utility class */
+.pointer-glow {
+  position: relative;
+  overflow: hidden;
+}
+.pointer-glow::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 120%;
+  height: 120%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.25) 0%, transparent 70%);
+  transform: translate(-50%, -50%) scale(0);
+  opacity: 0;
+  transition: transform 0.3s ease, opacity 0.3s ease;
+  pointer-events: none;
+}
+.pointer-glow:hover::after {
+  transform: translate(-50%, -50%) scale(1);
+  opacity: 1;
+}
+
+/* ── Continuous Ambient Brand Animations ── */
+.brand-logo-ambient {
+  position: relative;
+}
+
+.brand-logo-ambient::before {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: 9999px;
+  background: radial-gradient(circle, rgba(59, 130, 246, 0.4) 0%, rgba(99, 102, 241, 0.25) 50%, transparent 75%);
+  animation: logoBreathingGlow 3s ease-in-out infinite alternate;
+  pointer-events: none;
+  z-index: 0;
+}
+
+@keyframes logoBreathingGlow {
+  0% {
+    transform: scale(0.90);
+    opacity: 0.3;
+    filter: blur(4px);
+  }
+  100% {
+    transform: scale(1.12);
+    opacity: 0.85;
+    filter: blur(8px);
+  }
+}
+
+/* ── Choreographed Header Branding Animation (12s Cycle) ── */
+
+.brand-text-perspective {
+  perspective: 1000px;
+}
+
+.brand-title-container {
+  display: inline-flex;
+  background: linear-gradient(
+    110deg,
+    #0f172a 0%,
+    #0f172a 32%,
+    #0284c7 44%,
+    #00e5ff 50%,
+    #0284c7 56%,
+    #0f172a 68%,
+    #0f172a 100%
+  );
+  background-size: 250% 100%;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: textSparkleSweep 12s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  filter: drop-shadow(0 0 1px rgba(0, 229, 255, 0.35));
+}
+
+html.dark .brand-title-container {
+  background: linear-gradient(
+    110deg,
+    #f8fafc 0%,
+    #f8fafc 32%,
+    #38bdf8 44%,
+    #7dd3fc 50%,
+    #38bdf8 56%,
+    #f8fafc 68%,
+    #f8fafc 100%
+  );
+  background-size: 250% 100%;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: textSparkleSweep 12s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  filter: drop-shadow(0 0 3px rgba(56, 189, 248, 0.6));
+}
+
+@keyframes textSparkleSweep {
+  0% {
+    background-position: 150% 0;
+  }
+  37.5% {
+    background-position: -50% 0;
+  }
+  54% {
+    background-position: -50% 0;
+  }
+  66.5% {
+    background-position: 150% 0;
+  }
+  91.5% {
+    background-position: -50% 0;
+  }
+  100% {
+    background-position: -50% 0;
+  }
+}
+
+/* Letter-by-letter vertical roll flip */
+.brand-letter {
+  display: inline-block;
+  transform-style: preserve-3d;
+  backface-visibility: visible;
+  animation: letterVerticalRoll 12s cubic-bezier(0.34, 1.56, 0.64, 1) infinite;
+}
+
+@keyframes letterVerticalRoll {
+  /* 0% to 37.5% (0s - 4.5s): Sits flat during slow text sparkle sweep */
+  0%, 37.5% {
+    transform: perspective(400px) rotateX(0deg);
+  }
+
+  /* 37.5% to 54% (4.5s - 6.5s): Smooth 360-degree vertical 3D tumbler reel spin */
+  54% {
+    transform: perspective(400px) rotateX(-360deg);
+  }
+
+  /* 54% to 100%: Stays flat */
+  100% {
+    transform: perspective(400px) rotateX(-360deg);
+  }
+}
+
+/* Logo Choreography */
+.brand-logo-choreographed {
+  animation: logoChoreography 12s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  transform-style: preserve-3d;
+}
+
+@keyframes logoChoreography {
+  /* 0% to 66.5% (0s - 8s): Logo sits still while text sweeps & turns around */
+  0%, 66.5% {
+    transform: rotateY(0deg) scale(1);
+  }
+
+  /* 66.5% to 91.5% (8s - 11s): Logo revolves 360 degrees smoothly in sync with text sweep */
+  79% {
+    transform: rotateY(180deg) scale(1.08);
+  }
+  91.5% {
+    transform: rotateY(360deg) scale(1);
+  }
+
+  /* 91.5% to 100% (11s - 12s): Sits still before repeating */
+  100% {
+    transform: rotateY(360deg) scale(1);
+  }
+}
+
+.brand-pulse-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 9999px;
+  background-color: #10b981;
+  box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+  animation: liveDotPulse 2s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+
+@keyframes liveDotPulse {
+  0% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+  }
+  70% {
+    transform: scale(1);
+    box-shadow: 0 0 0 6px rgba(16, 185, 129, 0);
+  }
+  100% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+  }
+}
+
+/* Smooth entrance for page titles */
+.animate-page-title {
+  animation: pageTitleFadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes pageTitleFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Floating Notification Banner Spring Drop-in */
+@keyframes popupDropIn {
+  0% {
+    opacity: 0;
+    transform: translateY(-16px) scale(0.95);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+

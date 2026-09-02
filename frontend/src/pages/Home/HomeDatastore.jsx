@@ -1,4 +1,5 @@
 import SideNav from "../../components/SideNav/SideNav";
+import WelcomeBanner from "../../components/WelcomeBanner/WelcomeBanner";
 import TopEmployeeAndBranch from "../../components/TopEmployeeAndBranch/TopEmployeeAndBranch";
 import Notification from "../../components/Notification/Notification";
 import TrainingProgress from "../../components/StoreManager/TrainingProgress";
@@ -12,6 +13,9 @@ const HomeDatastore = ({ user }) => {
                 <SideNav />
                 <div className="md:ml-[120px] w-full">
                     <div className="px-6 mt-6">
+                        <WelcomeBanner />
+                    </div>
+                    <div className="px-6 mt-5">
                         <DashboardOverview />
                     </div>
                 </div>

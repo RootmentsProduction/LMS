@@ -953,7 +953,6 @@ const GrowthComparison = () => {
 
   const handleExportCSV = () => {
     const scaleLabel = activeTab === "MTD" ? "MTD" : (activeTab === "WTD" ? "WTD" : "CUSTOM");
-    const fileName = `Growth_Comparison_${scaleLabel}_2026.csv`;
     
     // Metric order: Walk-In -> Bill -> Quantity -> Value
     const headers = [
@@ -1016,6 +1015,35 @@ const GrowthComparison = () => {
     
     const csvContent = [headers, ...rows].map(e => e.map(val => `"${String(val).replace(/"/g, '""')}"`).join(",")).join("\n");
     
+    const formatDateForFileName = (dateStr) => {
+      if (!dateStr) return '';
+      const parts = String(dateStr).split('-');
+      if (parts.length === 3) {
+        const year = parts[0];
+        const month = parts[1];
+        const day = String(parseInt(parts[2], 10));
+        return `${day}-${month}-${year}`;
+      }
+      return dateStr;
+    };
+
+    const currentStoreName = isStoreAdmin 
+      ? (branches[0] ? displayBranchName(branches[0].workingBranch) : "STORE ADMIN") 
+      : (selectedStore === "All" ? "ALL STORES" : selectedStore);
+    const sanitizedStoreName = String(currentStoreName).toUpperCase().replace(/[/\\?%*:|"<>]/g, '').trim();
+
+    let dateStr = '';
+    if (activeTab === "CUSTOM") {
+      const startFmt = formatDateForFileName(customStartDate);
+      const endFmt = formatDateForFileName(customEndDate);
+      dateStr = (startFmt && endFmt && startFmt !== endFmt) ? `${startFmt} TO ${endFmt}` : (startFmt || endFmt);
+    } else {
+      const startFmt = formatDateForFileName(getLocalDateString(new Date()));
+      dateStr = startFmt;
+    }
+
+    const fileName = `${sanitizedStoreName} - GROWTH COMPARISON REPORT - ${dateStr}`.trim() + '.csv';
+
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");

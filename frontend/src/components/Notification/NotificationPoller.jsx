@@ -1,9 +1,38 @@
 import { useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import baseUrl from '../../api/api';
+import NotificationPopup from './NotificationPopup';
+
+// Soft notification chime synthesizer using Web Audio API (zero external assets needed)
+const playChimeSound = () => {
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5 note
+    osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.15); // A5 note
+
+    gain.gain.setValueAtTime(0.12, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.start();
+    osc.stop(ctx.currentTime + 0.4);
+  } catch (e) {
+    /* Silent fallback if audio context blocked */
+  }
+};
 
 const NotificationPoller = () => {
   const lastIdRef = useRef(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     let intervalId;
@@ -48,15 +77,33 @@ const NotificationPoller = () => {
             lastIdRef.current = latestId;
             sessionStorage.setItem('lastNotificationId', latestId);
 
-            // Display a toast popup
-            toast.info(`🔔 Notification: ${latestNotification.title}`, {
-              position: "top-right",
-              autoClose: 5000,
-              hideProgressBar: false,
-              closeOnClick: true,
-              pauseOnHover: true,
-              draggable: true,
-            });
+            // Play audio chime
+            playChimeSound();
+
+            // Display floating notification popup card
+            toast(
+              ({ closeToast }) => (
+                <NotificationPopup 
+                  notification={latestNotification}
+                  onClose={closeToast}
+                  onClick={() => {
+                    closeToast();
+                    if (latestNotification.link) {
+                      navigate(latestNotification.link);
+                    } else {
+                      navigate('/admin/Notification');
+                    }
+                  }}
+                />
+              ),
+              {
+                position: "top-right",
+                autoClose: 6000,
+                hideProgressBar: true,
+                closeButton: false,
+                style: { background: 'transparent', boxShadow: 'none', padding: 0 }
+              }
+            );
           }
         }
       } catch (error) {

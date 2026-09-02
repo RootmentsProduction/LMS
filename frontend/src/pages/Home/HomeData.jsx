@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import SideNav from "../../components/SideNav/SideNav";
+import WelcomeBanner from "../../components/WelcomeBanner/WelcomeBanner";
 import DashboardOverview from "../../components/DashboardOverview/DashboardOverview";
 import DailyWalkings from "../../components/DailyWalkings/DailyWalkings";
 import TaskOverview from "../../components/TaskOverview/TaskOverview";
@@ -30,6 +31,10 @@ const HomeData = () => {
                 <SideNav />
                 <div className="md:ml-[120px] w-full">
                     <div className="px-4 sm:px-6 mt-6">
+                        <WelcomeBanner />
+                    </div>
+
+                    <div className="px-4 sm:px-6 mt-5">
                         <DashboardOverview range={range} customRange={customRange} />
                     </div>
 

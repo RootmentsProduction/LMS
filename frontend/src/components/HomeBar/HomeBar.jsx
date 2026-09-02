@@ -286,21 +286,21 @@ const STAFF_ALIAS_MAPPING = {
   "amal": "AMAL K MANOJ",
 
   // Abhijith
-  "abhijith kumar p a": "ABHIJITH KUMAR",
-  "abhijithkumarpa": "ABHIJITH KUMAR",
-  "abhijith kumar": "ABHIJITH KUMAR",
-  "abhijithkumar": "ABHIJITH KUMAR",
-  "abhijith": "ABHIJITH KUMAR",
+  "abhijith kumar p a": "ABHIJITH KUMAR P A",
+  "abhijithkumarpa": "ABHIJITH KUMAR P A",
+  "abhijith kumar": "ABHIJITH KUMAR P A",
+  "abhijithkumar": "ABHIJITH KUMAR P A",
+  "abhijith": "ABHIJITH KUMAR P A",
 
   // Aswin
-  "aswin raj m. r": "ASWIN RAJ M.R",
-  "aswin raj m.r": "ASWIN RAJ M.R",
-  "aswin raj m r": "ASWIN RAJ M.R",
-  "aswin raj mr": "ASWIN RAJ M.R",
-  "aswinrajmr": "ASWIN RAJ M.R",
-  "aswin raj": "ASWIN RAJ M.R",
-  "aswinraj": "ASWIN RAJ M.R",
-  "aswin": "ASWIN RAJ M.R",
+  "aswin raj m. r": "ASWIN RAJ M. R",
+  "aswin raj m.r": "ASWIN RAJ M. R",
+  "aswin raj m r": "ASWIN RAJ M. R",
+  "aswin raj mr": "ASWIN RAJ M. R",
+  "aswinrajmr": "ASWIN RAJ M. R",
+  "aswin raj": "ASWIN RAJ M. R",
+  "aswinraj": "ASWIN RAJ M. R",
+  "aswin": "ASWIN RAJ M. R",
 
   // Reshma
   "reshma m": "RESHMA M",

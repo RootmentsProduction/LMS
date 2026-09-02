@@ -857,10 +857,25 @@ const WalkinCount = () => {
         const link = document.createElement("a");
         link.setAttribute("href", url);
         
-        let downloadName = `WalkinCount_Report_${storeFilter}_${selectedDate}.csv`;
+        const storeNameStr = String(storeFilter || 'ALL STORES').toUpperCase().replace(/[/\\?%*:|"<>]/g, '').trim();
+        const formatDateForFileName = (dateStr) => {
+            if (!dateStr) return '';
+            const parts = String(dateStr).split('-');
+            if (parts.length === 3) {
+                const year = parts[0];
+                const month = parts[1];
+                const day = String(parseInt(parts[2], 10));
+                return `${day}-${month}-${year}`;
+            }
+            return dateStr;
+        };
+        const startFmt = formatDateForFileName(logStartDate || selectedDate);
+        const endFmt = formatDateForFileName(logEndDate || selectedDate);
+        let dateRangeStr = startFmt;
         if (logStartDate && logEndDate && logStartDate !== logEndDate) {
-            downloadName = `WalkinCount_Report_${storeFilter}_${logStartDate}_to_${logEndDate}.csv`;
+            dateRangeStr = `${startFmt} TO ${endFmt}`;
         }
+        const downloadName = `${storeNameStr} - WALKIN COUNT REPORT - ${dateRangeStr}`.trim() + '.csv';
         link.setAttribute("download", downloadName);
         document.body.appendChild(link);
         link.click();
@@ -893,11 +908,31 @@ const WalkinCount = () => {
             csvContent += `${escapedDate},${escapedTime},${escapedCat},${escapedInCam},${escapedRemarks},${escapedLoggedBy}\r\n`;
         });
 
+        const storeNameStr = String(storeFilter || 'ALL STORES').toUpperCase().replace(/[/\\?%*:|"<>]/g, '').trim();
+        const formatDateForFileName = (dateStr) => {
+            if (!dateStr) return '';
+            const parts = String(dateStr).split('-');
+            if (parts.length === 3) {
+                const year = parts[0];
+                const month = parts[1];
+                const day = String(parseInt(parts[2], 10));
+                return `${day}-${month}-${year}`;
+            }
+            return dateStr;
+        };
+        const startFmt = formatDateForFileName(logStartDate);
+        const endFmt = formatDateForFileName(logEndDate);
+        let dateRangeStr = startFmt;
+        if (logStartDate && logEndDate && logStartDate !== logEndDate) {
+            dateRangeStr = `${startFmt} TO ${endFmt}`;
+        }
+        const cameraDownloadName = `${storeNameStr} - CAMERA CHECKS REPORT - ${dateRangeStr}`.trim() + '.csv';
+
         const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
         link.setAttribute("href", url);
-        link.setAttribute("download", `CameraChecks_Report_${storeFilter}_${logStartDate}_to_${logEndDate}.csv`);
+        link.setAttribute("download", cameraDownloadName);
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
