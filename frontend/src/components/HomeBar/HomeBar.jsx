@@ -309,7 +309,32 @@ const STAFF_ALIAS_MAPPING = {
   // Sumesh
   "sumesh mohan": "SUMESH MOHAN",
   "sumeshmohan": "SUMESH MOHAN",
-  "sumesh": "SUMESH MOHAN"
+  "sumesh": "SUMESH MOHAN",
+
+  // Rasal / Resal
+  "resal": "RASAL",
+  "rasal": "RASAL",
+
+  // Aslam AS
+  "mohamed aslam a s": "ASLAM AS",
+  "mohamed aslam as": "ASLAM AS",
+  "mohammed aslam a s": "ASLAM AS",
+  "mohammed aslam as": "ASLAM AS",
+  "mohammad aslam a s": "ASLAM AS",
+  "mohammad aslam as": "ASLAM AS",
+  "m aslam as": "ASLAM AS",
+  "maslamas": "ASLAM AS",
+  "aslam a s": "ASLAM AS",
+  "aslam as": "ASLAM AS",
+  "aslamas": "ASLAM AS",
+
+  // Islah / Islam Rasheed
+  "islam rasheed p r": "ISLAH RASHEED P R",
+  "islam rasheed pr": "ISLAH RASHEED P R",
+  "islam rasheed": "ISLAH RASHEED P R",
+  "islah rasheed p r": "ISLAH RASHEED P R",
+  "islah rasheed pr": "ISLAH RASHEED P R",
+  "islah rasheed": "ISLAH RASHEED P R"
 };
 
 

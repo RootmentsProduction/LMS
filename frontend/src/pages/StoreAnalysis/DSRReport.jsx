@@ -647,7 +647,32 @@ const STAFF_ALIAS_MAPPING = {
   // Sumesh
   "sumesh mohan": "SUMESH MOHAN",
   "sumeshmohan": "SUMESH MOHAN",
-  "sumesh": "SUMESH MOHAN"
+  "sumesh": "SUMESH MOHAN",
+
+  // Rasal / Resal
+  "resal": "RASAL",
+  "rasal": "RASAL",
+
+  // Aslam AS
+  "mohamed aslam a s": "ASLAM AS",
+  "mohamed aslam as": "ASLAM AS",
+  "mohammed aslam a s": "ASLAM AS",
+  "mohammed aslam as": "ASLAM AS",
+  "mohammad aslam a s": "ASLAM AS",
+  "mohammad aslam as": "ASLAM AS",
+  "m aslam as": "ASLAM AS",
+  "maslamas": "ASLAM AS",
+  "aslam a s": "ASLAM AS",
+  "aslam as": "ASLAM AS",
+  "aslamas": "ASLAM AS",
+
+  // Islah / Islam Rasheed
+  "islam rasheed p r": "ISLAH RASHEED P R",
+  "islam rasheed pr": "ISLAH RASHEED P R",
+  "islam rasheed": "ISLAH RASHEED P R",
+  "islah rasheed p r": "ISLAH RASHEED P R",
+  "islah rasheed pr": "ISLAH RASHEED P R",
+  "islah rasheed": "ISLAH RASHEED P R"
 };
 
 
@@ -834,6 +859,19 @@ function extractWalkinEmpCodes(w, empNameToCodeMap) {
 
   return Array.from(new Set(codes.filter(Boolean)));
 }
+
+function isCodeMatch(code, empCodes) {
+  if (!code || !empCodes || !Array.isArray(empCodes) || empCodes.length === 0) return false;
+  if (empCodes.includes(code)) return true;
+  const digitsA = String(code).replace(/[^0-9]/g, "");
+  if (!digitsA || digitsA.length < 3) return false;
+  return empCodes.some(c => {
+    const digitsB = String(c).replace(/[^0-9]/g, "");
+    if (!digitsB || digitsB.length < 3) return false;
+    return digitsA === digitsB || digitsA.endsWith(digitsB) || digitsB.endsWith(digitsA);
+  });
+}
+
 
 function deduplicateStaffNames(rawNamesList, systemEmpNameToCodeMap = null, systemEmpCodeToNameMap = null) {
   if (!Array.isArray(rawNamesList)) return [];
@@ -3168,11 +3206,8 @@ const DSRReport = () => {
           const xHasCode = xCode && /^EMP\d+$/.test(xCode);
           const entryHasCode = entry.empCodes && entry.empCodes.some(c => /^EMP\d+$/.test(c));
 
-          if (xHasCode && entryHasCode) {
-            return entry.empCodes.includes(xCode);
-          }
-          if (xHasCode && !entryHasCode) {
-            return entry.empCodes.includes(xCode);
+          if (xHasCode) {
+            if (isCodeMatch(xCode, entry.empCodes)) return true;
           }
           return entry.rawNames.some(rn => isStaffNameMatch(rn, x.bookingBy, systemEmpNameToCodeMap)) || isStaffNameMatch(fullName, x.bookingBy, systemEmpNameToCodeMap);
         }).reduce((sum, x) => sum + (x.totalValue || 0), 0);
@@ -3367,7 +3402,7 @@ const DSRReport = () => {
 
         if (normCode && /^EMP\d+$/.test(normCode)) {
           for (const e of staffMap.values()) {
-            if (e.empCodes.includes(normCode)) {
+            if (e.empCodes.includes(normCode) || isCodeMatch(normCode, e.empCodes)) {
               entry = e;
               break;
             }
@@ -3398,8 +3433,8 @@ const DSRReport = () => {
         } else {
           if (normCode && !entry.empCodes.includes(normCode)) {
             const isEmpCodeValid = /^EMP\d+$/.test(normCode);
-            if (isEmpCodeValid && entry.empCodes.length === 0) {
-              const isUsedByOther = Array.from(staffMap.values()).some(e => e !== entry && e.empCodes.includes(normCode));
+            if (isEmpCodeValid) {
+              const isUsedByOther = Array.from(staffMap.values()).some(e => e !== entry && (e.empCodes.includes(normCode) || isCodeMatch(normCode, e.empCodes)));
               if (!isUsedByOther) {
                 entry.empCodes.push(normCode);
               }
@@ -3537,11 +3572,8 @@ const DSRReport = () => {
           const xHasCode = xCode && /^EMP\d+$/.test(xCode);
           const entryHasCode = entry.empCodes && entry.empCodes.some(c => /^EMP\d+$/.test(c));
 
-          if (xHasCode && entryHasCode) {
-            return entry.empCodes.includes(xCode);
-          }
-          if (xHasCode && !entryHasCode) {
-            return entry.empCodes.includes(xCode);
+          if (xHasCode) {
+            if (isCodeMatch(xCode, entry.empCodes)) return true;
           }
           const xName = x.bookingBy ? String(x.bookingBy).trim() : "";
           if (!xName) return false;
@@ -3554,11 +3586,8 @@ const DSRReport = () => {
           const xHasCode = xCode && /^EMP\d+$/.test(xCode);
           const entryHasCode = entry.empCodes && entry.empCodes.some(c => /^EMP\d+$/.test(c));
 
-          if (xHasCode && entryHasCode) {
-            return entry.empCodes.includes(xCode);
-          }
-          if (xHasCode && !entryHasCode) {
-            return entry.empCodes.includes(xCode);
+          if (xHasCode) {
+            if (isCodeMatch(xCode, entry.empCodes)) return true;
           }
           const xName = x.bookingBy ? String(x.bookingBy).trim() : "";
           if (!xName) return false;
