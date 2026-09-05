@@ -1068,6 +1068,13 @@ const StoreInsights = () => {
   const [salespersons, setSalespersons] = useState([]);
   const [loadingSales, setLoadingSales] = useState(false);
 
+  // Graph-specific timeframe & data for store admin employee performance graph
+  const [graphTimeframe, setGraphTimeframe] = useState("TODAY"); // TODAY, YESTERDAY, WTD, MTD
+  const [graphPerformanceData, setGraphPerformanceData] = useState({});
+  const [graphLyPerformanceData, setGraphLyPerformanceData] = useState({});
+  const [graphSalespersons, setGraphSalespersons] = useState([]);
+  const [loadingGraphData, setLoadingGraphData] = useState(false);
+
   // Dappr Squad & Customization attributions states
   const [dapprAttribution, setDapprAttribution] = useState({});
   const [customizationAttribution, setCustomizationAttribution] = useState({});
@@ -2836,6 +2843,99 @@ const StoreInsights = () => {
     return () => clearInterval(intervalId);
   }, [timeframe, customStartDate, customEndDate]);
 
+  // Dedicated fetch effect for Store Admin Employee Graph (Today, Yesterday, WTD, MTD)
+  useEffect(() => {
+    const isSingleStoreView = isStoreAdmin || (selectedStores.length === 1 && !selectedStores.includes("All"));
+    if (!isSingleStoreView || branches.length === 0) return;
+
+    const singleBranch = isStoreAdmin ? branches[0] : (branches.find(b => displayBranchName(b.workingBranch) === selectedStores[0]) || branches[0]);
+    if (!singleBranch) return;
+    const locId = getBranchLocationId(singleBranch?.workingBranch);
+    if (!locId) return;
+
+    let isCancelled = false;
+
+    const fetchGraphData = async () => {
+      setLoadingGraphData(true);
+      try {
+        const today = new Date();
+        const todayStr = getLocalDateString(today);
+        let periodStart = todayStr;
+        let periodEnd = todayStr;
+
+        if (graphTimeframe === "TODAY") {
+          periodStart = todayStr;
+          periodEnd = todayStr;
+        } else if (graphTimeframe === "YESTERDAY") {
+          const yest = new Date(today);
+          yest.setDate(yest.getDate() - 1);
+          const yestStr = getLocalDateString(yest);
+          periodStart = yestStr;
+          periodEnd = yestStr;
+        } else if (graphTimeframe === "WTD") {
+          const storeName = displayBranchName(singleBranch.workingBranch);
+          const wtdRange = getStoreWTDDateRange(storeName);
+          periodStart = wtdRange.start;
+          periodEnd = wtdRange.end;
+        } else if (graphTimeframe === "MTD") {
+          periodStart = getLocalDateString(new Date(today.getFullYear(), today.getMonth(), 1));
+          periodEnd = todayStr;
+        }
+
+        const lyPeriodStart = shiftDateYear(periodStart, -1);
+        const lyPeriodEnd = shiftDateYear(periodEnd, -1);
+
+        const locationIds = Array.from(new Set([locId, "25"]));
+
+        // Parallel fetch for Performance (TY & LY) and Shoe/Shirt Salespersons
+        const [perfResults, lyPerfResults, salespersonsRes] = await Promise.all([
+          Promise.all(locationIds.map(async (id) => {
+            const data = await getPerformanceCached(id, periodStart, periodEnd);
+            return { locId: id, data };
+          })),
+          Promise.all(locationIds.map(async (id) => {
+            const data = await getPerformanceCached(id, lyPeriodStart, lyPeriodEnd);
+            return { locId: id, data };
+          })),
+          fetch(`${baseUrl.baseUrl}api/brynex/shoe-sales/by-salesperson?fromDate=${periodStart}&toDate=${periodEnd}`)
+            .then(r => r.ok ? r.json() : { salespersons: [] })
+            .catch(() => ({ salespersons: [] }))
+        ]);
+
+        if (isCancelled) return;
+
+        const perfMap = {};
+        perfResults.forEach(r => { perfMap[r.locId] = r.data; });
+        setGraphPerformanceData(perfMap);
+
+        const lyPerfMap = {};
+        lyPerfResults.forEach(r => { lyPerfMap[r.locId] = r.data; });
+        setGraphLyPerformanceData(lyPerfMap);
+
+        const spList = Array.isArray(salespersonsRes?.salespersons) ? salespersonsRes.salespersons : [];
+        setGraphSalespersons(spList);
+      } catch (err) {
+        console.error("Error fetching graph-specific performance data:", err);
+      } finally {
+        if (!isCancelled) {
+          setLoadingGraphData(false);
+        }
+      }
+    };
+
+    fetchGraphData();
+
+    // Auto-refresh graph data every 5 minutes
+    const intervalId = setInterval(() => {
+      fetchGraphData();
+    }, 5 * 60 * 1000);
+
+    return () => {
+      isCancelled = true;
+      clearInterval(intervalId);
+    };
+  }, [graphTimeframe, isStoreAdmin, selectedStores, branches, storeWeekRanges]);
+
   // Fetch Shoe & Shirt sales from brynex summary API
   useEffect(() => {
     if (branches.length === 0) return;
@@ -3569,6 +3669,379 @@ const StoreInsights = () => {
       ? activeResult.sort((a, b) => b.achieved - a.achieved) 
       : result.sort((a, b) => a.name.localeCompare(b.name));
   }, [isStoreAdmin, branches, performanceData, lyPerformanceData, employeeTargets, timeframe, customStartDate, customEndDate, selectedStreams, salespersons, salesData, dapprAttribution, customizationAttribution, systemEmpNameToCodeMap, systemEmpCodeToNameMap, employees, graphType]);
+
+  // Map shoe/shirt sales by locCode and staff name for graph-specific data
+  const graphSalesByStaffMap = useMemo(() => {
+    const map = {};
+    (graphSalespersons || []).forEach(sp => {
+      const staffName = sp.salesperson || "Unassigned";
+      const rawEmpCode = sp.empId || sp.employeeId || "";
+      const empCode = normalizeEmpCode(rawEmpCode) || systemEmpNameToCodeMap?.get(getCanonicalStaffName(staffName).toLowerCase()) || systemEmpNameToCodeMap?.get(normalizeForMatch(staffName)) || "";
+      const canon = getCanonicalStaffName(staffName);
+      const storesList = Array.isArray(sp.stores) ? sp.stores : [];
+      storesList.forEach(st => {
+        const lc = String(st.locCode || "");
+        const sName = st.storeName ? normalizeForMatch(st.storeName) : "";
+        const shoe  = st.shoe  || {};
+        const shirt = st.shirt || {};
+        const mixed = st.mixed || {};
+        const tot   = st.total || {};
+
+        const shoeQty   = (shoe.qty   || 0) + (mixed.qty   || 0);
+        const shoeValue = (shoe.value || 0) + (mixed.value || 0);
+        const shoeBills = (shoe.bills || 0) + (mixed.bills || 0);
+        const shirtQty   = shirt.qty   || 0;
+        const shirtValue = shirt.value || 0;
+        const shirtBills = shirt.bills || 0;
+
+        const entryVal = {
+          bills: tot.bills || 0,
+          qty: tot.qty || 0,
+          value: tot.value || 0,
+          shoeBills, shoeQty, shoeValue,
+          shirtBills, shirtQty, shirtValue,
+          empCode: empCode,
+          staffName: staffName
+        };
+        [lc, sName].filter(Boolean).forEach(key => {
+          if (!map[key]) map[key] = {};
+          map[key][canon] = entryVal;
+          map[key][staffName] = entryVal;
+          map[key][normalizeForMatch(staffName)] = entryVal;
+          map[key][normalizeForMatch(canon)] = entryVal;
+          if (empCode) {
+            map[key][empCode] = entryVal;
+          }
+        });
+      });
+    });
+    return map;
+  }, [graphSalespersons, systemEmpNameToCodeMap]);
+
+  // Graph-specific employee chart data for store_admin (controlled by graphTimeframe: TODAY, YESTERDAY, WTD, MTD)
+  const graphEmployeeChartData = useMemo(() => {
+    const isSingleStoreView = isStoreAdmin || (selectedStores.length === 1 && !selectedStores.includes("All"));
+    if (!isSingleStoreView || branches.length === 0) return [];
+    const singleBranch = isStoreAdmin ? branches[0] : (branches.find(b => displayBranchName(b.workingBranch) === selectedStores[0]) || branches[0]);
+    if (!singleBranch) return [];
+    const locId = getBranchLocationId(singleBranch?.workingBranch);
+    if (!locId) return [];
+    const locCode = singleBranch.locCode || getBranchLocCode(singleBranch.workingBranch, branches);
+    const locPeriodList = includeRental ? (graphPerformanceData[locId] || []) : [];
+
+    // Helper: find shoe/shirt sales for a staff member based on active streams
+    const getSalesDataForStaff = (staffName, entry) => {
+      const canon = getCanonicalStaffName(staffName);
+      const normStaff = normalizeForMatch(staffName);
+      const normCanon = normalizeForMatch(canon);
+      const branchKey = normalizeForMatch(singleBranch.workingBranch);
+      const storeMaps = [
+        locCode && graphSalesByStaffMap[locCode],
+        locId && graphSalesByStaffMap[locId],
+        branchKey && graphSalesByStaffMap[branchKey]
+      ].filter(Boolean);
+
+      let found = null;
+      for (const sm of storeMaps) {
+        // 1. Search by empCodes first
+        if (entry?.empCodes?.length) {
+          for (const code of entry.empCodes) {
+            if (sm[code]) { found = sm[code]; break; }
+          }
+          if (found) break;
+        }
+
+        // 2. Direct name matching
+        if (sm[canon]) { found = sm[canon]; break; }
+        if (sm[staffName]) { found = sm[staffName]; break; }
+        if (sm[normCanon]) { found = sm[normCanon]; break; }
+        if (sm[normStaff]) { found = sm[normStaff]; break; }
+
+        // 3. Search through all keys in the store map
+        const foundKey = Object.keys(sm).find(k => {
+          const kCode = normalizeEmpCode(sm[k]?.empCode) || systemEmpNameToCodeMap?.get(getCanonicalStaffName(k).toLowerCase()) || systemEmpNameToCodeMap?.get(normalizeForMatch(k));
+          if (kCode && entry?.empCodes?.includes(kCode)) return true;
+          return (entry?.rawNames || []).some(rn => isStaffNameMatch(rn, k)) || isStaffNameMatch(staffName, k);
+        });
+        if (foundKey && sm[foundKey]) { found = sm[foundKey]; break; }
+      }
+
+      if (!found) return { bills: 0, qty: 0, value: 0 };
+
+      let bills = 0, qty = 0, value = 0;
+      if (includeShoe) {
+        bills += found.bills ?? ((found.shoeBills || 0) + (found.shirtBills || 0));
+        qty   += found.qty   ?? ((found.shoeQty || 0) + (found.shirtQty || 0));
+        value += found.value ?? ((found.shoeValue || 0) + (found.shirtValue || 0));
+      }
+      return { bills, qty, value };
+    };
+
+    const targetMonthName = CURRENT_MONTH_LONG;
+    const storeName = displayBranchName(singleBranch.workingBranch);
+    const storeNorm = storeName.replace(/[.\-]/g, '-');
+    const normKey = normalizeForMatch(storeName);
+
+    const storeEmpTargets = employeeTargets[storeName]?.[targetMonthName] 
+      || employeeTargets[storeNorm]?.[targetMonthName] 
+      || employeeTargets[normKey]?.[targetMonthName] 
+      || (Array.isArray(employeeTargets[storeName]) ? employeeTargets[storeName] : [])
+      || (Array.isArray(employeeTargets[storeNorm]) ? employeeTargets[storeNorm] : [])
+      || (Array.isArray(employeeTargets[normKey]) ? employeeTargets[normKey] : [])
+      || [];
+
+    const staffMap = new Map();
+
+    const getOrCreateStaffEntry = (rawEmpCode, rawName) => {
+      const normCode = normalizeEmpCode(rawEmpCode) || systemEmpNameToCodeMap?.get(getCanonicalStaffName(rawName).toLowerCase()) || systemEmpNameToCodeMap?.get(normalizeForMatch(rawName)) || "";
+      const trimmedName = rawName ? String(rawName).trim() : "";
+      const canonName = trimmedName ? getCanonicalStaffName(trimmedName) : "";
+
+      let entry = null;
+
+      // 1. Match by employee code / ID first
+      if (normCode && /^EMP\d+$/.test(normCode)) {
+        for (const e of staffMap.values()) {
+          if (e.empCodes.includes(normCode) || isCodeMatch(normCode, e.empCodes)) {
+            entry = e;
+            break;
+          }
+        }
+      }
+
+      // 2. Match by canonical / alias / fuzzy name
+      if (!entry && (trimmedName || canonName)) {
+        for (const e of staffMap.values()) {
+          if (
+            isStaffNameMatch(e.displayName, trimmedName) ||
+            isStaffNameMatch(e.displayName, canonName) ||
+            e.rawNames.some(rn => isStaffNameMatch(rn, trimmedName) || isStaffNameMatch(rn, canonName))
+          ) {
+            entry = e;
+            break;
+          }
+        }
+      }
+
+      if (!entry) {
+        entry = {
+          empCodes: normCode ? [normCode] : [],
+          displayName: canonName || trimmedName || "Unassigned",
+          rawNames: trimmedName ? [trimmedName] : []
+        };
+        const key = normCode || (canonName || "unassigned").toLowerCase();
+        staffMap.set(key, entry);
+      } else {
+        if (normCode && !entry.empCodes.includes(normCode)) {
+          const isEmpCodeValid = /^EMP\d+$/.test(normCode);
+          if (isEmpCodeValid) {
+            const isUsedByOther = Array.from(staffMap.values()).some(e => e !== entry && (e.empCodes.includes(normCode) || isCodeMatch(normCode, e.empCodes)));
+            if (!isUsedByOther) {
+              entry.empCodes.push(normCode);
+            }
+          }
+        }
+        if (trimmedName && !entry.rawNames.includes(trimmedName) && (isStaffNameMatch(entry.displayName, trimmedName) || entry.displayName === "Unassigned")) {
+          entry.rawNames.push(trimmedName);
+        }
+        if (canonName && canonName.length > entry.displayName.length && !isDapprSquadName(canonName) && isStaffNameMatch(entry.displayName, canonName)) {
+          entry.displayName = canonName;
+        }
+      }
+
+      return entry;
+    };
+
+    // 1. Process Rental POS items for this location
+    if (includeRental) {
+      locPeriodList.forEach(x => {
+        if (x && (x.bookingBy || x.empCode)) {
+          const rentalCode = normalizeEmpCode(x.empCode) || systemEmpNameToCodeMap?.get(getCanonicalStaffName(x.bookingBy).toLowerCase()) || systemEmpNameToCodeMap?.get(normalizeForMatch(x.bookingBy)) || "";
+          getOrCreateStaffEntry(rentalCode, x.bookingBy);
+        }
+      });
+    }
+
+    // 2. Process Shoe/Shirt Salespersons for this location
+    if (includeShoe) {
+      (graphSalespersons || []).forEach(sp => {
+        const storesList = Array.isArray(sp.stores) ? sp.stores : [];
+        const matchStore = storesList.find(st => String(st.locCode) === String(locCode) || (st.storeName && normalizeForMatch(st.storeName) === normKey));
+        if (matchStore && ((matchStore.total?.value || 0) > 0 || (matchStore.total?.bills || 0) > 0)) {
+          const rawCode = sp.empId || sp.employeeId || "";
+          const staffName = sp.salesperson || "";
+          const salesCode = normalizeEmpCode(rawCode) || systemEmpNameToCodeMap?.get(getCanonicalStaffName(staffName).toLowerCase()) || systemEmpNameToCodeMap?.get(normalizeForMatch(staffName)) || "";
+          getOrCreateStaffEntry(salesCode, staffName);
+        }
+      });
+    }
+
+    // 3. Process Dappr & Customization attributions (only applicable for WTD/MTD)
+    if (graphTimeframe === "WTD" || graphTimeframe === "MTD") {
+      if (includeDappr) {
+        Object.keys(dapprAttribution).forEach(k => {
+          if (k && !isDapprSquadName(k)) {
+            const kCode = systemEmpNameToCodeMap?.get(getCanonicalStaffName(k).toLowerCase()) || systemEmpNameToCodeMap?.get(normalizeForMatch(k)) || "";
+            getOrCreateStaffEntry(kCode, k);
+          }
+        });
+      }
+      if (includeCustomization) {
+        Object.keys(customizationAttribution).forEach(k => {
+          if (k && !isDapprSquadName(k)) {
+            const kCode = systemEmpNameToCodeMap?.get(getCanonicalStaffName(k).toLowerCase()) || systemEmpNameToCodeMap?.get(normalizeForMatch(k)) || "";
+            getOrCreateStaffEntry(kCode, k);
+          }
+        });
+      }
+    }
+
+    // 4. Process configured Store Targets for this store
+    storeEmpTargets.forEach(e => {
+      if (e && e.staffName) {
+        const tCode = systemEmpNameToCodeMap?.get(getCanonicalStaffName(e.staffName).toLowerCase()) || systemEmpNameToCodeMap?.get(normalizeForMatch(e.staffName)) || "";
+        getOrCreateStaffEntry(tCode, e.staffName);
+      }
+    });
+
+    const staffEntries = Array.from(staffMap.values());
+
+    // Helper: resolve staff target for graphTimeframe (TODAY, YESTERDAY, WTD, MTD)
+    const resolveStaffTarget = (staffName, entry) => {
+      const canon = getCanonicalStaffName(staffName);
+      const normName = normalizeForMatch(staffName);
+      const normCanon = normalizeForMatch(canon);
+      const empT = storeEmpTargets.find(e => {
+        const eCanon = getCanonicalStaffName(e.staffName);
+        const eNorm = normalizeForMatch(e.staffName);
+        const eNormCanon = normalizeForMatch(eCanon);
+        if (e.staffName === staffName || eCanon === canon || eNorm === normName || eNormCanon === normCanon) return true;
+        if (entry?.rawNames?.some(rn => rn === e.staffName || getCanonicalStaffName(rn) === eCanon || isStaffNameMatch(rn, e.staffName))) return true;
+        return isStaffNameMatch(e.staffName, staffName) || isStaffNameMatch(e.staffName, canon);
+      });
+      if (!empT || !empT.weeklyTargets) return 0;
+      const wt = empT.weeklyTargets;
+      const today = new Date();
+      const currentYear = today.getFullYear();
+      const currentMonth = today.getMonth();
+
+      if (graphTimeframe === "TODAY") {
+        return getTargetForRange(storeName, today, today, targetMonthName, wt);
+      }
+      if (graphTimeframe === "YESTERDAY") {
+        const yest = new Date(today);
+        yest.setDate(yest.getDate() - 1);
+        return getTargetForRange(storeName, yest, yest, targetMonthName, wt);
+      }
+      if (graphTimeframe === "MTD") {
+        const monthStart = new Date(currentYear, currentMonth, 1);
+        const lastDayOfMonth = getDaysCountInMonth(targetMonthName, currentYear);
+        const monthEnd = new Date(currentYear, currentMonth, lastDayOfMonth);
+        const endDate = today > monthEnd ? monthEnd : (today < monthStart ? monthStart : today);
+        return getTargetForRange(storeName, monthStart, endDate, targetMonthName, wt);
+      }
+      if (graphTimeframe === "WTD") {
+        const currentWeekId = getCurrentWeekId(storeName, targetMonthName);
+        const weekRangesObj = getStoreWeekRange(storeName, targetMonthName);
+        let activeWeekRangeStr = weekRangesObj ? (weekRangesObj[currentWeekId] || weekRangesObj[String(currentWeekId)]) : null;
+        if (!activeWeekRangeStr || activeWeekRangeStr === "Select Days") {
+          const daysInMonth = getDaysCountInMonth(targetMonthName, currentYear);
+          if (currentWeekId === 1) activeWeekRangeStr = "01 - 07";
+          else if (currentWeekId === 2) activeWeekRangeStr = "08 - 14";
+          else if (currentWeekId === 3) activeWeekRangeStr = "15 - 21";
+          else activeWeekRangeStr = `22 - ${daysInMonth}`;
+        }
+        const { start: startDay, end: endDay } = parseWeekDays(activeWeekRangeStr);
+        if (startDay !== null && endDay !== null && !isNaN(startDay) && !isNaN(endDay)) {
+          const weekStart = new Date(currentYear, currentMonth, startDay);
+          const weekEnd = new Date(currentYear, currentMonth, endDay);
+          const endDate = today > weekEnd ? weekEnd : (today < weekStart ? weekStart : today);
+          if (today >= weekStart) {
+            return getTargetForRange(storeName, weekStart, endDate, targetMonthName, wt);
+          }
+        }
+        return wt[currentWeekId] || 0;
+      }
+      return 0;
+    };
+
+    // Last year store rental performance list for employee view
+    const lyLocPeriodList = (singleBranch && includeRental) ? (graphLyPerformanceData[locId] || []) : [];
+    const allStaffDisplayNames = staffEntries.map(e => e.displayName);
+
+    const result = staffEntries.map(entry => {
+      const fullName = entry.displayName;
+      const chartAbbr = getStaffChartAbbreviation(fullName, allStaffDisplayNames);
+
+      const staffRentalItems = includeRental ? locPeriodList.filter(x => {
+        if (!x) return false;
+        const xCode = normalizeEmpCode(x.empCode);
+        if (xCode && /^EMP\d+$/.test(xCode) && (entry.empCodes.includes(xCode) || isCodeMatch(xCode, entry.empCodes))) {
+          return true;
+        }
+        const xName = x.bookingBy ? String(x.bookingBy).trim() : "";
+        if (xName) {
+          const nameMatches = isStaffNameMatch(fullName, xName) || entry.rawNames.some(rn => isStaffNameMatch(rn, xName));
+          if (!nameMatches) return false;
+        }
+        return xName ? (isStaffNameMatch(fullName, xName) || entry.rawNames.some(rn => isStaffNameMatch(rn, xName))) : false;
+      }) : [];
+
+      let achieved = staffRentalItems.reduce((sum, item) => sum + (item.totalValue || 0), 0);
+
+      if (includeShoe || includeCustomization) {
+        const staffSales = getSalesDataForStaff(fullName, entry);
+        achieved += staffSales.value || 0;
+      }
+
+      if (graphTimeframe === "WTD" || graphTimeframe === "MTD") {
+        if (includeDappr) {
+          const dapprKey = Object.keys(dapprAttribution).find(k => {
+            const kCode = systemEmpNameToCodeMap?.get(getCanonicalStaffName(k).toLowerCase()) || systemEmpNameToCodeMap?.get(normalizeForMatch(k));
+            if (kCode && entry.empCodes.includes(kCode)) return true;
+            return entry.rawNames.some(rn => isStaffNameMatch(rn, k)) || isStaffNameMatch(fullName, k);
+          });
+          if (dapprKey) {
+            achieved += Number(dapprAttribution[dapprKey]?.billWtd) || 0;
+          }
+        }
+
+        if (includeCustomization) {
+          const custKey = Object.keys(customizationAttribution).find(k => {
+            const kCode = systemEmpNameToCodeMap?.get(getCanonicalStaffName(k).toLowerCase()) || systemEmpNameToCodeMap?.get(normalizeForMatch(k));
+            if (kCode && entry.empCodes.includes(kCode)) return true;
+            return entry.rawNames.some(rn => isStaffNameMatch(rn, k)) || isStaffNameMatch(fullName, k);
+          });
+          if (custKey) {
+            achieved += Number(customizationAttribution[custKey]?.billWtd) || 0;
+          }
+        }
+      }
+
+      const staffLyRentalItems = includeRental ? lyLocPeriodList.filter(x => {
+        if (!x) return false;
+        const xCode = normalizeEmpCode(x.empCode) || systemEmpNameToCodeMap?.get(getCanonicalStaffName(x.bookingBy).toLowerCase()) || systemEmpNameToCodeMap?.get(normalizeForMatch(x.bookingBy));
+        if (xCode && entry.empCodes.includes(xCode)) return true;
+        return entry.rawNames.some(rn => isStaffNameMatch(rn, x.bookingBy)) || isStaffNameMatch(fullName, x.bookingBy);
+      }) : [];
+      const lyValue = staffLyRentalItems.reduce((sum, item) => sum + (item.totalValue || 0), 0);
+
+      const target = resolveStaffTarget(fullName, entry);
+      const balance = target - achieved;
+      const pct = target > 0 ? Math.round((achieved / target) * 100) : 0;
+      return { name: fullName, abbr: chartAbbr, achieved, ty: achieved, ly: lyValue, target, balance, pct };
+    });
+
+    const activeResult = result.filter(item => {
+      if (graphType === "LY_VS_TY") {
+        return item.achieved > 0 || item.ly > 0;
+      }
+      return item.achieved > 0 || item.target > 0;
+    });
+    return activeResult.length > 0 
+      ? activeResult.sort((a, b) => b.achieved - a.achieved) 
+      : result.sort((a, b) => a.name.localeCompare(b.name));
+  }, [isStoreAdmin, selectedStores, branches, graphPerformanceData, graphLyPerformanceData, employeeTargets, graphTimeframe, selectedStreams, graphSalespersons, graphSalesByStaffMap, dapprAttribution, customizationAttribution, systemEmpNameToCodeMap, graphType, storeWeekRanges]);
 
 
 
@@ -5075,21 +5548,48 @@ const StoreInsights = () => {
                 }
               </h2>
               <p className="text-gray-400 text-[11px] sm:text-xs font-semibold font-sans mt-0.5">
-                {timeframe === "MTD"
-                  ? getMTDDateRangeString()
-                  : timeframe === "WTD"
-                    ? getWTDDateRangeString()
-                    : timeframe === "YTD"
-                      ? getYTDDateRangeString()
-                      : getCustomDateRangeString()
-                } | {isStoreAdmin
-                  ? `${employeeChartData.length} employee${employeeChartData.length !== 1 ? "s" : ""}`
+                {isStoreAdmin ? (
+                  graphTimeframe === "TODAY"
+                    ? `Today (${new Date().toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" })})`
+                    : graphTimeframe === "YESTERDAY"
+                      ? (() => {
+                          const y = new Date();
+                          y.setDate(y.getDate() - 1);
+                          return `Yesterday (${y.toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" })})`;
+                        })()
+                      : graphTimeframe === "WTD"
+                        ? getWTDDateRangeString()
+                        : getMTDDateRangeString()
+                ) : (
+                  timeframe === "MTD"
+                    ? getMTDDateRangeString()
+                    : timeframe === "WTD"
+                      ? getWTDDateRangeString()
+                      : timeframe === "YTD"
+                        ? getYTDDateRangeString()
+                        : getCustomDateRangeString()
+                )} | {isStoreAdmin
+                  ? `${graphEmployeeChartData.length} employee${graphEmployeeChartData.length !== 1 ? "s" : ""}`
                   : `Comparison across all ${filteredChartData.length} stores`
                 }
               </p>
             </div>
 
             <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+              {/* Filter for Store Admin: Today | Yesterday | WTD | MTD */}
+              {isStoreAdmin && (
+                <SegmentedControl
+                  options={[
+                    { key: "TODAY", label: "Today" },
+                    { key: "YESTERDAY", label: "Yesterday" },
+                    { key: "WTD", label: "WTD" },
+                    { key: "MTD", label: "MTD" }
+                  ]}
+                  value={graphTimeframe}
+                  onChange={(val) => setGraphTimeframe(val)}
+                />
+              )}
+
               {/* Graph Mode Switcher Toggle (Target vs Achieved | LY / TY) */}
               <SegmentedControl
                 options={[
@@ -5157,7 +5657,7 @@ const StoreInsights = () => {
           {/* Recharts Graph Container with Mobile Scrollability */}
           <div className="w-full overflow-x-auto mt-2 pb-2">
             <div className="h-[280px] sm:h-[320px] min-w-[640px] md:min-w-full relative">
-              {loadingPerformance && (
+              {(loadingPerformance || (isStoreAdmin && loadingGraphData)) && (
                 <div className="absolute inset-0 z-30 bg-white/90 backdrop-blur-md rounded-2xl flex flex-col items-center justify-center transition-all duration-500 overflow-hidden font-sans">
                   {/* Top Sweeping Laser Beam (Linear / Vercel Style) */}
                   <div className="absolute top-0 left-0 right-0 h-[2.5px] bg-gray-100/60 overflow-hidden">
@@ -5231,13 +5731,13 @@ const StoreInsights = () => {
                   `}</style>
                 </div>
               )}
-              {isStoreAdmin && employeeChartData.length === 0 && !loadingPerformance && (
+              {isStoreAdmin && graphEmployeeChartData.length === 0 && !loadingPerformance && !loadingGraphData && (
                 <div className="flex items-center justify-center h-full text-gray-400 text-sm font-semibold">
                   No employee performance data available for this period.
                 </div>
               )}
-              {(!isStoreAdmin || employeeChartData.length > 0 || loadingPerformance) && (() => {
-                const rawChartPoints = isStoreAdmin ? employeeChartData : filteredChartData;
+              {(!isStoreAdmin || graphEmployeeChartData.length > 0 || loadingPerformance || loadingGraphData) && (() => {
+                const rawChartPoints = isStoreAdmin ? graphEmployeeChartData : filteredChartData;
                 const chartPoints = rawChartPoints.map((pt) => ({
                   ...pt,
                   ly: Math.max(0, pt.ly || 0),
