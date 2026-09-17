@@ -495,7 +495,7 @@ const WalkinCount = () => {
                 const branchJson = await branchRes.json();
                 let branchList = Array.isArray(branchJson?.stores) ? branchJson.stores : (Array.isArray(branchJson?.data) ? branchJson.data : []);
 
-                if (user?.role === 'super_admin' || user?.role === 'admin' || user?.role === 'hr_admin' || user?.role === 'telecaller') {
+                if (user?.role === 'super_admin' || user?.role === 'admin' || user?.role === 'hr_admin' || user?.role === 'process_control_manager' || user?.role === 'office_admin' || user?.role === 'telecaller') {
                     const existingNames = new Set(branchList.map(b => b.workingBranch).filter(Boolean));
                     const missing = HARDCODED_STORES.filter(s => !existingNames.has(s));
                     branchList = [...branchList, ...missing.map(name => ({ workingBranch: name }))];
@@ -957,8 +957,8 @@ const WalkinCount = () => {
                     </div>
                 </div>
 
-                {/* Toggle on top for telecaller roles */}
-                {user?.role === 'telecaller' && (
+                {/* Toggle on top for telecaller and office_admin roles */}
+                {(user?.role === 'telecaller' || user?.role === 'office_admin') && (
                     <div style={{ display: 'inline-flex', background: '#f3f4f6', padding: '4px', borderRadius: '8px', marginBottom: '20px' }}>
                         <button
                             type="button"
@@ -1022,7 +1022,7 @@ const WalkinCount = () => {
 
 
                 {/* Unified Camera Checker Log Portal Card */}
-                {user?.role === 'telecaller' && telecallerTab === 'entry' && (
+                {(user?.role === 'telecaller' || user?.role === 'office_admin') && telecallerTab === 'entry' && (
                     <div style={{ background: '#fff', borderRadius: '12px', border: '1px solid #e5e7eb', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', padding: '20px', marginBottom: '25px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '20px' }}>
                             <FaVideo style={{ color: '#111827', fontSize: '18px' }} />
@@ -1151,7 +1151,7 @@ const WalkinCount = () => {
 
 
                 {/* Main Table Card */}
-                {(user?.role !== 'telecaller' || telecallerTab === 'report') && (
+                {(!['telecaller', 'office_admin'].includes(user?.role) || telecallerTab === 'report') && (
                     <div style={{ background: '#fff', borderRadius: '14px', border: '1px solid #e5e7eb', boxShadow: '0 1px 4px rgba(0,0,0,0.05)', overflow: 'hidden' }}>
                     {/* Table Header area with Title, Filters, and Export Button */}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', padding: '16px 20px', borderBottom: '1px solid #e5e7eb', background: '#fff' }}>
@@ -1161,7 +1161,7 @@ const WalkinCount = () => {
                         
                         <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
                             {/* Cluster Multi-Select Filter */}
-                            {(user?.role === 'super_admin' || user?.role === 'admin') && (
+                            {(user?.role === 'super_admin' || user?.role === 'admin' || user?.role === 'process_control_manager') && (
                                 <div ref={clusterDropdownRef} style={{ position: 'relative' }}>
                                     <button
                                         type="button"
@@ -1244,7 +1244,7 @@ const WalkinCount = () => {
                             )}
 
                             {/* Store Multi-Select Filter */}
-                            {(user?.role === 'super_admin' || user?.role === 'admin' || user?.role === 'hr_admin' || user?.role === 'cluster_admin' || user?.role === 'store_admin' || user?.role === 'telecaller') && (
+                            {(user?.role === 'super_admin' || user?.role === 'admin' || user?.role === 'hr_admin' || user?.role === 'process_control_manager' || user?.role === 'office_admin' || user?.role === 'cluster_admin' || user?.role === 'store_admin' || user?.role === 'telecaller') && (
                                 <div ref={storeDropdownRef} style={{ position: 'relative' }}>
                                     <button
                                         type="button"

@@ -267,11 +267,11 @@ router.post('/save', OptionalMiddilWare, saveWalkin);
  * /api/walkin/list:
  *   get:
  *     tags: [Walkin]
- *     summary: Retrieve walk-ins with role-based restrictions (Used by Web Dashboard)
+ *     summary: Retrieve walk-ins with role-based restrictions (Used by Web Dashboard & Mobile App)
  *     description: >
- *       **Where to use:** Used by the Web Application Dashboard (Walkin List / Walkin Reports pages).
+ *       **Where to use:** Used by Web Dashboard and Mobile Flutter App (Walk-Ins tab).
  *       
- *       **What it does:** Fetches walk-in logs filtered dynamically by the logged-in admin's allowed branches and optional date range parameters.
+ *       **What it does:** Fetches walk-in leads filtered dynamically by the authenticated user's role and accessible stores. Super Admins receive all stores; Cluster Admins receive walk-ins across all assigned cluster stores (or a selected cluster store); Store Admins receive only their store's walk-ins; Employees receive their own created walk-ins.
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -766,7 +766,7 @@ router.delete('/camera-check/:id', MiddilWare, deleteCameraCheckEntry);
  *   get:
  *     tags: [Walkin]
  *     summary: Get walkin count for Flutter mobile app
- *     description: Returns only the WALKIN count (new walk-ins) for the specified date and store.
+ *     description: "Returns only the WALKIN count (new walk-ins) for the specified date and store. For Cluster Admins, if store is 'All' or 'Store: all cluster' or omitted, automatically computes total walk-in count across all cluster stores."
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -775,16 +775,41 @@ router.delete('/camera-check/:id', MiddilWare, deleteCameraCheckEntry);
  *         required: false
  *         schema:
  *           type: string
- *         description: Store/branch name (defaults to 'All' or user's assigned store)
+ *         description: "Store/branch name or 'all cluster' / 'All' (defaults to user's assigned cluster stores or branch)"
  *       - in: query
  *         name: date
  *         required: false
  *         schema:
  *           type: string
  *         description: Date formatted as YYYY-MM-DD (defaults to today's date in IST)
+ *       - in: query
+ *         name: startDate
+ *         required: false
+ *         schema:
+ *           type: string
+ *         description: Start date for date range (YYYY-MM-DD)
+ *       - in: query
+ *         name: endDate
+ *         required: false
+ *         schema:
+ *           type: string
+ *         description: End date for date range (YYYY-MM-DD)
  *     responses:
  *       200:
  *         description: "Returns { success: true, date, store, walkinCount }"
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 date:
+ *                   type: string
+ *                 store:
+ *                   type: string
+ *                 walkinCount:
+ *                   type: integer
  */
 router.get('/flutter/walkin-count', MiddilWare, getFlutterWalkinCount);
 router.get('/flutter-count', MiddilWare, getFlutterWalkinCount);

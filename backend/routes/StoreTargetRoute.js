@@ -496,7 +496,7 @@ function staffCanon(name) {
 router.post('/', MiddilWare, async (req, res) => {
   try {
     const userRole = req.admin?.role;
-    if (!['super_admin', 'admin', 'cluster_admin', 'store_admin'].includes(userRole)) {
+    if (!['super_admin', 'admin', 'process_control_manager', 'cluster_admin', 'store_admin'].includes(userRole)) {
       return res.status(403).json({ success: false, message: "Forbidden: Only admin, cluster admin, and store managers can assign targets." });
     }
 

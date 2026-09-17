@@ -1045,6 +1045,22 @@ export const PermissionController = async (req, res) => {
             { new: true }
         );
 
+        // Also update permissions for process_control_manager (mirrors cluster_admin)
+        await Permission.findOneAndUpdate(
+            { role: "process_control_manager" },
+            {
+                $set: {
+                    "permissions.canCreateTraining": clusterManager.training[0],
+                    "permissions.canCreateAssessment": clusterManager.assessment[0],
+                    "permissions.canReassignTraining": clusterManager.training[1],
+                    "permissions.canReassignAssessment": clusterManager.assessment[1],
+                    "permissions.canDeleteTraining": clusterManager.training[2],
+                    "permissions.canDeleteAssessment": clusterManager.assessment[2],
+                },
+            },
+            { new: true, upsert: true }
+        );
+
         // Update store manager permissions
         const StoreUpdate = await Permission.findOneAndUpdate(
             { role: "store_admin" },
@@ -1316,7 +1332,7 @@ export const GetMobileDashboard = async (req, res) => {
 
         let baseFilter = {};
 
-        if (['super_admin', 'admin', 'hr_admin'].includes(role)) {
+        if (['super_admin', 'admin', 'hr_admin', 'process_control_manager'].includes(role)) {
             // Full Admin overall - all walkins
             baseFilter = {};
         } else if (role === 'cluster_admin') {
@@ -1367,7 +1383,7 @@ export const GetMobileDashboard = async (req, res) => {
         const totalTasks = await Task.countDocuments(taskFilter);
         const tasksPending = await Task.countDocuments({
             ...taskFilter,
-            status: { $in: ['PENDING', 'IN PROGRESS', 'ON HOLD', 'UNDER REVIEW'] }
+            status: { $in: ['PENDING', 'IN PROGRESS', 'ON HOLD', 'UNDER REVIEW', 'PENDING REVIEW'] }
         });
         const taskSubtext = tasksPending > 0 ? `${tasksPending} task(s) pending` : "No tasks assigned today";
 
@@ -1383,7 +1399,7 @@ export const GetMobileDashboard = async (req, res) => {
         let assessmentsCompleted = 0;
         let assessmentsTotal = 0;
 
-        if (['super_admin', 'admin', 'hr_admin'].includes(role)) {
+        if (['super_admin', 'admin', 'hr_admin', 'process_control_manager'].includes(role)) {
             const allUsers = await User.find({}).select('assignedAssessments').lean();
             for (const u of allUsers) {
                 if (u.assignedAssessments) {
@@ -1413,7 +1429,7 @@ export const GetMobileDashboard = async (req, res) => {
         let trainingTotal = 0;
         let trainingCompleted = 0;
 
-        if (['super_admin', 'admin', 'hr_admin'].includes(role)) {
+        if (['super_admin', 'admin', 'hr_admin', 'process_control_manager'].includes(role)) {
             const allProgress = await TrainingProgress.find({}).lean();
             trainingTotal = allProgress.length;
             trainingCompleted = allProgress.filter(tp => tp.pass || tp.status === 'Completed').length;

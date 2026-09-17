@@ -181,26 +181,45 @@ router.post('/userLogin', loginUser);
  * /api/usercreate/getAllUser:
  *   get:
  *     tags: [User Management]
- *     summary: Retrieve all users
- *     description: Fetches a list of all registered users.
+ *     summary: Retrieve users / employees
+ *     description: Fetches users/employees with their training and assessment summary stats. Scoped automatically by role (Super Admins receive all users; Cluster Admins receive only staff in their assigned cluster stores; Store Admins receive only staff in their store).
  *     security:
  *       - bearerAuth: []
  *     responses:
  *       200:
- *         description: An array of user objects.
+ *         description: An array of user objects with training and assessment statistics.
  *         content:
  *           application/json:
  *             schema:
- *               type: array
- *               items:
- *                 type: object
- *                 properties:
- *                   userId:
- *                     type: string
- *                   username:
- *                     type: string
- *                   email:
- *                     type: string
+ *               type: object
+ *               properties:
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       _id:
+ *                         type: string
+ *                       username:
+ *                         type: string
+ *                       empID:
+ *                         type: string
+ *                       workingBranch:
+ *                         type: string
+ *                       designation:
+ *                         type: string
+ *                       trainingCount:
+ *                         type: integer
+ *                       passCountAssessment:
+ *                         type: integer
+ *                       passCountTraining:
+ *                         type: integer
+ *                       assignedAssessmentsCount:
+ *                         type: integer
+ *                       AssessmentDue:
+ *                         type: integer
+ *                       Trainingdue:
+ *                         type: integer
  *       401:
  *         description: Unauthorized, token is missing or invalid.
  *       500:
@@ -243,26 +262,41 @@ router.post('/create/branch', createBranch);
  * @swagger
  * /api/usercreate/getBranch:
  *   get:
- *     summary: Retrieve all branches
- *     description: Fetches a list of all branches in the system.
+ *     tags: [User Management]
+ *     summary: Retrieve accessible branches / stores
+ *     description: Fetches branches with employee and training counts. Scoped automatically by role (Super Admins receive all branches; Cluster Admins receive only stores assigned to their cluster; Store Admins receive only their assigned store).
  *     security:
  *       - bearerAuth: []
  *     responses:
  *       200:
- *         description: An array of branch objects.
+ *         description: An array of accessible branch objects with counts.
  *         content:
  *           application/json:
  *             schema:
- *               type: array
- *               items:
- *                 type: object
- *                 properties:
- *                   branchId:
- *                     type: string
- *                   branchName:
- *                     type: string
- *                   location:
- *                     type: string
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Data found
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       _id:
+ *                         type: string
+ *                       locCode:
+ *                         type: string
+ *                       workingBranch:
+ *                         type: string
+ *                       location:
+ *                         type: string
+ *                       userCount:
+ *                         type: integer
+ *                       totalTrainingCount:
+ *                         type: integer
+ *                       totalAssessmentCount:
+ *                         type: integer
  *       401:
  *         description: Unauthorized, token is missing or invalid.
  *       500:

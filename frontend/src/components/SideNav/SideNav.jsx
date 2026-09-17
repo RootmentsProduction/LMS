@@ -280,7 +280,7 @@ const SideNav = () => {
             items: [
               { to: "/walkin/list", label: "Walkin List", active: is("/walkin/list") },
               { to: "/walkin/report", label: "Walkin Report", active: is("/walkin/report") },
-              ...(["telecaller", "super_admin", "admin", "hr_admin", "cluster_admin", "store_admin"].includes(user?.role)
+              ...(["telecaller", "office_admin", "super_admin", "admin", "hr_admin", "process_control_manager", "cluster_admin", "store_admin"].includes(user?.role)
                 ? [{ to: "/walkin/count", label: "Walkin Count", active: is("/walkin/count") }]
                 : [])
             ]
@@ -325,7 +325,7 @@ const SideNav = () => {
                   : [])
               ]
             : []),
-          ...(user?.role !== "cluster_admin" && user?.role !== "store_admin" && user?.role !== "telecaller"
+          ...(user?.role !== "cluster_admin" && user?.role !== "process_control_manager" && user?.role !== "store_admin" && user?.role !== "telecaller"
             ? [{ id: "module", to: "/module", icon: "module", label: "Modules", active: is("/module") }]
             : [])
         ].filter(Boolean)
@@ -337,7 +337,7 @@ const SideNav = () => {
             ? [{ id: "branch", to: "/branch", icon: "branch", label: "Branches", active: is("/branch") || is("/Addbranch") }]
             : []),
           ...(user?.role !== "telecaller" &&
-          ["super_admin", "admin", "hr_admin", "cluster_admin"].includes(user?.role)
+          ["super_admin", "admin", "hr_admin", "process_control_manager", "cluster_admin"].includes(user?.role)
             ? [
                 {
                   id: "settings",
@@ -348,7 +348,7 @@ const SideNav = () => {
                     is("/settings/create-user") ||
                     is("/settings/create-notification"),
                   items:
-                    user?.role === "cluster_admin"
+                    user?.role === "cluster_admin" || user?.role === "process_control_manager"
                       ? [{ to: "/settings/users", label: "Create User", active: is("/settings/users") || is("/settings/create-user") }]
                       : [
                           { to: "/settings/users", label: "Create User", active: is("/settings/users") || is("/settings/create-user") },

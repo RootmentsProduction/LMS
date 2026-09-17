@@ -194,6 +194,7 @@ const getCombinedStatus = (rental, shoe) => {
   const s = (shoe || '').trim();
   if (!s || s === '-' || s === 'None') return r;
   if (r === 'New Walkin' || r === '-') return s;
+  if (r.toLowerCase() === s.toLowerCase()) return r;
   return `${r}, ${s}`;
 };
 
@@ -237,7 +238,7 @@ const getCombinedStateAt = (w, endDateStr, startDateStr, statusFilterOrList) => 
 
   rawEvents.sort((a, b) => new Date(a.date) - new Date(b.date));
 
-  const rentalStatuses = ['New Walkin', 'Booked', 'Rentout', 'Return', 'Cancelled', 'Cancel'];
+  const rentalStatuses = ['New Walkin', 'Booked', 'Rentout', 'Return', 'Cancelled', 'Cancel', 'Loss', 'Revisit Loss'];
 
   rawEvents.forEach(h => {
     const s = String(h.status || '').trim();
@@ -889,7 +890,7 @@ const WalkinReport = () => {
         const json = await res.json();
         let list = Array.isArray(json?.stores) ? json.stores : (Array.isArray(json?.data) ? json.data : []);
         
-        if (user?.role === 'super_admin' || user?.role === 'admin' || user?.role === 'hr_admin' || user?.role === 'telecaller') {
+        if (user?.role === 'super_admin' || user?.role === 'admin' || user?.role === 'hr_admin' || user?.role === 'process_control_manager' || user?.role === 'office_admin' || user?.role === 'telecaller') {
           const existingNames = new Set(list.map(b => b.workingBranch).filter(Boolean));
           const missing = HARDCODED_STORES.filter(s => !existingNames.has(s));
           list = [...list, ...missing.map(name => ({ workingBranch: name }))];
@@ -1191,7 +1192,7 @@ const WalkinReport = () => {
                 <label style={lbl}>End Date <span style={{color:'#ef4444'}}>*</span></label>
                 <input type="date" name="endDate" required value={formData.endDate} onChange={e=>setFormData(p=>({...p,endDate:e.target.value}))} style={inp} />
               </div>
-              {(user?.role === 'super_admin' || user?.role === 'admin') && (
+              {(user?.role === 'super_admin' || user?.role === 'admin' || user?.role === 'process_control_manager') && (
                 <div>
                   <CustomSelect
                     id="cluster-select"

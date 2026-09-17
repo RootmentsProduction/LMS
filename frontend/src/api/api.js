@@ -124,31 +124,63 @@ export const formatStoreDisplayName = (rawName) => {
   const trimmed = String(rawName).trim();
   const lower = trimmed.toLowerCase();
 
-  if (['dappr squad', 'dapper squad', 'office', 'production', 'warehouse'].includes(lower)) {
-    return trimmed;
+  if (['all stores', 'all store', 'office', 'production', 'warehouse', 'dappr squad', 'dapper squad'].includes(lower)) {
+    if (lower === 'all stores' || lower === 'all store') return 'All Stores';
+    if (lower === 'office') return 'Office';
+    if (lower === 'production') return 'Production';
+    if (lower === 'warehouse') return 'Warehouse';
+    if (lower === 'dappr squad' || lower === 'dapper squad') return 'Dapper Squad';
+    return trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
   }
 
-  const isZ = /^z[\.\-\s]/i.test(trimmed) || /^z/i.test(trimmed);
+  const isZ = lower.includes('zorucci') || lower.includes('orucci') || /^z[\.\-\s]/i.test(trimmed) || /^z$/i.test(trimmed);
 
+  // Strip all repeated leading brand prefixes (e.g. "SG SUITOR GUY", "Z ORUCCI", "SG", "Z", etc.)
   let loc = trimmed
-    .replace(/^(sg|g|z)[\.\-\s]*/i, '')
+    .replace(/^(?:(?:zorucci|orucci|suitor\s+guy|grooms|sg|g|z)[\.\-\s]*)+/i, '')
     .replace(/\d+$/g, '')
     .trim();
 
+  // Strip any remaining standalone brand tokens within loc
+  loc = loc
+    .replace(/\b(?:zorucci|orucci|suitor\s+guy|grooms)\b/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  // Canonicalize city / location names
   loc = loc
     .replace(/\bedap{1,3}a?l{1,3}[yi]\b/i, 'Edappally')
     .replace(/\bedap{1,3}a?l\b/i, 'Edappal')
-    .replace(/\bkottaka?l\b/i, 'Kottakkal')
+    .replace(/\bkotta?k+a?l\b/i, 'Kottakkal')
     .replace(/\bperinthalman+a\b/i, 'Perinthalmanna')
     .replace(/\bkalpeta\b/i, 'Kalpetta')
-    .replace(/\bmanjer[yi]\b/i, 'Manjeri');
+    .replace(/\bmanjer[yi]\b/i, 'Manjeri')
+    .replace(/\b(?:kozhikode|calicut)\b/i, 'Calicut')
+    .replace(/\bchavakka?d\b/i, 'Chavakkad')
+    .replace(/\bperumbavo*u*r\b/i, 'Perumbavoor')
+    .replace(/\bthrissur\b/i, 'Thrissur')
+    .replace(/\b(?:trivandrum|thiruvananthapuram)\b/i, 'Trivandrum')
+    .replace(/\bpalakkad\b/i, 'Palakkad')
+    .replace(/\b(?:vatakara|vadakara)\b/i, 'Vatakara')
+    .replace(/\bkannur\b/i, 'Kannur')
+    .replace(/\bkottayam\b/i, 'Kottayam')
+    .replace(/\bmg\s*road\b/i, 'MG Road');
 
+  // Proper Title Case for any remaining words if not already formatted
   if (loc.length > 0) {
-    loc = loc.charAt(0).toUpperCase() + loc.slice(1);
+    if (loc === loc.toUpperCase() && !loc.includes('MG')) {
+      loc = loc
+        .toLowerCase()
+        .split(' ')
+        .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(' ');
+    } else {
+      loc = loc.charAt(0).toUpperCase() + loc.slice(1);
+    }
   }
 
   const prefix = isZ ? 'Z' : 'SG';
-  return `${prefix} ${loc}`;
+  return `${prefix} ${loc}`.trim();
 };
 
 export default baseUrl;

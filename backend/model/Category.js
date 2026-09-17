@@ -25,31 +25,31 @@ export const seedDefaultCategories = async () => {
       {
         name: 'REPORTS&PERFORMANCE',
         subCategories: ['POS REPORTS', 'PERFORMANCE REPORTS', 'RECORDS&DOCUMENTS'],
-        allowedRoles: ['super_admin', 'admin', 'hr_admin', 'cluster_admin', 'store_admin', 'employee'],
+        allowedRoles: ['super_admin', 'admin', 'hr_admin', 'process_control_manager', 'cluster_admin', 'store_admin', 'office_admin', 'employee'],
         type: 'task'
       },
       {
         name: 'STORE HYGIENE&CLEANING',
         subCategories: ['DEEP CLEANING', 'VISUAL MERCHANDISING', 'PRODUCT CLEANING'],
-        allowedRoles: ['super_admin', 'admin', 'hr_admin', 'cluster_admin', 'store_admin', 'employee'],
+        allowedRoles: ['super_admin', 'admin', 'hr_admin', 'process_control_manager', 'cluster_admin', 'store_admin', 'office_admin', 'employee'],
         type: 'task'
       },
       {
         name: 'INVENTORY AUDIT&MANAGEMENT',
         subCategories: ['STOCK VALUATION&VERIFICATION', 'INTER STORE STOCK TRANSFER'],
-        allowedRoles: ['super_admin', 'admin', 'hr_admin', 'cluster_admin', 'store_admin', 'employee'],
+        allowedRoles: ['super_admin', 'admin', 'hr_admin', 'process_control_manager', 'cluster_admin', 'store_admin', 'office_admin', 'employee'],
         type: 'task'
       },
       {
         name: 'EMPLOYEE MANAGEMENT&DEVELOPMENT',
         subCategories: ['EMPLOYEE TRAININGS', 'EMPLOYEE PERFORMANCE REVIEW', 'EMPLOYEE SPECIFIC TASK'],
-        allowedRoles: ['super_admin', 'admin', 'hr_admin', 'cluster_admin', 'store_admin', 'employee'],
+        allowedRoles: ['super_admin', 'admin', 'hr_admin', 'process_control_manager', 'cluster_admin', 'store_admin', 'office_admin', 'employee'],
         type: 'task'
       },
       {
         name: 'MAINTENANCE',
         subCategories: ['ELECTRICAL', 'PLUMBING', 'CLEANING'],
-        allowedRoles: ['super_admin', 'admin', 'hr_admin', 'cluster_admin', 'store_admin', 'employee'],
+        allowedRoles: ['super_admin', 'admin', 'hr_admin', 'process_control_manager', 'cluster_admin', 'store_admin', 'office_admin', 'employee'],
         type: 'task'
       }
     ];

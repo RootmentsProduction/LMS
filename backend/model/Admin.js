@@ -7,7 +7,7 @@ const adminSchema = new mongoose.Schema({
     EmpId: { type: String, required: true },
     role: {
         type: String,
-        enum: ['super_admin', 'admin', 'hr_admin', 'cluster_admin', 'store_admin', 'warehouse_admin', 'telecaller', 'employee'],
+        enum: ['super_admin', 'admin', 'hr_admin', 'process_control_manager', 'cluster_admin', 'store_admin', 'warehouse_admin', 'office_admin', 'telecaller', 'employee'],
         required: true,
     },
     subRole: {

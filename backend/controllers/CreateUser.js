@@ -10,7 +10,7 @@ import Admin from '../model/Admin.js';
 import Notification from '../model/Notification.js';
 import Otp from '../model/Otp.js';
 import { sendCompletionEmail, sendOtpEmail } from '../utils/sendEmail.js';
-import { sendNotification } from '../utils/notificationHelper.js';
+import { getAccessibleStoreIds, isFullAccessAdmin, isBranchMatchingDeptOrWorkingBranch } from '../lib/permissions.js';
 dotenv.config()
 
 // Adjust the path to your TrainingProgress model
@@ -304,10 +304,23 @@ export const flutterLogin = async (req, res) => {
       ]
     };
 
-    let adminUser = await Admin.findOne(adminQuery).populate('branches');
+    let adminUser = await Admin.findOne(adminQuery).populate('branches assignedClusters');
     let isMatchingAdmin = false;
 
     if (adminUser) {
+      if (adminUser.registrationStatus === 'pending' || adminUser.isActive === false) {
+        return res.status(403).json({
+          success: false,
+          message: 'Your registration request is pending approval by Admin.'
+        });
+      }
+      if (adminUser.registrationStatus === 'declined') {
+        return res.status(403).json({
+          success: false,
+          message: 'Your registration request was declined by Admin.'
+        });
+      }
+
       if (adminUser.password) {
         // Admin exists and has a password
         const isPasswordMatch = await bcrypt.compare(normalizedPassword, adminUser.password);
@@ -357,6 +370,49 @@ export const flutterLogin = async (req, res) => {
         { expiresIn: '30d' }
       );
 
+      const roleDisplayNames = {
+        super_admin: 'Super Admin',
+        admin: 'Admin',
+        hr_admin: 'HR Admin',
+        process_control_manager: 'Process Control Manager',
+        cluster_admin: 'Cluster Admin',
+        store_admin: 'Store Admin',
+        warehouse_admin: 'Warehouse Admin',
+        office_admin: 'Office Admin',
+        telecaller: 'Telecaller',
+        employee: 'Employee'
+      };
+
+      const userDesignation = roleDisplayNames[adminUser.role] || adminUser.role;
+      let workingBranch = 'All Stores';
+      if (adminUser.role === 'cluster_admin') {
+        const clusterNames = (adminUser.assignedClusters || []).map(c => c.clusterName).filter(Boolean);
+        const branchNames = (adminUser.branches || []).map(b => b.workingBranch).filter(Boolean);
+        if (clusterNames.length > 0) {
+          workingBranch = clusterNames.join(', ');
+        } else if (branchNames.length > 0) {
+          workingBranch = branchNames.join(', ');
+        } else {
+          workingBranch = 'Cluster Stores';
+        }
+      } else if (adminUser.branches && adminUser.branches.length > 0) {
+        workingBranch = adminUser.branches.map(b => b.workingBranch).filter(Boolean).join(', ') || adminUser.branches[0].workingBranch;
+      }
+
+      const userResponsePayload = {
+        id: adminUser._id,
+        username: adminUser.name,
+        name: adminUser.name,
+        email: adminUser.email,
+        empID: adminUser.EmpId,
+        role: adminUser.role,
+        designation: userDesignation,
+        workingBranch: workingBranch,
+        branches: adminUser.branches || [],
+        assignedClusters: adminUser.assignedClusters || [],
+        source: 'admin',
+      };
+
       try {
         const { detectDeviceInfo, getLocationFromIP } = await import('../utils/deviceDetection.js');
         const userAgent = req.headers['user-agent'] || 'Unknown';
@@ -381,32 +437,14 @@ export const flutterLogin = async (req, res) => {
           message: 'Flutter login successful',
           token,
           sessionId: loginSession._id,
-          user: {
-            id: adminUser._id,
-            username: adminUser.name,
-            name: adminUser.name,
-            email: adminUser.email,
-            empID: adminUser.EmpId,
-            designation: adminUser.role,
-            workingBranch: adminUser.branches?.[0]?.workingBranch || 'All Stores',
-            source: 'admin',
-          },
+          user: userResponsePayload,
         });
       } catch (trackingError) {
         console.error('Error tracking flutter admin login:', trackingError);
         return res.status(200).json({
           message: 'Flutter login successful',
           token,
-          user: {
-            id: adminUser._id,
-            username: adminUser.name,
-            name: adminUser.name,
-            email: adminUser.email,
-            empID: adminUser.EmpId,
-            designation: adminUser.role,
-            workingBranch: adminUser.branches?.[0]?.workingBranch || 'All Stores',
-            source: 'admin',
-          },
+          user: userResponsePayload,
         });
       }
     }
@@ -625,22 +663,40 @@ export const flutterLogin = async (req, res) => {
 
 export const GetAllUser = async (req, res) => {
   try {
-    // Return all employees for assessment assignment.
-    // The frontend already handles the dropdown display and selection.
-    const response = await User.find({});
+    let query = {};
+
+    if (req.admin?.userId) {
+      const adminId = req.admin.userId;
+      const admin = await Admin.findById(adminId);
+      if (admin && !isFullAccessAdmin(admin.role)) {
+        const accessibleStoreIds = await getAccessibleStoreIds(adminId);
+        const branches = await Branch.find({ _id: { $in: accessibleStoreIds } });
+        const locCodes = branches.map(b => String(b.locCode));
+        const allUsers = await User.find({});
+        const matchedUserIds = allUsers.filter(u => {
+          const loc = Array.isArray(u.locCode) ? u.locCode : [u.locCode];
+          if (loc.some(l => locCodes.includes(String(l))) && u.locCode !== '700') return true;
+          return branches.some(b => isBranchMatchingDeptOrWorkingBranch(b, u.workingBranch));
+        }).map(u => u._id);
+
+        query = { _id: { $in: matchedUserIds } };
+      }
+    }
+
+    const response = await User.find(query);
 
     // Check if no users were found
     if (response.length === 0) {
-      return res.status(404).json({
-        message: "No users found",
+      return res.status(200).json({
+        data: []
       });
     }
 
     const TodayDate = new Date();
 
     const usercount = response.map((item) => {
-      const trainingCount = item.training.length;
-      const assignedAssessmentsCount = item.assignedAssessments.length;
+      const trainingCount = item.training?.length || 0;
+      const assignedAssessmentsCount = item.assignedAssessments?.length || 0;
 
       // Safely calculate counts for pass/fail, ensuring that the array exists
       const passCountTraining = item.training?.filter(training => training.pass === true).length || 0;
@@ -673,9 +729,10 @@ export const GetAllUser = async (req, res) => {
     });
 
   } catch (error) {
-    console.error(error); // Log the error for debugging
+    console.error('❌ Error in GetAllUser:', error);
     return res.status(500).json({
       message: 'Internal server error',
+      error: error.message
     });
   }
 };
@@ -736,50 +793,12 @@ export const GetBranch = async (req, res) => {
     }
 
     const AdminId = req.admin.userId;
-    const AdminBranch = await Admin.findById(AdminId).populate('branches').lean();
+    const accessibleStoreIds = await getAccessibleStoreIds(AdminId);
 
-    if (!AdminBranch) {
-      return res.status(404).json({ message: "Admin not found" });
-    }
-
-    // Super admin, admin, or admin with no branches assigned — return all branches
-    if (!AdminBranch.branches || AdminBranch.branches.length === 0 || ['super_admin', 'admin'].includes(AdminBranch.role)) {
-      const allBranches = await Branch.find({}).populate('clusterId');
-
-      const branchesWithCounts = await Promise.all(allBranches.map(async (branch) => {
-        const branchLocCode = String(branch.locCode);
-        const query = {
-          $or: [
-            { locCode: branchLocCode },
-            { locCode: "All" },
-            { locCode: { $regex: new RegExp(`(^|,\\s*)${branchLocCode}(,|\\s*$)`) } }
-          ]
-        };
-        const userCount = await User.countDocuments(query);
-        const usersInBranch = await User.find(query);
-        let totalTrainingCount = 0;
-        let totalAssessmentCount = 0;
-        for (const user of usersInBranch) {
-          totalTrainingCount += user.training.length;
-          totalAssessmentCount += user.assignedAssessments.length;
-        }
-        return { ...branch.toObject(), userCount, totalTrainingCount, totalAssessmentCount };
-      }));
-
-      return res.status(200).json({ message: "Data found", data: branchesWithCounts });
-    }
-
-    // Filtered admin — only their assigned branches
-    const allowedLocCodes = AdminBranch.branches.map(b => b.locCode);
-    const allowedBoth = [
-      ...allowedLocCodes.map(c => String(c)),
-      ...allowedLocCodes.map(c => Number(c)).filter(c => !isNaN(c))
-    ];
-
-    const branches = await Branch.find({ locCode: { $in: allowedBoth } }).populate('clusterId');
+    const branches = await Branch.find({ _id: { $in: accessibleStoreIds } }).populate('clusterId');
 
     if (branches.length === 0) {
-      return res.status(404).json({ message: "No branches found matching admin's location codes" });
+      return res.status(200).json({ message: "Data found", data: [] });
     }
 
     const branchesWithCounts = await Promise.all(branches.map(async (branch) => {
@@ -796,8 +815,8 @@ export const GetBranch = async (req, res) => {
       let totalTrainingCount = 0;
       let totalAssessmentCount = 0;
       for (const user of usersInBranch) {
-        totalTrainingCount += user.training.length;
-        totalAssessmentCount += user.assignedAssessments.length;
+        totalTrainingCount += (user.training || []).length;
+        totalAssessmentCount += (user.assignedAssessments || []).length;
       }
       return { ...branch.toObject(), userCount, totalTrainingCount, totalAssessmentCount };
     }));

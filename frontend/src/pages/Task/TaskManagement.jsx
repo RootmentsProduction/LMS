@@ -179,7 +179,44 @@ const TaskManagement = () => {
   const [statusFilter, setStatusFilter] = useState('All');
   const [page, setPage] = useState(1);
   const [selectedTask, setSelectedTask] = useState(null);
-  const [activeTab, setActiveTab] = useState('tasks');
+  const [activeTab, setActiveTab] = useState('assigned_to_me');
+
+  const userIds = useMemo(() => [
+    user?.userId,
+    user?._id,
+    user?.id,
+    user?.empID,
+    user?.EmpId,
+    user?.employeeId
+  ].filter(Boolean).map(String), [user]);
+
+  const userNames = useMemo(() => [
+    user?.name,
+    user?.username,
+    user?.firstName
+  ].filter(Boolean).map(n => n.trim().toLowerCase()), [user]);
+
+  const isAssignedToMe = useCallback((t) => {
+    if (!t) return false;
+    const assignedTo = String(t.assignedTo || '');
+    const assignee = String(t.assignee || '').toLowerCase();
+    const assignedToLabel = String(t.assignedToLabel || '').toLowerCase();
+
+    if (userIds.includes(assignedTo)) return true;
+    if (userNames.some(name => name.length >= 2 && (assignee.includes(name) || assignedToLabel.includes(name)))) return true;
+    return false;
+  }, [userIds, userNames]);
+
+  const isAssignedByMe = useCallback((t) => {
+    if (!t) return false;
+    const createdBy = String(t.createdBy || '');
+    const assignedBy = String(t.assignedBy || '').toLowerCase();
+
+    if (userIds.includes(createdBy)) return true;
+    if (userNames.some(name => name.length >= 2 && assignedBy.includes(name))) return true;
+    if (t.workMap && t.workMap.some(step => userNames.some(name => name.length >= 2 && String(step.assignedBy || '').toLowerCase().includes(name)))) return true;
+    return false;
+  }, [userIds, userNames]);
 
   const loadTasks = useCallback(async () => {
     setLoading(true);
@@ -213,11 +250,21 @@ const TaskManagement = () => {
       
       setRequests(
         allRequests.filter((t) => {
-          // A task should only show up in the Review Requests tab of a user if they are the current active approver in the approvalChain
+          // A task should show up in the Review Requests tab if the user is the current active approver in the chain or workMap
           const hasChain = t.approvalChain && t.approvalChain.length > 0;
-          const currentApprover = hasChain ? t.approvalChain[t.approvalChainIndex] : t.createdBy;
-          const userIds = [user?.userId, user?._id, user?.empID, user?.EmpId, user?.employeeId].filter(Boolean).map(String);
-          return userIds.includes(String(currentApprover));
+          const currentApprover = hasChain ? t.approvalChain[t.approvalChainIndex ?? 0] : t.createdBy;
+
+          return Boolean(
+            userIds.includes(String(currentApprover)) ||
+            (currentApprover && userNames.some(n => String(currentApprover).toLowerCase().includes(n))) ||
+            (t.workMap && t.workMap.some(step => 
+              step.action === 'REASSIGNED' && 
+              userNames.some(n => String(step.assignedBy || '').toLowerCase().includes(n))
+            )) ||
+            userIds.includes(String(t.createdBy)) ||
+            (t.assignedBy && userNames.some(n => String(t.assignedBy).toLowerCase().includes(n))) ||
+            ['super_admin', 'admin', 'hr_admin'].includes(user?.role)
+          );
         })
       );
 
@@ -236,7 +283,7 @@ const TaskManagement = () => {
     } finally {
       setLoading(false);
     }
-  }, [search, categoryFilter, priorityFilter, statusFilter, user?.userId]);
+  }, [search, categoryFilter, priorityFilter, statusFilter, user?.userId, userIds, userNames, isGlobalAdmin]);
 
   useEffect(() => {
     const timer = setTimeout(loadTasks, 300);
@@ -247,6 +294,14 @@ const TaskManagement = () => {
     const set = new Set(tasks.map((t) => t.category?.split(' / ')[0]?.trim() || t.category).filter(Boolean));
     return ['All', ...Array.from(set).sort()];
   }, [tasks]);
+
+  const assignedToMeTasks = useMemo(() => {
+    return tasks.filter(isAssignedToMe);
+  }, [tasks, isAssignedToMe]);
+
+  const assignedByMeTasks = useMemo(() => {
+    return tasks.filter(isAssignedByMe);
+  }, [tasks, isAssignedByMe]);
 
   const filteredExtensions = useMemo(() => {
     return extensions.filter((task) => {
@@ -290,25 +345,20 @@ const TaskManagement = () => {
     setPage(1);
   }, [activeTab]);
 
-  const totalCount = activeTab === 'tasks'
-    ? tasks.length
-    : activeTab === 'requests'
-    ? filteredRequests.length
-    : filteredExtensions.length;
+  const currentList = useMemo(() => {
+    if (activeTab === 'assigned_to_me') return assignedToMeTasks;
+    if (activeTab === 'assigned_by_me') return assignedByMeTasks;
+    if (activeTab === 'all') return tasks;
+    if (activeTab === 'requests') return filteredRequests;
+    if (activeTab === 'extensions') return filteredExtensions;
+    return tasks;
+  }, [activeTab, assignedToMeTasks, assignedByMeTasks, tasks, filteredRequests, filteredExtensions]);
+
+  const totalCount = currentList.length;
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
-  const pageItems = tasks.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
-  const pageItemsRequests = filteredRequests.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
-  const pageItemsExtensions = filteredExtensions.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
-  const showingCount = String(
-    activeTab === 'tasks'
-      ? pageItems.length
-      : activeTab === 'mine'
-      ? pageItemsMine.length
-      : activeTab === 'requests'
-      ? pageItemsRequests.length
-      : pageItemsExtensions.length
-  ).padStart(2, '0');
+  const pageItems = currentList.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  const showingCount = String(pageItems.length).padStart(2, '0');
 
   useEffect(() => {
     if (page > totalPages) setPage(1);
@@ -336,38 +386,33 @@ const TaskManagement = () => {
         body: JSON.stringify(body),
       });
       const json = await res.json();
-      if (!res.ok) {
-        throw new Error(json.message || 'Failed to complete task');
-      }
-      toast.success(hasChain ? 'Approved task step successfully!' : 'Task marked as COMPLETED!');
+
+      if (!res.ok) throw new Error(json.message || 'Failed to complete task');
+
+      toast.success(hasChain ? 'Approval step recorded!' : 'Task marked as completed!');
       loadTasks();
     } catch (err) {
-      toast.error(err.message || 'Failed to update task status');
-      loadTasks();
+      toast.error(err.message || 'Could not update task');
     }
   };
 
-  const handleResolveExtension = async (taskId, action, endDate) => {
+  const handleResolveExtension = async (taskId, action, approvedDate) => {
     try {
       const token = localStorage.getItem('token');
-      const body = { action };
-      if (action === 'APPROVE' && endDate) body.endDate = endDate;
       const res = await fetch(`${baseUrl.baseUrl}api/task/${taskId}/resolve-extension`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
           ...(token && { Authorization: `Bearer ${token}` }),
         },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ action, approvedDate }),
       });
       const json = await res.json();
-      if (!res.ok) {
-        throw new Error(json.message || `Failed to ${action.toLowerCase()} extension`);
-      }
-      toast.success(`Extension request ${action === 'APPROVE' ? 'approved' : 'rejected'}!`);
+      if (!res.ok) throw new Error(json.message || `Failed to ${action.toLowerCase()} extension`);
+      toast.success(action === 'APPROVE' ? 'Extension approved!' : 'Extension rejected');
       loadTasks();
     } catch (err) {
-      toast.error(err.message || 'Failed to update extension request');
+      toast.error(err.message || 'Error updating extension request');
     }
   };
 
@@ -378,8 +423,10 @@ const TaskManagement = () => {
       <div className="task-mgmt-content">
         <div className="task-mgmt-header">
           <div>
-            <h1 className="task-mgmt-title task-mgmt-title--heavy">Task Management</h1>
-            <p className="task-mgmt-subtitle">Track and manage all operational tasks across stores</p>
+            <h1 className="task-mgmt-title">
+              Task <span className="task-mgmt-title--heavy">Management</span>
+            </h1>
+            <p className="task-mgmt-subtitle">Manage and track company wide tasks and approvals</p>
           </div>
           {user?.role !== 'telecaller' && (
             <Link to="/task/create" className="task-mgmt-new-btn">
@@ -396,8 +443,24 @@ const TaskManagement = () => {
           <div className="task-mgmt-tabs">
             <button
               type="button"
-              className={`task-mgmt-tab-btn ${activeTab === 'tasks' ? 'active' : ''}`}
-              onClick={() => setActiveTab('tasks')}
+              className={`task-mgmt-tab-btn ${activeTab === 'assigned_to_me' ? 'active' : ''}`}
+              onClick={() => setActiveTab('assigned_to_me')}
+            >
+              Assigned to Me
+              <span className="task-mgmt-tab-count">{assignedToMeTasks.length}</span>
+            </button>
+            <button
+              type="button"
+              className={`task-mgmt-tab-btn ${activeTab === 'assigned_by_me' ? 'active' : ''}`}
+              onClick={() => setActiveTab('assigned_by_me')}
+            >
+              Assigned by Me
+              <span className="task-mgmt-tab-count">{assignedByMeTasks.length}</span>
+            </button>
+            <button
+              type="button"
+              className={`task-mgmt-tab-btn ${activeTab === 'all' ? 'active' : ''}`}
+              onClick={() => setActiveTab('all')}
             >
               All Tasks
               <span className="task-mgmt-tab-count">{tasks.length}</span>
@@ -449,7 +512,7 @@ const TaskManagement = () => {
             </select>
           </div>
 
-          {activeTab === 'tasks' && (
+          {['assigned_to_me', 'assigned_by_me', 'all'].includes(activeTab) && (
             <div className="task-mgmt-filter">
               <label>Status :</label>
               <select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}>
@@ -467,7 +530,7 @@ const TaskManagement = () => {
           <div className="task-mgmt-table-wrap">
             <table className="task-mgmt-table">
               <thead>
-                {activeTab === 'tasks' ? (
+                {['assigned_to_me', 'assigned_by_me', 'all'].includes(activeTab) ? (
                   <tr>
                     <th>Task Title</th>
                     <th>Category</th>
@@ -521,13 +584,14 @@ const TaskManagement = () => {
                       </button>
                     </td>
                   </tr>
-                ) : (activeTab === 'tasks'
-                    ? pageItems
-                    : activeTab === 'requests' ? pageItemsRequests : pageItemsExtensions
-                  ).length === 0 ? (
+                ) : pageItems.length === 0 ? (
                   <tr>
                     <td colSpan={10} style={{ textAlign: 'center', color: '#9ca3af', padding: '32px' }}>
-                      {activeTab === 'tasks'
+                      {activeTab === 'assigned_to_me'
+                        ? 'No tasks assigned to you.'
+                        : activeTab === 'assigned_by_me'
+                        ? 'No tasks assigned by you.'
+                        : activeTab === 'all'
                         ? 'No tasks found. Create one with + New Task.'
                         : activeTab === 'extensions'
                         ? 'No pending extension requests.'
@@ -535,7 +599,7 @@ const TaskManagement = () => {
                     </td>
                   </tr>
                 ) : (
-                  (activeTab === 'tasks' ? pageItems : activeTab === 'requests' ? pageItemsRequests : pageItemsExtensions).map((task) => (
+                  pageItems.map((task) => (
                     <tr key={task.id}>
                       <td className="task-mgmt-cell-title" onClick={() => setSelectedTask(task)} style={{ cursor: 'pointer' }}>{task.title}</td>
                       <td><StackCell primary={task.category} secondary={task.categoryDetail ? `${task.categoryDetail} · ${task.categorySub}` : task.categorySub} /></td>
@@ -571,7 +635,7 @@ const TaskManagement = () => {
                       
                       <td className="task-mgmt-desc">{task.description}</td>
                       
-                      {activeTab === 'tasks' ? (
+                      {['assigned_to_me', 'assigned_by_me', 'all'].includes(activeTab) ? (
                         <>
                           <td>
                             <span className={`task-mgmt-status ${STATUS_CLASS[task.status] || ''}`}>
@@ -612,8 +676,9 @@ const TaskManagement = () => {
                            <td>
                             <div className="slide-to-complete-wrapper">
                               {(() => {
-                                // The final step is when the current logged in user is the original creator of the task (the Admin who first created/assigned it)
-                                const isFinalStep = String(task.createdBy) === String(user?.userId);
+                                const userIds = [user?.userId, user?._id, user?.id, user?.empID, user?.EmpId, user?.employeeId].filter(Boolean).map(String);
+                                const hasChain = task.approvalChain && task.approvalChain.length > 0;
+                                const isFinalStep = !hasChain || (task.approvalChainIndex >= task.approvalChain.length - 1) || userIds.includes(String(task.createdBy));
                                 const labelText = isFinalStep ? 'Slide to Complete' : 'Slide to Approve';
                                 return (
                                   <SlideToComplete

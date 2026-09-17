@@ -6,7 +6,7 @@ import CronLog from '../model/CronLog.js';
 import WalkinCount from '../model/WalkinCount.js';
 import WalkinCameraCheck from '../model/WalkinCameraCheck.js';
 import mongoose from 'mongoose';
-import { validateStoreAccess, validateEmployeeAccess, buildWalkinFilter, buildStoreWideWalkinFilter } from '../lib/permissions.js';
+import { validateStoreAccess, validateEmployeeAccess, buildWalkinFilter, buildStoreWideWalkinFilter, getAccessibleStoreIds } from '../lib/permissions.js';
 import { getISTDayRange, getISTRangeBetween, isInISTRange } from '../utils/dateRange.js';
 
 
@@ -42,7 +42,13 @@ function locationKey(name) {
 }
 
 const resolveStoreConditions = async (storeParam) => {
-    if (!storeParam || storeParam.toLowerCase() === 'all') return null;
+    if (!storeParam || 
+        storeParam.toLowerCase() === 'all' || 
+        storeParam.toLowerCase() === 'all stores' || 
+        storeParam.toLowerCase() === 'all store' || 
+        /all\s*(stores?|clusters?)/i.test(storeParam) || 
+        /^store:\s*all(\s*(stores?|clusters?))?$/i.test(storeParam)
+    ) return null;
 
     const storeArr = storeParam.split(',').map(s => s.trim()).filter(Boolean);
     if (storeArr.length === 0) return null;
@@ -236,6 +242,7 @@ const updateStatusAndDates = (walkinRecord, statusInput, source = 'manual') => {
             const s = (shoe || '').trim();
             if (!s || s === '-' || s === 'None') return r;
             if (r === 'New Walkin' || r === '-') return s;
+            if (r.toLowerCase() === s.toLowerCase()) return r;
             return `${r}, ${s}`;
         };
         walkinRecord.status = getCombinedStatus(walkinRecord.rentalStatus, walkinRecord.shoeStatus);
@@ -556,7 +563,7 @@ export const saveWalkin = async (req, res) => {
 
         if (req.admin && !req.admin.isSystem) {
             const adminId = req.admin.userId;
-            const isAdminManager = ['super_admin', 'admin', 'hr_admin'].includes(req.admin.role);
+            const isAdminManager = ['super_admin', 'admin', 'hr_admin', 'process_control_manager', 'office_admin'].includes(req.admin.role);
             if (!isAdminManager) {
                 if (finalStoreId && mongoose.Types.ObjectId.isValid(finalStoreId)) {
                     await validateStoreAccess(adminId, finalStoreId);
@@ -1075,7 +1082,14 @@ export const getWalkins = async (req, res) => {
             }
         }
 
-        if (store && store !== 'All') {
+        const isAllStores = !store || 
+            store.toLowerCase() === 'all' || 
+            store.toLowerCase() === 'all stores' || 
+            store.toLowerCase() === 'all store' || 
+            /all\s*(stores?|clusters?)/i.test(store) || 
+            /^store:\s*all(\s*(stores?|clusters?))?$/i.test(store);
+
+        if (store && !isAllStores) {
             const resolvedStoreObj = await resolveStoreConditions(store);
             if (resolvedStoreObj?.query) {
                 if (!baseQuery.$and) baseQuery.$and = [];
@@ -1417,14 +1431,20 @@ export const getWalkinCountPageData = async (req, res) => {
         let queryConditions = [];
         let resolvedStoreObj = null;
 
-        let effectiveStoreParam = store;
-        if (store.toLowerCase() === 'all' && req.admin && ['cluster_admin', 'store_admin', 'employee'].includes(req.admin.role)) {
-            const adminDoc = await Admin.findById(req.admin.userId).populate('branches').lean();
-            if (adminDoc?.branches?.length > 0) {
-                const branchNames = adminDoc.branches.map(b => b.workingBranch || b.branchName).filter(Boolean);
-                if (branchNames.length > 0) {
-                    effectiveStoreParam = branchNames.join(',');
-                }
+        const isAllStoreFilter = !store || 
+            store.toLowerCase() === 'all' || 
+            store.toLowerCase() === 'all stores' || 
+            store.toLowerCase() === 'all store' || 
+            /all\s*(stores?|clusters?)/i.test(store) || 
+            /^store:\s*all(\s*(stores?|clusters?))?$/i.test(store);
+
+        let effectiveStoreParam = isAllStoreFilter ? 'All' : store;
+        if (isAllStoreFilter && req.admin && ['cluster_admin', 'store_admin', 'employee'].includes(req.admin.role)) {
+            const accessibleStoreIds = await getAccessibleStoreIds(req.admin.userId);
+            const branches = await Branch.find({ _id: { $in: accessibleStoreIds } });
+            const branchNames = branches.map(b => b.workingBranch || b.branchName).filter(Boolean);
+            if (branchNames.length > 0) {
+                effectiveStoreParam = branchNames.join(',');
             }
         }
 
@@ -2148,15 +2168,69 @@ export const getFlutterWalkinCount = async (req, res) => {
             date = `${y}-${m}-${d}`;
         }
 
-        // 1. Resolve store branch and storeId
-        let resolvedStoreName = store;
-        let resolvedStoreId = null;
         let queryConditions = [];
+        const isAllStoreParam = !store || 
+            store.toLowerCase() === 'all' || 
+            store.toLowerCase() === 'all stores' || 
+            store.toLowerCase() === 'all store' || 
+            /all\s*(stores?|clusters?)/i.test(store) || 
+            /^store:\s*all(\s*(stores?|clusters?))?$/i.test(store);
 
-        if (store.toLowerCase() !== 'all') {
-            const resolvedStoreObj = await resolveStoreConditions(store);
+        let resolvedStoreObj = null;
+
+        if (!isAllStoreParam) {
+            resolvedStoreObj = await resolveStoreConditions(store);
             if (resolvedStoreObj?.query) {
                 queryConditions.push(resolvedStoreObj.query);
+            }
+        } else if (req.admin?.userId) {
+            if (req.admin.role === 'cluster_admin') {
+                const accessibleStoreIds = await getAccessibleStoreIds(req.admin.userId);
+                const branches = await Branch.find({ _id: { $in: accessibleStoreIds } });
+                const storeNameSet = new Set();
+                branches.forEach(b => {
+                    if (b.locCode) storeNameSet.add(String(b.locCode));
+                    if (b.workingBranch) {
+                        storeNameSet.add(b.workingBranch);
+                        storeNameSet.add(b.workingBranch.replace(/^G\./i, 'G-'));
+                        storeNameSet.add(b.workingBranch.replace(/^G\-/i, 'G.'));
+                        storeNameSet.add(b.workingBranch.replace(/^Z\./i, 'Z-'));
+                        storeNameSet.add(b.workingBranch.replace(/^Z\-/i, 'Z.'));
+                    }
+                    if (b.location) {
+                        storeNameSet.add(b.location);
+                        storeNameSet.add(b.location.replace(/^G\./i, 'G-'));
+                        storeNameSet.add(b.location.replace(/^G\-/i, 'G.'));
+                    }
+                    if (b.branchName) {
+                        storeNameSet.add(b.branchName);
+                    }
+                });
+                const matchedStoreNames = Array.from(storeNameSet).filter(Boolean);
+                const matchedObjectIds = accessibleStoreIds.map(id => {
+                    try { return new mongoose.Types.ObjectId(id); } catch { return id; }
+                });
+                queryConditions.push({
+                    $or: [
+                        { storeId: { $in: matchedObjectIds } },
+                        { storeId: { $in: accessibleStoreIds } },
+                        { store: { $in: matchedStoreNames } }
+                    ]
+                });
+            } else if (req.admin.role === 'store_admin' || req.admin.role === 'employee') {
+                const accessibleStoreIds = await getAccessibleStoreIds(req.admin.userId);
+                const branches = await Branch.find({ _id: { $in: accessibleStoreIds } });
+                const storeNames = branches.map(b => b.workingBranch).filter(Boolean);
+                const matchedObjectIds = accessibleStoreIds.map(id => {
+                    try { return new mongoose.Types.ObjectId(id); } catch { return id; }
+                });
+                queryConditions.push({
+                    $or: [
+                        { storeId: { $in: matchedObjectIds } },
+                        { storeId: { $in: accessibleStoreIds } },
+                        { store: { $in: storeNames } }
+                    ]
+                });
             }
         }
 
@@ -2219,8 +2293,19 @@ export const getFlutterWalkinCount = async (req, res) => {
 
         rawWalkins.forEach(w => {
             const isDateInRange = (dateVal) => isInISTRange(dateVal, startUTC, nextDayStartUTC);
-            const createdInRange = isDateInRange(w.createdAt);
-            if (createdInRange) {
+            let inRange = isDateInRange(w.createdAt);
+            if (!inRange && w.date) {
+                if (hasRange) {
+                    inRange = (w.date >= startDate && w.date <= (endDate + ' 23:59:59'));
+                } else {
+                    inRange = (w.date === date || w.date.startsWith(date));
+                }
+            }
+            if (!inRange) {
+                inRange = isDateInRange(w.updatedAt) || isDateInRange(w.bookingDate) || isDateInRange(w.rentoutDate);
+            }
+
+            if (inRange) {
                 const key = w.invoiceNo
                     ? `inv_${w.invoiceNo}`
                     : `key_${(w.customerName || '').toLowerCase().trim()}_${(w.contact || '').toLowerCase().trim()}_${(w.date || '').toLowerCase().trim()}_${(w.store || '').toLowerCase().trim()}_${(w.status || '').toLowerCase().trim()}`;
@@ -2233,7 +2318,7 @@ export const getFlutterWalkinCount = async (req, res) => {
 
         const walkinCount = walkinSet.size;
 
-        const savedStoreName = store.toLowerCase() === 'all' ? 'All' : (resolvedStoreObj?.matchedNamesArray?.[0] || store);
+        const savedStoreName = isAllStoreParam ? 'All Stores' : (resolvedStoreObj?.matchedNamesArray?.[0] || store);
 
         return res.status(200).json({
             success: true,

@@ -2470,8 +2470,7 @@ const sortStoresGThenZ = (a, b) => {
     };
 
     useEffect(() => {
-        const fetchData = async () => {
-            setLoading(true);
+        const fetchBranches = async () => {
             try {
                 // Fetch branches and walkins in parallel — employees stay lazy
                 const [branchRes, adminRes] = await Promise.all([
@@ -2486,7 +2485,7 @@ const sortStoresGThenZ = (a, b) => {
                 const branchJson = await branchRes.json();
                 let branchList = Array.isArray(branchJson?.stores) ? branchJson.stores : (Array.isArray(branchJson?.data) ? branchJson.data : []);
 
-                if (user?.role === 'super_admin' || user?.role === 'admin' || user?.role === 'hr_admin' || user?.role === 'telecaller') {
+                if (user?.role === 'super_admin' || user?.role === 'admin' || user?.role === 'hr_admin' || user?.role === 'process_control_manager' || user?.role === 'office_admin' || user?.role === 'telecaller') {
                     const existingNames = new Set(branchList.map(b => b.workingBranch).filter(Boolean));
                     const missing = HARDCODED_STORES.filter(s => !existingNames.has(s));
                     branchList = [...branchList, ...missing.map(name => ({ workingBranch: name }))];
@@ -3295,7 +3294,7 @@ const sortStoresGThenZ = (a, b) => {
     const showAttachmentInput = formData.status === 'Loss' && formData.category === 'Product' && ((formData.subCategory || '').toLowerCase().trim() === 'design and colour not available' || (formData.subCategory || '').toLowerCase().trim() === 'model, design and colour not available' || (formData.subCategory || '').toLowerCase().trim() === 'design and color unavailable');
 
     const getProductTypeOptions = () => {
-        const isCentralAdmin = ['super_admin', 'admin', 'hr_admin', 'cluster_admin'].includes(user?.role);
+        const isCentralAdmin = ['super_admin', 'admin', 'hr_admin', 'process_control_manager', 'cluster_admin'].includes(user?.role);
         let options = [];
         const storeLower = (formData.store || '').toLowerCase().trim();
 
@@ -3914,8 +3913,10 @@ const sortStoresGThenZ = (a, b) => {
                                         Clear Range
                                     </button>
                                 )}
-                                      {/* Cluster Multi-Select Filter */}
-                            {(user?.role === 'super_admin' || user?.role === 'admin') && (
+                            </div>
+
+                            {/* Cluster Multi-Select Filter */}
+                            {(user?.role === 'super_admin' || user?.role === 'admin' || user?.role === 'process_control_manager') && (
                                 <div ref={clusterDropdownRef} style={{ position: 'relative' }}>
                                     <button
                                         type="button"
@@ -3995,10 +3996,10 @@ const sortStoresGThenZ = (a, b) => {
                                         </div>
                                     )}
                                 </div>
-                            )}                   </div>
+                            )}
 
                             {/* Store Multi-Select Filter */}
-                            {(user?.role === 'super_admin' || user?.role === 'admin' || user?.role === 'hr_admin' || user?.role === 'cluster_admin' || user?.role === 'store_admin' || user?.role === 'telecaller') && (
+                            {(user?.role === 'super_admin' || user?.role === 'admin' || user?.role === 'hr_admin' || user?.role === 'process_control_manager' || user?.role === 'office_admin' || user?.role === 'cluster_admin' || user?.role === 'store_admin' || user?.role === 'telecaller') && (
                                 <div ref={storeDropdownRef} style={{ position: 'relative' }}>
                                     <button
                                         type="button"

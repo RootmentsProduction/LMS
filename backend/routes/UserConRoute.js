@@ -198,8 +198,8 @@ router.post('/login', loginUser);
  * /api/auth/flutter-login:
  *   post:
  *     tags: [User Management]
- *     summary: User login for mobile app (Flutter)
- *     description: Authenticates a user on the Flutter mobile app. Validates credentials locally, or falls back to an external HR verification API and auto-provisions the user profile locally on success.
+ *     summary: User and Cluster Admin login for mobile app (Flutter)
+ *     description: Authenticates a user or admin (including Cluster Admin, Store Admin, and Employees) on the Flutter mobile app. Validates credentials locally, or falls back to external HR verification API. Returns JWT token, session ID, and user/admin profile with assigned clusters and branches.
  *     requestBody:
  *       required: true
  *       content:
@@ -209,16 +209,18 @@ router.post('/login', loginUser);
  *             properties:
  *               empID:
  *                 type: string
- *                 description: Employee ID (can also be email)
+ *                 description: Employee ID or Email
+ *                 example: Emp193
  *               password:
  *                 type: string
- *                 description: Password
+ *                 description: Account Password
+ *                 example: password123
  *             required:
  *               - empID
  *               - password
  *     responses:
  *       200:
- *         description: Flutter login successful, returns a token and user details.
+ *         description: Flutter login successful, returns a token, session ID, and user/admin details.
  *         content:
  *           application/json:
  *             schema:
@@ -229,14 +231,48 @@ router.post('/login', loginUser);
  *                   example: Flutter login successful
  *                 token:
  *                   type: string
+ *                   description: JWT authentication token
  *                 sessionId:
  *                   type: string
+ *                   description: Login tracking session ID
  *                 user:
  *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: string
+ *                     username:
+ *                       type: string
+ *                     name:
+ *                       type: string
+ *                     email:
+ *                       type: string
+ *                     empID:
+ *                       type: string
+ *                     role:
+ *                       type: string
+ *                       example: cluster_admin
+ *                     designation:
+ *                       type: string
+ *                       example: Cluster Admin
+ *                     workingBranch:
+ *                       type: string
+ *                     branches:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                     assignedClusters:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                     source:
+ *                       type: string
+ *                       example: admin
  *       400:
  *         description: Employee ID and password are required.
  *       401:
  *         description: Incorrect password or external authentication failed.
+ *       403:
+ *         description: Account pending approval or declined by Admin.
  *       500:
  *         description: Internal server error.
  */

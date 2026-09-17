@@ -642,17 +642,17 @@ export const CreatingAdminUsers = async (req, res) => {
         }
 
         // Check if role is valid
-        const validRoles = ['super_admin', 'admin', 'hr_admin', 'cluster_admin', 'store_admin', 'warehouse_admin', 'telecaller', 'employee'];
+        const validRoles = ['super_admin', 'admin', 'hr_admin', 'process_control_manager', 'cluster_admin', 'store_admin', 'warehouse_admin', 'office_admin', 'telecaller', 'employee'];
         if (!validRoles.includes(role)) {
             return res.status(400).json({
-                message: "Invalid role provided. Valid roles are: super_admin, admin, hr_admin, cluster_admin, store_admin, warehouse_admin, telecaller, employee.",
+                message: "Invalid role provided. Valid roles are: super_admin, admin, hr_admin, process_control_manager, cluster_admin, store_admin, warehouse_admin, office_admin, telecaller, employee.",
             });
         }
 
-        // Cluster admin check: can only assign store_admin or employee
-        if (req.admin?.role === 'cluster_admin' && role !== 'store_admin' && role !== 'employee') {
+        // Cluster admin / Process control manager check: can only assign store_admin or employee
+        if ((req.admin?.role === 'cluster_admin' || req.admin?.role === 'process_control_manager') && role !== 'store_admin' && role !== 'employee') {
             return res.status(403).json({
-                message: "Cluster admins are only allowed to assign store_admin or employee roles.",
+                message: "Cluster admins and Process Control Managers are only allowed to assign store_admin or employee roles.",
             });
         }
 
@@ -774,7 +774,7 @@ export const CreatingAdminUsers = async (req, res) => {
         // Determine branches/clusters for the admin
         let finalBranches = [];
         let finalClusters = [];
-        if (role === 'super_admin' || role === 'admin' || role === 'hr_admin') {
+        if (role === 'super_admin' || role === 'admin' || role === 'hr_admin' || role === 'process_control_manager' || role === 'office_admin') {
             const allBranches = await Branch.find();
             finalBranches = allBranches.map((branch) => branch._id);
         } else if (role === 'warehouse_admin') {
@@ -946,7 +946,7 @@ const upsertPermissions = async (role, permissions) => {
         console.error('Error adding or updating permissions:', error);
     }
 };
-import { getAccessibleStoreIds, getAccessibleEmployeeIds, isFullAccessAdmin } from '../lib/permissions.js';
+import { getAccessibleStoreIds, getAccessibleEmployeeIds, isFullAccessAdmin, isBranchMatchingDeptOrWorkingBranch } from '../lib/permissions.js';
 import Employee from '../model/Employee.js';
 
 export const getAccessibleStores = async (req, res) => {
@@ -971,11 +971,11 @@ export const getAccessibleEmployees = async (req, res) => {
             return res.status(401).json({ message: "Unauthorized" });
         }
         
-        // Support any of storeId, store, or locCode query parameters from clients (like Flutter)
+        // Support any of storeId, store, or locCode query parameters from clients (like Flutter & Dashboard)
         const storeParam = req.query.storeId || req.query.store || req.query.locCode;
         let resolvedStore = null;
         
-        if (storeParam) {
+        if (storeParam && storeParam !== "All") {
             if (mongoose.Types.ObjectId.isValid(storeParam)) {
                 resolvedStore = await Branch.findById(storeParam);
             }
@@ -988,149 +988,162 @@ export const getAccessibleEmployees = async (req, res) => {
                     ]
                 });
             }
+            if (!resolvedStore) {
+                // Try fuzzy/brand matcher across all branches
+                const allBranches = await Branch.find({});
+                resolvedStore = allBranches.find(b => isBranchMatchingDeptOrWorkingBranch(b, storeParam));
+            }
         }
 
-        let employeeIds = await getAccessibleEmployeeIds(req.admin.userId);
-        
-        let query = { _id: { $in: employeeIds }, status: 'Active' };
-        
+        const accessibleStoreIds = await getAccessibleStoreIds(req.admin.userId);
+        let targetBranches = [];
+
         if (resolvedStore) {
-            const accessibleStoreIds = await getAccessibleStoreIds(req.admin.userId);
             if (!accessibleStoreIds.includes(resolvedStore._id.toString())) {
                 return res.status(403).json({ message: "Access denied to this store's employees" });
             }
-            query.storeId = resolvedStore._id;
-        }
-
-        let employees = await Employee.find(query).lean();
-        employees = employees.map(emp => ({
-            ...emp,
-            username: emp.username || `${emp.firstName || ''} ${emp.lastName || ''}`.trim()
-        }));
-
-        // Fallback: If no employees are found in employeedata, query User collection and map them
-        if (employees.length === 0) {
-            const accessibleStoreIds = await getAccessibleStoreIds(req.admin.userId);
-            const branches = await Branch.find({ _id: { $in: accessibleStoreIds } });
-            
-            let userQuery = {};
-            if (resolvedStore) {
-                // Ensure the resolved store is within accessible stores
-                const isAccessible = branches.some(b => b._id.toString() === resolvedStore._id.toString());
-                if (isAccessible) {
-                    userQuery.locCode = resolvedStore.locCode;
-                } else {
-                    userQuery.locCode = "NON_EXISTENT";
-                }
-            } else {
-                const locCodes = branches.map(b => b.locCode);
-                userQuery.locCode = { $in: locCodes };
-            }
-            
-            const users = await User.find(userQuery).lean();
-            employees = users.map(u => ({
-                _id: u._id,
-                employeeId: u.empID,
-                username: u.username,
-                firstName: u.username.split(' ')[0] || '',
-                lastName: u.username.split(' ').slice(1).join(' ') || '',
-                email: u.email,
-                phoneNumber: u.phoneNumber,
-                designation: u.designation,
-                workingBranch: u.workingBranch,
-                locCode: u.locCode,
-                status: 'Active'
-            }));
-        }
-
-        // Determine allowed admin roles to return as employees based on logged-in admin's role
-        let allowedAdminRoles = ['store_admin', 'cluster_admin', 'telecaller'];
-        let excludedAdminRoles = ['super_admin', 'admin', 'hr_admin'];
-        
-        const excludeOffice = req.query.excludeOffice === 'true';
-
-        const isOfficeStaff = (emp) => {
-            if (!emp) return false;
-            const branchStr = (emp.workingBranch || emp.store || '').toLowerCase();
-            const deptStr = (emp.department || '').toLowerCase();
-            const desigStr = (emp.designation || emp.role || '').toLowerCase();
-            const locStr = String(emp.locCode || '').trim();
-
-            const nonSalesKeywords = ['office', 'production', 'warehouse', 'dappr squad', 'no store', 'telecaller'];
-            if (['101', '102', '103', '555'].includes(locStr)) return true;
-            if (nonSalesKeywords.some(k => branchStr.includes(k) || deptStr.includes(k) || desigStr.includes(k))) return true;
-
-            return false;
-        };
-
-        if (excludeOffice) {
-            excludedAdminRoles.push('telecaller');
-            allowedAdminRoles = allowedAdminRoles.filter(role => role !== 'telecaller');
-        }
-
-        if (req.admin.role === 'store_admin' || req.admin.role === 'telecaller') {
-            allowedAdminRoles = ['store_admin', 'telecaller'];
-            excludedAdminRoles = ['super_admin', 'admin', 'hr_admin', 'cluster_admin'];
-        }
-
-        // Fetch store/cluster admins for the selected/accessible stores to include them as employees
-        let storeAdminQuery = { isActive: { $ne: false } };
-        if (resolvedStore) {
-            storeAdminQuery.branches = resolvedStore._id;
-        } else if (['super_admin', 'admin', 'hr_admin'].includes(req.admin.role)) {
-            // High-level roles access all system admins/employees when no store parameter is specified
+            targetBranches = [resolvedStore];
         } else {
-            const accessibleStoreIds = await getAccessibleStoreIds(req.admin.userId);
-            storeAdminQuery.branches = { $in: accessibleStoreIds };
+            targetBranches = await Branch.find({ _id: { $in: accessibleStoreIds } });
         }
-        
-        const storeAdmins = await Admin.find(storeAdminQuery).lean();
-        const mappedStoreAdmins = storeAdmins.map(sa => {
-            let branchName = "";
-            if (resolvedStore) {
-                branchName = resolvedStore.workingBranch;
-            }
-            return {
-                _id: sa._id,
-                employeeId: sa.EmpId || sa.employeeId || '',
-                username: sa.name,
-                firstName: sa.name.split(' ')[0] || '',
-                lastName: sa.name.split(' ').slice(1).join(' ') || '',
-                email: sa.email,
-                phoneNumber: sa.phoneNumber,
-                designation: sa.role === 'cluster_admin' ? 'Cluster Admin' : 'Store Admin',
-                workingBranch: branchName || (sa.branches && sa.branches.length > 0 ? '' : 'No Store'),
-                status: 'Active'
-            };
+
+        const targetStoreIds = targetBranches.map(b => b._id.toString());
+        const targetLocCodes = targetBranches.map(b => b.locCode).filter(Boolean);
+
+        // 1. Gather all active records from Employee (employeedata collection)
+        const allEmpData = await Employee.find({ status: { $ne: 'Inactive' } }).lean();
+        const matchedEmpData = allEmpData.filter(e => {
+            if (e.storeId && targetStoreIds.includes(e.storeId.toString())) return true;
+            return targetBranches.some(b => isBranchMatchingDeptOrWorkingBranch(b, e.department));
         });
 
-        // Merge mapped store admins with employees
-        const combinedEmployees = [...employees, ...mappedStoreAdmins];
+        // 2. Gather all matching records from User collection
+        const allUsers = await User.find({}).lean();
+        const matchedUsers = allUsers.filter(u => {
+            const loc = Array.isArray(u.locCode) ? u.locCode : [u.locCode];
+            if (loc.some(l => targetLocCodes.includes(l)) && u.locCode !== '700') return true;
+            return targetBranches.some(b => isBranchMatchingDeptOrWorkingBranch(b, u.workingBranch));
+        });
 
-        // Deduplicate the combined list by id, email, or employeeId
+        // 3. Gather store/cluster admins assigned to the target branches
+        const allAdmins = await Admin.find({ isActive: { $ne: false } }).lean();
+        const matchedAdmins = allAdmins.filter(a => {
+            if (['store_admin', 'cluster_admin'].includes(a.role)) {
+                if (a.branches && a.branches.some(br => targetStoreIds.includes(br.toString()))) return true;
+                return targetBranches.some(b => isBranchMatchingDeptOrWorkingBranch(b, a.workingBranch));
+            }
+            return false;
+        });
+
+        const combined = [];
+
+        for (const e of matchedEmpData) {
+            const code = (e.employeeId || e.empID || e.EmpId || '').trim();
+            const fullName = `${e.firstName || ''} ${e.lastName || ''}`.trim();
+            const displayName = fullName || e.username || e.name || code;
+            const branch = targetBranches.find(b => (e.storeId && e.storeId.toString() === b._id.toString()) || isBranchMatchingDeptOrWorkingBranch(b, e.department)) || targetBranches[0];
+
+            combined.push({
+                _id: e._id,
+                employeeId: code,
+                EmpId: code,
+                empID: code,
+                empCode: code,
+                username: displayName,
+                name: displayName,
+                firstName: e.firstName || displayName.split(' ')[0] || '',
+                lastName: e.lastName || displayName.split(' ').slice(1).join(' ') || '',
+                email: e.email || '',
+                phoneNumber: e.phoneNumber || '',
+                designation: e.designation || 'Staff',
+                department: e.department || branch?.workingBranch || '',
+                workingBranch: branch?.workingBranch || e.department || '',
+                branch: branch?.workingBranch || e.department || '',
+                storeId: e.storeId || branch?._id,
+                locCode: branch?.locCode || '',
+                status: e.status || 'Active'
+            });
+        }
+
+        for (const u of matchedUsers) {
+            const code = (u.empID || u.employeeId || u.EmpId || '').trim();
+            const displayName = (u.username || u.name || code).trim();
+            const branch = targetBranches.find(b => isBranchMatchingDeptOrWorkingBranch(b, u.workingBranch) || (b.locCode && u.locCode === b.locCode)) || targetBranches[0];
+
+            combined.push({
+                _id: u._id,
+                employeeId: code,
+                EmpId: code,
+                empID: code,
+                empCode: code,
+                username: displayName,
+                name: displayName,
+                firstName: displayName.split(' ')[0] || '',
+                lastName: displayName.split(' ').slice(1).join(' ') || '',
+                email: u.email || '',
+                phoneNumber: u.phoneNumber || '',
+                designation: u.designation || 'Staff',
+                department: u.workingBranch || branch?.workingBranch || '',
+                workingBranch: u.workingBranch || branch?.workingBranch || '',
+                branch: u.workingBranch || branch?.workingBranch || '',
+                storeId: branch?._id,
+                locCode: u.locCode || branch?.locCode || '',
+                status: 'Active'
+            });
+        }
+
+        for (const a of matchedAdmins) {
+            const code = (a.EmpId || a.employeeId || a.empCode || a.empID || '').trim();
+            const displayName = (a.name || a.username || code).trim();
+            const branch = targetBranches.find(b => (a.branches && a.branches.some(br => br.toString() === b._id.toString())) || isBranchMatchingDeptOrWorkingBranch(b, a.workingBranch)) || targetBranches[0];
+
+            combined.push({
+                _id: a._id,
+                employeeId: code,
+                EmpId: code,
+                empID: code,
+                empCode: code,
+                username: displayName,
+                name: displayName,
+                firstName: displayName.split(' ')[0] || '',
+                lastName: displayName.split(' ').slice(1).join(' ') || '',
+                email: a.email || '',
+                phoneNumber: a.phoneNumber || '',
+                designation: a.role === 'cluster_admin' ? 'Cluster Admin' : 'Store Admin',
+                department: a.workingBranch || branch?.workingBranch || '',
+                workingBranch: a.workingBranch || branch?.workingBranch || '',
+                branch: a.workingBranch || branch?.workingBranch || '',
+                storeId: branch?._id,
+                locCode: branch?.locCode || '',
+                status: 'Active'
+            });
+        }
+
+        // Deduplicate unified employees by employeeId (case-insensitive) and clean name
+        const seenCodes = new Set();
+        const seenNames = new Set();
         const seenIds = new Set();
-        const seenEmails = new Set();
-        const seenEmpIds = new Set();
-        
         const uniqueEmployees = [];
-        for (const emp of combinedEmployees) {
-            const empIdStr = emp._id.toString();
-            const emailKey = emp.email?.toLowerCase().trim();
-            const empCodeKey = (emp.employeeId || emp.empID || '').toString().toLowerCase().trim();
-            
-            if (seenIds.has(empIdStr)) continue;
-            if (emailKey && seenEmails.has(emailKey)) continue;
-            if (empCodeKey && seenEmpIds.has(empCodeKey)) continue;
-            
-            seenIds.add(empIdStr);
-            if (emailKey) seenEmails.add(emailKey);
-            if (empCodeKey) seenEmpIds.add(empCodeKey);
-            
+
+        for (const emp of combined) {
+            const idStr = emp._id.toString();
+            const codeStr = (emp.employeeId || emp.empID || emp.EmpId || '').toString().toLowerCase().trim();
+            const nameStr = (emp.name || emp.username || '').toString().toLowerCase().replace(/[^a-z0-9]/g, '');
+
+            if (seenIds.has(idStr)) continue;
+            if (codeStr && seenCodes.has(codeStr)) continue;
+            if (nameStr && seenNames.has(nameStr) && nameStr.length > 3) continue;
+
+            seenIds.add(idStr);
+            if (codeStr) seenCodes.add(codeStr);
+            if (nameStr) seenNames.add(nameStr);
             uniqueEmployees.push(emp);
         }
 
-        // --- FILTER OUT NON-STORE/CLUSTER ADMINS (from showing up in the Employee dropdown) ---
-        // Exclude anyone who is a non-store/cluster admin (e.g. super_admin, admin, hr_admin)
+        // Exclude non-store admin roles (e.g. super_admin, admin, hr_admin)
+        const excludedAdminRoles = ['super_admin', 'admin', 'hr_admin', 'process_control_manager'];
+        const excludeOffice = req.query.excludeOffice === 'true';
+
         const adminsList = await Admin.find({ role: { $in: excludedAdminRoles } }).select('email EmpId employeeId').lean();
         const adminEmails = new Set(adminsList.map(a => a.email?.toLowerCase().trim()).filter(Boolean));
         const adminEmpIds = new Set([
@@ -1140,14 +1153,14 @@ export const getAccessibleEmployees = async (req, res) => {
 
         const filteredEmployees = uniqueEmployees.filter(emp => {
             const empEmail = emp.email?.toLowerCase().trim();
-            const empId = (emp.employeeId || emp.empID)?.toLowerCase().trim();
+            const empId = (emp.employeeId || emp.empID || emp.EmpId)?.toLowerCase().trim();
             
-            // Exclude if the email or employee ID matches any non-store admin record
-            const isMatch = adminEmails.has(empEmail) || adminEmpIds.has(empId);
-            if (isMatch) return false;
+            if (empEmail && adminEmails.has(empEmail)) return false;
+            if (empId && adminEmpIds.has(empId)) return false;
 
-            if (excludeOffice && isOfficeStaff(emp)) {
-                return false;
+            if (excludeOffice) {
+                const branchStr = (emp.workingBranch || emp.department || '').toLowerCase();
+                if (['office', 'production', 'warehouse', 'dappr squad'].some(k => branchStr.includes(k))) return false;
             }
 
             return true;
@@ -1267,11 +1280,11 @@ export const updateAdminUser = async (req, res) => {
         const { id } = req.params;
         const { name, email, phoneNumber, role, Branch: branches, password } = req.body;
 
-        // Cluster admin check: can only assign store_admin or employee
-        if (req.admin?.role === 'cluster_admin' && role !== 'store_admin' && role !== 'employee') {
+        // Cluster admin / Process control manager check: can only assign store_admin or employee
+        if ((req.admin?.role === 'cluster_admin' || req.admin?.role === 'process_control_manager') && role !== 'store_admin' && role !== 'employee') {
             return res.status(403).json({
                 success: false,
-                message: "Cluster admins are only allowed to assign store_admin or employee roles.",
+                message: "Cluster admins and Process Control Managers are only allowed to assign store_admin or employee roles.",
             });
         }
 
@@ -1333,7 +1346,7 @@ export const updateAdminUser = async (req, res) => {
             const empId = isEmployee.empID;
 
             let finalBranches = [];
-            if (role === 'super_admin' || role === 'admin' || role === 'hr_admin') {
+            if (role === 'super_admin' || role === 'admin' || role === 'hr_admin' || role === 'process_control_manager') {
                 const allBranches = await Branch.find();
                 finalBranches = allBranches.map((branch) => branch._id);
             } else {
@@ -1374,7 +1387,7 @@ export const updateAdminUser = async (req, res) => {
             });
             const savedAdmin = await newAdmin.save();
 
-            const userDesignation = role === 'super_admin' ? 'Super Admin' : (role === 'admin' ? 'Admin' : (role === 'hr_admin' ? 'HR Admin' : (role === 'cluster_admin' ? 'Cluster Admin' : (role === 'warehouse_admin' ? 'Warehouse Admin' : (role === 'telecaller' ? 'Telecaller' : 'Store Admin')))));
+            const userDesignation = role === 'super_admin' ? 'Super Admin' : (role === 'admin' ? 'Admin' : (role === 'hr_admin' ? 'HR Admin' : (role === 'process_control_manager' ? 'Process Control Manager' : (role === 'cluster_admin' ? 'Cluster Admin' : (role === 'warehouse_admin' ? 'Warehouse Admin' : (role === 'office_admin' ? 'Office Admin' : (role === 'telecaller' ? 'Telecaller' : 'Store Admin')))))));
             let workingBranchStr = "";
             let finalLocCodes = [];
             if (finalBranches.length > 0) {
@@ -1405,7 +1418,7 @@ export const updateAdminUser = async (req, res) => {
             updateFields.password = await bcrypt.hash(password.trim(), 10);
         }
 
-        if (role === 'super_admin' || role === 'admin' || role === 'hr_admin') {
+        if (role === 'super_admin' || role === 'admin' || role === 'hr_admin' || role === 'process_control_manager' || role === 'office_admin') {
             const allBranches = await Branch.find();
             updateFields.branches = allBranches.map((branch) => branch._id);
             updateFields.assignedClusters = [];
@@ -1457,7 +1470,7 @@ export const updateAdminUser = async (req, res) => {
                 if (password && password.trim() !== "") {
                     userRecord.password = await bcrypt.hash(password.trim(), 10);
                 }
-                const userDesignation = role === 'super_admin' ? 'Super Admin' : (role === 'admin' ? 'Admin' : (role === 'hr_admin' ? 'HR Admin' : (role === 'cluster_admin' ? 'Cluster Admin' : (role === 'warehouse_admin' ? 'Warehouse Admin' : (role === 'telecaller' ? 'Telecaller' : 'Store Admin')))));
+                const userDesignation = role === 'super_admin' ? 'Super Admin' : (role === 'admin' ? 'Admin' : (role === 'hr_admin' ? 'HR Admin' : (role === 'process_control_manager' ? 'Process Control Manager' : (role === 'cluster_admin' ? 'Cluster Admin' : (role === 'warehouse_admin' ? 'Warehouse Admin' : (role === 'office_admin' ? 'Office Admin' : (role === 'telecaller' ? 'Telecaller' : 'Store Admin')))))));
                 userRecord.designation = userDesignation;
 
                 let workingBranchStr = "";
@@ -1495,7 +1508,7 @@ export const deleteAdminUser = async (req, res) => {
     try {
         const { id } = req.params;
 
-        if (req.admin?.role === 'cluster_admin') {
+        if (req.admin?.role === 'cluster_admin' || req.admin?.role === 'process_control_manager') {
             let targetUser = null;
             if (mongoose.isValidObjectId(id)) {
                 targetUser = await User.findById(id) || await Admin.findById(id);
@@ -1508,7 +1521,7 @@ export const deleteAdminUser = async (req, res) => {
                 if (targetRole !== 'store_admin' && targetRole !== 'employee') {
                     return res.status(403).json({
                         success: false,
-                        message: "Cluster admins are only allowed to delete store_admin or employee users.",
+                        message: "Cluster admins and Process Control Managers are only allowed to delete store_admin or employee users.",
                     });
                 }
             }

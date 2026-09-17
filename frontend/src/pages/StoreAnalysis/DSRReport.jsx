@@ -411,20 +411,79 @@ function isStoreOrBranchName(name, branchesList = []) {
   if (isHiddenBranch(str)) return true;
 
   const normName = norm(str);
+  const dispName = norm(displayBranchName(str));
   const legacyStoreNorms = [
     norm("Suitor Guy Calicut"), norm("SG Calicut"), norm("Grooms Calicut"), norm("G-Calicut"), norm("SG-Calicut"), norm("Calicut"),
     norm("Suitor Guy Kochi"), norm("SG Kochi"), norm("Grooms Kochi"), norm("G-Kochi"), norm("SG-Kochi"), norm("Kochi"),
-    "office", "production", "warehouse"
+    norm("Zorucci Edappally"), norm("Zorucci Edappal"), norm("Zorucci Perinthalmanna"), norm("Zorucci Kottakkal"),
+    norm("Suitor Guy Edappally"), norm("Suitor Guy Edappal"), norm("Suitor Guy Perinthalmanna"), norm("Suitor Guy Kottakkal"),
+    norm("Suitor Guy MG Road"), norm("Suitor Guy Trivandrum"), norm("Suitor Guy Thrissur"), norm("Suitor Guy Chavakkad"),
+    norm("Suitor Guy Kottayam"), norm("Suitor Guy Perumbavoor"), norm("Suitor Guy Manjeri"), norm("Suitor Guy Palakkad"),
+    norm("Suitor Guy Kalpetta"), norm("Suitor Guy Kannur"), norm("Suitor Guy Vatakara"),
+    "office", "production", "warehouse", "dappr squad", "dapper squad"
   ];
-  if (legacyStoreNorms.includes(normName)) return true;
+  if (legacyStoreNorms.includes(normName) || legacyStoreNorms.includes(dispName)) return true;
 
   if (Array.isArray(branchesList) && branchesList.length > 0) {
     const matchesBranch = branchesList.some(b => {
       const bDisp = displayBranchName(b.workingBranch);
-      return norm(bDisp) === normName || norm(b.workingBranch) === normName;
+      return norm(bDisp) === normName || norm(b.workingBranch) === normName || norm(bDisp) === dispName;
     });
     if (matchesBranch) return true;
   }
+
+  return false;
+}
+
+function isEmployeeInStore(emp, targetStoreName, branchObj, branchesList = []) {
+  if (!emp) return false;
+  const storeDisplay = targetStoreName || (branchObj ? displayBranchName(branchObj.workingBranch) : "");
+  if (!storeDisplay || storeDisplay === "All" || storeDisplay === "All Stores") return true;
+
+  const targetNorm = normalizeForMatch(storeDisplay);
+  const targetWbNorm = branchObj ? normalizeForMatch(branchObj.workingBranch) : "";
+  const targetLocCode = branchObj ? branchObj.locCode : getBranchLocCode(storeDisplay, branchesList);
+
+  const empBranch = emp.workingBranch || emp.department || emp.branch || emp.store || "";
+  if (!empBranch) return false;
+
+  if (displayBranchName(empBranch) === storeDisplay) return true;
+  if (normalizeForMatch(empBranch) === targetNorm || (targetWbNorm && normalizeForMatch(empBranch) === targetWbNorm)) return true;
+  if (targetLocCode && (emp.locCode === targetLocCode || getBranchLocCode(empBranch, branchesList) === targetLocCode)) return true;
+
+  const isZ = /^z[.\-\s]/i.test(storeDisplay) || /zorucci/i.test(storeDisplay) || (branchObj && /^z/i.test(branchObj.workingBranch));
+  const isG = /^g[.\-\s]/i.test(storeDisplay) || /suitor/i.test(storeDisplay) || /sg/i.test(storeDisplay) || (branchObj && /^g/i.test(branchObj.workingBranch));
+
+  const empIsZ = /^z[.\-\s]/i.test(empBranch) || /zorucci/i.test(empBranch);
+  const empIsG = /^g[.\-\s]/i.test(empBranch) || /suitor/i.test(empBranch) || /guy/i.test(empBranch);
+
+  if (isZ && empIsG) return false;
+  if (isG && empIsZ) return false;
+
+  const s = (storeDisplay + " " + (branchObj?.workingBranch || "")).toLowerCase();
+  const e = empBranch.toLowerCase();
+
+  if (/edap+al+y/i.test(s)) return /edap+al+y/i.test(e);
+  if (/edappal|edapal/i.test(s)) return /edap+al(?!y|ly)/i.test(e);
+  if (/perinthalman+a/i.test(s)) return /perinthalman+a/i.test(e);
+  if (/kotta?k+a?l/i.test(s)) return /kotta?k+a?l/i.test(e);
+  if (/kottayam/i.test(s)) return /kottayam/i.test(e);
+  if (/perumbavo*u*r/i.test(s)) return /perumbavo*u*r/i.test(e);
+  if (/thrissur/i.test(s)) return /thrissur/i.test(e);
+  if (/chavakka?d/i.test(s)) return /chavakka?d/i.test(e);
+  if (/calicut|kozhikode/i.test(s)) return /calicut|kozhikode/i.test(e);
+  if (/va[dt]akara/i.test(s)) return /va[dt]akara/i.test(e);
+  if (/manjer[yi]/i.test(s)) return /manjer[yi]/i.test(e);
+  if (/palakka?d/i.test(s)) return /palakka?d/i.test(e);
+  if (/kalpet+a/i.test(s)) return /kalpet+a/i.test(e);
+  if (/kannur/i.test(s)) return /kannur/i.test(e);
+  if (/mg\s*road/i.test(s)) return /mg\s*road/i.test(e);
+  if (/trivandrum|thiruvananthapuram/i.test(s)) return /trivandrum|thiruvananthapuram/i.test(e);
+  if (/kollam/i.test(s)) return /kollam/i.test(e);
+  if (/office/i.test(s)) return /office/i.test(e);
+  if (/production/i.test(s)) return /production/i.test(e);
+  if (/warehouse/i.test(s)) return /warehouse/i.test(e);
+  if (/dappr/i.test(s)) return /dappr/i.test(e);
 
   return false;
 }
@@ -450,6 +509,21 @@ const STAFF_ALIAS_MAPPING = {
   "m ashiq": "M ASHIQ S",
   "mashiq": "M ASHIQ S",
   "ashiq": "M ASHIQ S",
+
+  // Aslam A S (Chavakkad)
+  "mohamed aslam a s": "Mohamed Aslam A S",
+  "mohamedaslamas": "Mohamed Aslam A S",
+  "mohamed aslam as": "Mohamed Aslam A S",
+  "aslam as": "Mohamed Aslam A S",
+  "aslamas": "Mohamed Aslam A S",
+
+  // Aslam V B (Chavakkad)
+  "muhammed aslam vb": "MUHAMMED ASLAM VB",
+  "muhammedaslamvb": "MUHAMMED ASLAM VB",
+  "muhammad aslam vb": "MUHAMMED ASLAM VB",
+  "muhammadaslamvb": "MUHAMMED ASLAM VB",
+  "aslam vb": "MUHAMMED ASLAM VB",
+  "aslamvb": "MUHAMMED ASLAM VB",
 
   // Akash VK
   "akash vk": "AKASH VK",
@@ -1060,7 +1134,7 @@ const sortStoresGThenZ = (a, b) => {
 
 const DSRReport = () => {
   const user = useSelector((state) => state.auth.user);
-  const isAdminOrSuperAdmin = user?.role === "super_admin" || user?.role === "admin" || user?.role === "it_admin";
+  const isAdminOrSuperAdmin = user?.role === "super_admin" || user?.role === "admin" || user?.role === "it_admin" || user?.role === "process_control_manager";
   const isStoreAdmin = user?.role === "store_admin";
   const isClusterAdmin = user?.role === "cluster_admin";
   const [branches, setBranches] = useState([]);
@@ -2572,7 +2646,8 @@ const DSRReport = () => {
         codeToNameMap.set(normCode, officialName);
       }
 
-      [emp.username, emp.name, emp.staffName].filter(Boolean).forEach(rawName => {
+      const fullCombined = emp.firstName && emp.lastName ? `${emp.firstName} ${emp.lastName}` : '';
+      [emp.username, emp.name, emp.staffName, fullCombined].filter(Boolean).forEach(rawName => {
         const canon = getCanonicalStaffName(rawName);
         const normKey = normalizeForMatch(rawName);
         
@@ -3154,12 +3229,9 @@ const DSRReport = () => {
         : [];
 
       const sysEmpNames = systemEmployees
-        .filter(e => {
-          const b = e?.workingBranch || e?.branch || e?.store;
-          return b && (normalizeForMatch(b) === storeKeyVal || displayBranchName(b) === name || getBranchLocCode(b, branches) === locCode);
-        })
+        .filter(e => isEmployeeInStore(e, name, item, branches))
         .map(e => String(e.name || e.username || "").trim())
-        .filter(Boolean);
+        .filter(n => n && !isStoreOrBranchName(n, branches));
 
       const rawStaffNames = [
         ...sysEmpNames,
@@ -3455,11 +3527,10 @@ const DSRReport = () => {
       
       // 0. Seed all staff members belonging to this store
       systemEmployees.forEach(e => {
-        const b = e?.workingBranch || e?.branch || e?.store;
-        if (b && (normalizeForMatch(b) === storeKeyVal || displayBranchName(b) === storeName || getBranchLocCode(b, branches) === locCode)) {
+        if (isEmployeeInStore(e, storeName, selectedBranch, branches)) {
            const rawName = e.name || e.username || (e.firstName && e.lastName ? `${e.firstName} ${e.lastName}` : '');
-           const empCode = e.EmpId || e.employeeId || e.empCode;
-           if (rawName || empCode) {
+           const empCode = e.EmpId || e.empID || e.employeeId || e.empCode;
+           if ((rawName || empCode) && !isStoreOrBranchName(rawName, branches)) {
              getOrCreateStaffEntry(empCode, rawName);
            }
         }
@@ -4162,15 +4233,9 @@ const DSRReport = () => {
       const salesPeriodStaffNames = Object.keys(salesPeriodItem.byStaff || {}).map(canonicalizeName).filter(Boolean);
 
       const sysEmpNames = systemEmployees
-        .filter(e => {
-          if (!e) return false;
-          const b = e.workingBranch || e.branch || e.store;
-          if (!b) return false;
-          const normB = normalizeForMatch(b);
-          return normB === storeKeyVal || getBranchLocCode(b, branches) === locCode || displayBranchName(b) === displayBranchName(item.workingBranch);
-        })
+        .filter(e => isEmployeeInStore(e, displayBranchName(item.workingBranch), item, branches))
         .map(e => String(e.name || e.username || e.staffName || "").trim())
-        .filter(Boolean);
+        .filter(n => n && !isStoreOrBranchName(n, branches));
 
       // De-duplicate case-insensitively, preferring casing with uppercase letters
       const rawAllStaff = [
@@ -6609,20 +6674,16 @@ const DSRReport = () => {
                       {(() => {
                         if (!modalStore || modalStore === "All") return null;
                         const branch = branches.find(b => displayBranchName(b.workingBranch) === modalStore);
-                        if (!branch) return null;
-                        const locId = getBranchLocationId(branch.workingBranch);
-                        const locCode = branch.locCode || getBranchLocCode(branch.workingBranch, branches);
-                        const storeKeyVal = normalizeForMatch(branch.workingBranch);
+                        const locId = branch ? getBranchLocationId(branch.workingBranch) : null;
+                        const locCode = branch ? (branch.locCode || getBranchLocCode(branch.workingBranch, branches)) : null;
+                        const storeKeyVal = branch ? normalizeForMatch(branch.workingBranch) : normalizeForMatch(modalStore);
                         
                         const sysEmpNames = systemEmployees
-                          .filter(e => {
-                            const b = e?.workingBranch || e?.branch || e?.store;
-                            return b && (normalizeForMatch(b) === storeKeyVal || displayBranchName(b) === modalStore || getBranchLocCode(b, branches) === locCode);
-                          })
+                          .filter(e => isEmployeeInStore(e, modalStore, branch, branches))
                           .map(e => String(e.name || e.username || "").trim())
-                          .filter(Boolean);
+                          .filter(name => name && !isStoreOrBranchName(name, branches));
 
-                        const rentalNames = (performanceData.period[locId] || []).map(x => x.bookingBy);
+                        const rentalNames = (locId && performanceData.period[locId] ? performanceData.period[locId] : []).map(x => x.bookingBy);
                         const squadNames = (performanceData.period["25"] || [])
                           .filter(x => {
                             const raw = String(x.bookingBy || "").trim().toLowerCase();
@@ -6635,7 +6696,7 @@ const DSRReport = () => {
                           [...sysEmpNames, ...rentalNames, ...squadNames, ...salesNames],
                           systemEmpNameToCodeMap,
                           systemEmpCodeToNameMap
-                        );
+                        ).filter(name => !isStoreOrBranchName(name, branches));
                         
                         return uniqueNames.map(name => (
                           <option key={name} value={name}>{name}</option>

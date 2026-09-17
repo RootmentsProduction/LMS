@@ -630,7 +630,7 @@ const computeStatus = (task) => {
   if (task.status === 'COMPLETED') return 'COMPLETED';
   if (task.status === 'IN PROGRESS') return 'IN PROGRESS';
   if (task.status === 'ON HOLD') return 'ON HOLD';
-  if (task.status === 'UNDER REVIEW') return 'UNDER REVIEW';
+  if (task.status === 'UNDER REVIEW' || task.status === 'PENDING REVIEW') return task.status;
 
   const end = parseDateParts(task.endDate);
   if (end) {
@@ -752,7 +752,7 @@ export const getAllEmployeesWithTrainingDetails = async (req, res) => {
         const AdminId = req.admin.userId;
         const AdminBranch = await Admin.findById(AdminId).populate('branches');
         const allowedLocCodes = AdminBranch ? AdminBranch.branches.map(branch => branch.locCode) : [];
-        const isGlobalAdmin = AdminBranch ? ['super_admin', 'admin', 'hr_admin'].includes(AdminBranch.role) : false;
+        const isGlobalAdmin = AdminBranch ? ['super_admin', 'admin', 'hr_admin', 'process_control_manager'].includes(AdminBranch.role) : false;
         
         console.log('📊 Admin allowed branches:', allowedLocCodes, 'isGlobalAdmin:', isGlobalAdmin);
         

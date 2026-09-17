@@ -27,7 +27,7 @@ const CreateNewUser = () => {
     });
 
     useEffect(() => {
-        if (user?.role === "cluster_admin") {
+        if (user?.role === "cluster_admin" || user?.role === "process_control_manager") {
             setForm((prev) => ({ ...prev, userRole: "store_admin" }));
         }
     }, [user]);
@@ -87,7 +87,7 @@ const CreateNewUser = () => {
                 email: "",
                 phoneNumber: "+91 ",
                 password: "",
-                userRole: user?.role === 'cluster_admin' ? 'store_admin' : "",
+                userRole: (user?.role === 'cluster_admin' || user?.role === 'process_control_manager') ? 'store_admin' : "",
             });
             setSelectedBranches([]);
             return;
@@ -107,7 +107,7 @@ const CreateNewUser = () => {
                         : `+91 ${emp.phoneNumber}`
                     : "+91 ",
                 password: "",
-                userRole: user?.role === 'cluster_admin' ? 'store_admin' : "",
+                userRole: (user?.role === 'cluster_admin' || user?.role === 'process_control_manager') ? 'store_admin' : "",
             });
             // Pre-fill branches if already assigned
             let mappedBranches = [];
@@ -148,7 +148,7 @@ const CreateNewUser = () => {
         setForm((prev) => {
             const nextForm = { ...prev, [name]: value };
             if (name === "userRole") {
-                if (value === "super_admin" || value === "admin" || value === "hr_admin") {
+                if (value === "super_admin" || value === "admin" || value === "hr_admin" || value === "process_control_manager") {
                     setSelectedBranches([]);
                 } else if (value === "warehouse_admin") {
                     const warehouseBranchOpt = branches.find(b => 
@@ -182,13 +182,13 @@ const CreateNewUser = () => {
         }
 
         // Validate role selection
-        if (!["super_admin", "admin", "hr_admin", "cluster_admin", "store_admin", "warehouse_admin", "telecaller", "employee"].includes(form.userRole)) {
+        if (!["super_admin", "admin", "hr_admin", "process_control_manager", "cluster_admin", "store_admin", "warehouse_admin", "office_admin", "telecaller", "employee"].includes(form.userRole)) {
             toast.warning("Please select a valid user role.");
             return;
         }
 
-        // Validate branch assignment for non-super/non-hr admins
-        if (form.userRole !== "super_admin" && form.userRole !== "admin" && form.userRole !== "hr_admin" && selectedBranches.length === 0) {
+        // Validate branch assignment for non-super/non-hr/non-pcm/non-office admins
+        if (form.userRole !== "super_admin" && form.userRole !== "admin" && form.userRole !== "hr_admin" && form.userRole !== "process_control_manager" && form.userRole !== "office_admin" && selectedBranches.length === 0) {
             toast.warning("Please select at least one store.");
             return;
         }
@@ -397,17 +397,22 @@ const CreateNewUser = () => {
                                     onChange={handleInputChange}
                                     className="w-full h-[45px] px-4 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-black transition-all bg-white text-gray-900"
                                 >
-                                    {user?.role === 'cluster_admin' ? (
-                                        <option value="store_admin">Store Admin</option>
+                                    {user?.role === 'cluster_admin' || user?.role === 'process_control_manager' ? (
+                                        <>
+                                            <option value="store_admin">Store Admin</option>
+                                            <option value="employee">Employee</option>
+                                        </>
                                     ) : (
                                         <>
                                             <option value="" disabled>Select User Roles</option>
                                             <option value="super_admin">Super Admin</option>
                                             <option value="admin">Admin</option>
                                             <option value="hr_admin">HR Admin</option>
+                                            <option value="process_control_manager">Process Control Manager</option>
                                             <option value="cluster_admin">Cluster Admin</option>
                                             <option value="store_admin">Store Admin</option>
                                             <option value="warehouse_admin">Warehouse Admin</option>
+                                            <option value="office_admin">Office Admin</option>
                                             <option value="telecaller">Telecaller</option>
                                             <option value="employee">Employee</option>
                                         </>
@@ -427,10 +432,10 @@ const CreateNewUser = () => {
                                     value={(form.userRole === "employee" || form.userRole === "warehouse_admin") ? (selectedBranches[0] || null) : selectedBranches}
                                     onChange={handleSelectBranches}
                                     styles={customSelectStyles}
-                                    isDisabled={form.userRole === "super_admin" || form.userRole === "admin" || form.userRole === "hr_admin" || form.userRole === "warehouse_admin"}
+                                    isDisabled={form.userRole === "super_admin" || form.userRole === "admin" || form.userRole === "hr_admin" || form.userRole === "process_control_manager" || form.userRole === "office_admin" || form.userRole === "warehouse_admin"}
                                 />
-                                {(form.userRole === "super_admin" || form.userRole === "admin" || form.userRole === "hr_admin") && (
-                                    <span className="text-xs text-gray-400 mt-1 block">Full Access Admin has access to all stores.</span>
+                                {(form.userRole === "super_admin" || form.userRole === "admin" || form.userRole === "hr_admin" || form.userRole === "process_control_manager" || form.userRole === "office_admin") && (
+                                    <span className="text-xs text-gray-400 mt-1 block">Full Access Admin / Office Admin has access to all stores.</span>
                                 )}
                                 {form.userRole === "warehouse_admin" && (
                                     <span className="text-xs text-gray-500 mt-1 block font-medium text-amber-600">Warehouse Admin is automatically assigned to the WAREHOUSE store.</span>

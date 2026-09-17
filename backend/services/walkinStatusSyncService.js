@@ -108,6 +108,7 @@ const getCombinedStatus = (rental, shoe) => {
     const s = (shoe || '').trim();
     if (!s || s === '-' || s === 'None') return r;
     if (r === 'New Walkin' || r === '-') return s;
+    if (r.toLowerCase() === s.toLowerCase()) return r;
     return `${r}, ${s}`;
 };
 

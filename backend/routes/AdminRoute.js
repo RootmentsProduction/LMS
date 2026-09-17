@@ -73,13 +73,37 @@ router.post('/approve-registration', MiddilWare, handleRegistrationApproval);
  * /api/admin/accessible-stores:
  *   get:
  *     tags: [Admin]
- *     summary: Retrieve accessible stores for admin
- *     description: Returns a list of stores accessible to the logged-in admin based on their role and assigned branches.
+ *     summary: Retrieve accessible stores for admin / cluster admin
+ *     description: Returns a list of active stores accessible to the logged-in admin. For Super Admins, returns all active branches. For Cluster Admins, returns all stores in their assigned clusters and directly assigned stores. For Store Admins, returns their store.
  *     security:
  *       - bearerAuth: []
  *     responses:
  *       200:
- *         description: A list of stores
+ *         description: A list of accessible stores
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 stores:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       _id:
+ *                         type: string
+ *                       locCode:
+ *                         type: string
+ *                       workingBranch:
+ *                         type: string
+ *                       location:
+ *                         type: string
+ *                       isActive:
+ *                         type: boolean
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Server error
  */
 router.get('/accessible-stores', MiddilWare, getAccessibleStores);
 
@@ -88,8 +112,8 @@ router.get('/accessible-stores', MiddilWare, getAccessibleStores);
  * /api/admin/accessible-employees:
  *   get:
  *     tags: [Admin]
- *     summary: Retrieve accessible employees for admin
- *     description: Returns a list of employees accessible to the logged-in admin based on their role and assigned branches. Admins are filtered out from this list.
+ *     summary: Retrieve accessible employees for admin / cluster admin
+ *     description: Returns a list of active employees accessible to the logged-in admin based on their role and assigned branches/clusters. For Cluster Admins, returns all staff working in any of the cluster's assigned stores.
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -110,7 +134,37 @@ router.get('/accessible-stores', MiddilWare, getAccessibleStores);
  *         description: Optional store filter alias (locCode)
  *     responses:
  *       200:
- *         description: A list of employees
+ *         description: A list of employees accessible to the admin
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 employees:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       _id:
+ *                         type: string
+ *                       employeeId:
+ *                         type: string
+ *                       username:
+ *                         type: string
+ *                       email:
+ *                         type: string
+ *                       designation:
+ *                         type: string
+ *                       workingBranch:
+ *                         type: string
+ *                       locCode:
+ *                         type: string
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Access denied to requested store
+ *       500:
+ *         description: Server error
  */
 router.get('/accessible-employees', MiddilWare, getAccessibleEmployees);
 
@@ -270,7 +324,7 @@ router.get('/branch-audit/:id', MiddilWare, getBranchAuditById);
  *                 description: Account password
  *               userRole:
  *                 type: string
- *                 enum: [super_admin, admin, hr_admin, cluster_admin, store_admin, warehouse_admin, telecaller, employee]
+ *                 enum: [super_admin, admin, hr_admin, process_control_manager, cluster_admin, store_admin, warehouse_admin, office_admin, telecaller, employee]
  *                 description: Role assigned to the user
  *               Branch:
  *                 type: array
@@ -352,7 +406,7 @@ router.get('/admin/list', MiddilWare, getAdminUsers);
  *                 type: string
  *               role:
  *                 type: string
- *                 enum: [super_admin, hr_admin, cluster_admin, store_admin, employee]
+ *                 enum: [super_admin, admin, hr_admin, process_control_manager, cluster_admin, store_admin, employee]
  *               Branch:
  *                 type: array
  *                 items:

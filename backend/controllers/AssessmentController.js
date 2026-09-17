@@ -671,7 +671,7 @@ export const calculateProgress = async (req, res) => {
     try {
         const AdminID = req.admin.userId;
         const AdminData = await Admin.findById(AdminID).populate('branches');
-        const isSuperAdmin = AdminData.role === 'super_admin' || AdminData.role === 'admin';
+        const isSuperAdmin = AdminData.role === 'super_admin' || AdminData.role === 'admin' || AdminData.role === 'hr_admin' || AdminData.role === 'process_control_manager';
         
         // Super admin sees all branches
         const allBranches = isSuperAdmin ? await Branch.find({}) : AdminData.branches;

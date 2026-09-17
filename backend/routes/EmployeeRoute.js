@@ -78,7 +78,7 @@ router.get('/', getAllEmployees);
  *   get:
  *     tags: [Employee]
  *     summary: Get all employees with training details
- *     description: Retrieves employee list along with their completed training and metrics. RBAC scoped.
+ *     description: Retrieves employee list along with their completed training and metrics. RBAC scoped for super_admin, hr_admin, cluster_admin (assigned clusters/stores), and store_admin (assigned store).
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -86,7 +86,7 @@ router.get('/', getAllEmployees);
  *         name: storeId
  *         schema:
  *           type: string
- *         description: Filter by store ID
+ *         description: Filter by store ID (must be within admin's accessible stores)
  *       - in: query
  *         name: search
  *         schema:
@@ -106,7 +106,7 @@ router.get('/management/with-training-details', MiddilWare, getAllEmployeesWithT
  *   get:
  *     tags: [Employee]
  *     summary: Get app-registered employees
- *     description: Retrieves employees who have logged into the mobile app.
+ *     description: Retrieves employees who have logged into the mobile app. Scoped by admin accessible stores (Super Admin, Cluster Admin, Store Admin).
  *     security:
  *       - bearerAuth: []
  *     responses:

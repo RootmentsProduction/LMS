@@ -580,6 +580,77 @@ function getAbbreviation(fullName) {
   return prefix + clean.slice(0, 5);
 }
 
+export const CLUSTERS = [
+  { _id: "North Cluster", name: "North Cluster" },
+  { _id: "South Cluster", name: "South Cluster" },
+  { _id: "Zorucci Cluster", name: "Zorucci Cluster" }
+];
+
+export const getClusterForStore = (storeName) => {
+  if (!storeName) return "Unassigned";
+  const raw = String(storeName).trim();
+  const lower = raw.toLowerCase();
+  const normStr = norm(raw);
+
+  // 1. Zorucci Cluster: Any Zorucci or Z store
+  if (
+    lower.includes("zorucci") ||
+    lower.includes("orucci") ||
+    /^z[\.\-\s]/i.test(raw) ||
+    /^z$/i.test(raw) ||
+    normStr.startsWith("z") ||
+    normStr.includes("zorucci")
+  ) {
+    return "Zorucci Cluster";
+  }
+
+  // 2. North Cluster Locations:
+  // EDAPPAL, MANJERI, PERINTHALMANNA, KOTTAKKAL, KANNUR, KALPETTA, CALICUT, VADAKARA
+  const northLocations = [
+    "edappal",
+    "manjeri", "manjery",
+    "perinthalmanna", "perinthalmana", "pma",
+    "kottakkal", "kottakal", "ktk", "ktkl",
+    "kannur", "knr",
+    "kalpetta", "kalpeta",
+    "calicut", "kozhikode", "clct",
+    "vadakara", "vatakara", "vdkra"
+  ];
+
+  // 3. South Cluster Locations:
+  // TRIVANDRUM, KOTTAYAM, EDAPPALLY, THRISSUR, PALAKKAD, M.G ROAD, CHAVAKKAD, PERUMBAVOOR
+  const southLocations = [
+    "trivandrum", "thiruvananthapuram", "tvm",
+    "kottayam", "ktym",
+    "edappally", "edapally", "edply",
+    "thrissur", "tsr",
+    "palakkad", "palakad", "plkd", "pkd",
+    "mg road", "mgroad", "mg ro", "mg_road",
+    "chavakkad", "chavakad", "cvnd",
+    "perumbavoor", "perumbavur", "pbvr"
+  ];
+
+  // Note: edappally belongs to South, edappal belongs to North
+  const isEdappally = normStr.includes("edappally") || normStr.includes("edapally") || lower.includes("edappally") || lower.includes("edapally");
+  if (isEdappally) {
+    return "South Cluster";
+  }
+
+  for (const loc of northLocations) {
+    if (normStr.includes(loc) || lower.includes(loc)) {
+      return "North Cluster";
+    }
+  }
+
+  for (const loc of southLocations) {
+    if (normStr.includes(loc) || lower.includes(loc)) {
+      return "South Cluster";
+    }
+  }
+
+  return "Unassigned";
+};
+
 // Sparkline Mock Paths
 const sparklineUp = [
   { value: 30 }, { value: 45 }, { value: 40 }, { value: 65 }, { value: 58 }, { value: 85 }
@@ -1035,7 +1106,7 @@ const StoreInsights = () => {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
-  const [clusters, setClusters] = useState([]);
+  const [clusters, setClusters] = useState(CLUSTERS);
   const [employees, setEmployees] = useState([]);
   const [rankingSearch, setRankingSearch] = useState("");
   const [rankingSort, setRankingSort] = useState("Best to Least");
@@ -1211,32 +1282,6 @@ const StoreInsights = () => {
     fetchRatingSummary();
   }, []);
 
-  // Fetch active clusters dynamically (by querying admins/employees with role 'cluster_admin')
-  useEffect(() => {
-    const fetchClusters = async () => {
-      try {
-        const token = localStorage.getItem("token");
-        const res = await fetch(`${baseUrl.baseUrl}api/admin/admin/list`, {
-          method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-        });
-        if (res.ok) {
-          const json = await res.json();
-          const list = Array.isArray(json?.data) 
-            ? json.data.filter(item => item.role === "cluster_admin") 
-            : [];
-          setClusters(list);
-        }
-      } catch (err) {
-        console.error("Error fetching cluster admins for Store Insights:", err);
-      }
-    };
-    fetchClusters();
-  }, []);
-
   // Fetch accessible employees dynamically
   useEffect(() => {
     const fetchEmployees = async () => {
@@ -1291,6 +1336,21 @@ const StoreInsights = () => {
     "m ashiq": "M ASHIQ S",
     "mashiq": "M ASHIQ S",
     "ashiq": "M ASHIQ S",
+
+    // Aslam A S (Chavakkad)
+    "mohamed aslam a s": "Mohamed Aslam A S",
+    "mohamedaslamas": "Mohamed Aslam A S",
+    "mohamed aslam as": "Mohamed Aslam A S",
+    "aslam as": "Mohamed Aslam A S",
+    "aslamas": "Mohamed Aslam A S",
+
+    // Aslam V B (Chavakkad)
+    "muhammed aslam vb": "MUHAMMED ASLAM VB",
+    "muhammedaslamvb": "MUHAMMED ASLAM VB",
+    "muhammad aslam vb": "MUHAMMED ASLAM VB",
+    "muhammadaslamvb": "MUHAMMED ASLAM VB",
+    "aslam vb": "MUHAMMED ASLAM VB",
+    "aslamvb": "MUHAMMED ASLAM VB",
 
     // Akash VK
     "akash vk": "AKASH VK",
@@ -3230,36 +3290,28 @@ const StoreInsights = () => {
   const filteredStoresForKPIs = useMemo(() => {
     let list = chartData;
     if (selectedClusters.length > 0 && !selectedClusters.includes("All")) {
-      const assignedIds = new Set();
-      selectedClusters.forEach(clusterId => {
-        const selectedClusterAdmin = clusters.find(c => String(c._id) === String(clusterId));
-        if (selectedClusterAdmin && Array.isArray(selectedClusterAdmin.branches)) {
-          selectedClusterAdmin.branches.forEach(b => assignedIds.add(String(b._id || b)));
-        }
+      list = chartData.filter(s => {
+        const cluster = getClusterForStore(s.name);
+        return selectedClusters.includes(cluster);
       });
-      list = chartData.filter(s => assignedIds.has(String(s._id)));
     }
     if (selectedStores.length > 0 && !selectedStores.includes("All")) {
       list = list.filter(s => selectedStores.includes(s.name));
     }
     return list;
-  }, [chartData, selectedClusters, clusters, selectedStores]);
+  }, [chartData, selectedClusters, selectedStores]);
 
   // Stores available for the store filter dropdown — scoped to selected cluster(s)
   const storeOptionsForFilter = useMemo(() => {
     let list = chartData;
     if (selectedClusters.length > 0 && !selectedClusters.includes("All")) {
-      const assignedIds = new Set();
-      selectedClusters.forEach(clusterId => {
-        const selectedClusterAdmin = clusters.find(c => String(c._id) === String(clusterId));
-        if (selectedClusterAdmin && Array.isArray(selectedClusterAdmin.branches)) {
-          selectedClusterAdmin.branches.forEach(b => assignedIds.add(String(b._id || b)));
-        }
+      list = chartData.filter(s => {
+        const cluster = getClusterForStore(s.name);
+        return selectedClusters.includes(cluster);
       });
-      list = chartData.filter(s => assignedIds.has(String(s._id)));
     }
     return list.map(s => s.name).filter(Boolean).sort(sortStoresGThenZ);
-  }, [chartData, selectedClusters, clusters]);
+  }, [chartData, selectedClusters]);
 
   // Filtered chart data based on classification (All, On Track, At Risk)
   const filteredChartData = useMemo(() => {
@@ -4782,14 +4834,8 @@ const StoreInsights = () => {
       .filter(b => getBranchLocationId(b.workingBranch) !== "25")
       .filter(b => {
         if (selectedClusters.includes("All") || selectedClusters.length === 0) return true;
-        const assignedIds = new Set();
-        selectedClusters.forEach(clusterId => {
-          const selectedClusterAdmin = clusters.find(c => String(c._id) === String(clusterId));
-          if (selectedClusterAdmin && Array.isArray(selectedClusterAdmin.branches)) {
-            selectedClusterAdmin.branches.forEach(br => assignedIds.add(String(br._id || br)));
-          }
-        });
-        return assignedIds.has(String(b._id));
+        const cluster = getClusterForStore(b.workingBranch);
+        return selectedClusters.includes(cluster);
       })
       .filter(b => selectedStores.includes("All") || selectedStores.length === 0 || selectedStores.includes(displayBranchName(b.workingBranch)));
 
@@ -5919,7 +5965,7 @@ const StoreInsights = () => {
                     {/* Role Badge / Dropdown */}
                     {isSuperAdmin ? (
                       <div className="bg-white border border-gray-200/90 rounded-[14px] px-4 py-2 text-[13px] font-bold text-gray-800 shadow-sm flex items-center gap-2 select-none">
-                        <span>Role : {user?.role === "admin" ? "Admin" : "Super Admin"}</span>
+                        <span>Role : {user?.role === "admin" ? "Admin" : user?.role === "process_control_manager" ? "Process Control Manager" : user?.role === "office_admin" ? "Office Admin" : "Super Admin"}</span>
                       </div>
                     ) : (
                       <div ref={roleDropdownRef} className="relative">
@@ -5975,7 +6021,7 @@ const StoreInsights = () => {
                           {selectedClusters.includes("All") || selectedClusters.length === 0
                             ? "Cluster : All"
                             : selectedClusters.length === 1
-                              ? `Cluster : ${clusters.find(c => String(c._id) === String(selectedClusters[0]))?.name || "1 Selected"}`
+                              ? `Cluster : ${selectedClusters[0]}`
                               : `Clusters (${selectedClusters.length})`
                           }
                         </span>
@@ -6015,8 +6061,8 @@ const StoreInsights = () => {
                               />
                               <span>All Clusters</span>
                             </label>
-                            {clusters.map((c) => {
-                              const isChecked = selectedClusters.includes(String(c._id));
+                            {CLUSTERS.map((c) => {
+                              const isChecked = selectedClusters.includes(c._id);
                               return (
                                 <label key={c._id} className="flex items-center gap-2 px-2 py-1.5 hover:bg-gray-50 rounded cursor-pointer text-gray-700 font-medium">
                                   <input
@@ -6025,13 +6071,13 @@ const StoreInsights = () => {
                                     onChange={() => {
                                       setSelectedStores(["All"]);
                                       if (selectedClusters.includes("All")) {
-                                        setSelectedClusters([String(c._id)]);
+                                        setSelectedClusters([c._id]);
                                       } else {
                                         if (isChecked) {
-                                          const next = selectedClusters.filter(id => id !== String(c._id));
+                                          const next = selectedClusters.filter(id => id !== c._id);
                                           setSelectedClusters(next.length === 0 ? ["All"] : next);
                                         } else {
-                                          setSelectedClusters([...selectedClusters, String(c._id)]);
+                                          setSelectedClusters([...selectedClusters, c._id]);
                                         }
                                       }
                                     }}

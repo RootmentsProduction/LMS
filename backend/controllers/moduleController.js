@@ -441,8 +441,8 @@ export const getNotifications = async (req, res) => {
 
         let query = {};
 
-        // If not a full access admin (super_admin or hr_admin), filter by scope
-        if (userRole !== 'super_admin' && userRole !== 'admin' && userRole !== 'hr_admin') {
+        // If not a full access admin (super_admin, admin, hr_admin, process_control_manager, or office_admin), filter by scope
+        if (userRole !== 'super_admin' && userRole !== 'admin' && userRole !== 'hr_admin' && userRole !== 'process_control_manager' && userRole !== 'office_admin') {
             const admin = await Admin.findById(userId).populate('branches');
             if (admin) {
                 const locCodes = admin.branches?.map(b => b.locCode).filter(Boolean) || [];
@@ -507,7 +507,7 @@ export const getAllNotifications = async (req, res) => {
         let query = {};
 
         // If not a full access admin, filter by scope
-        if (userRole !== 'super_admin' && userRole !== 'admin' && userRole !== 'hr_admin') {
+        if (userRole !== 'super_admin' && userRole !== 'admin' && userRole !== 'hr_admin' && userRole !== 'process_control_manager' && userRole !== 'office_admin') {
             const admin = await Admin.findById(userId).populate('branches');
             if (admin) {
                 const locCodes = admin.branches?.map(b => b.locCode).filter(Boolean) || [];

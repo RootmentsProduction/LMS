@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useSelector } from "react-redux";
 import SideNav from "../../components/SideNav/SideNav";
 import baseUrl, { formatStoreDisplayName } from "../../api/api";
@@ -114,6 +114,19 @@ const EmployeeData = () => {
   const [itemsPerPage, setItemsPerPage] = useState(50);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
+  const storeOptions = useMemo(() => {
+    const seen = new Set();
+    const result = [];
+    stores.forEach((s) => {
+      const label = s === "All" ? "Store : All" : formatStoreDisplayName(s);
+      if (!seen.has(label)) {
+        seen.add(label);
+        result.push({ value: s, label });
+      }
+    });
+    return result;
+  }, [stores]);
+
   const token = localStorage.getItem("token");
 
   const fetchEmployees = useCallback(async () => {
@@ -227,7 +240,7 @@ const EmployeeData = () => {
           </div>
 
           <select value={storeFilter} onChange={e=>{setStoreFilter(e.target.value);setCurrentPage(1);}} style={sel}>
-            {stores.map(s=><option key={s} value={s}>{s === "All" ? "Store : All" : formatStoreDisplayName(s)}</option>)}
+            {storeOptions.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
           </select>
 
           <select value={roleFilter} onChange={e=>{setRoleFilter(e.target.value);setCurrentPage(1);}} style={sel}>
