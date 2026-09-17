@@ -2521,7 +2521,7 @@ const sortStoresGThenZ = (a, b) => {
             }
         };
 
-        if (token) fetchData();
+        if (token) fetchBranches();
     }, [token, user?.role]);
 
     // Load employees dynamically based on storeId or store name
