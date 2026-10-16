@@ -830,3 +830,74 @@ The **Enquiry** option has been enabled in the Dapper Squad category's "Select R
 | `backend/routes/WalkinRoute.js` | Updated Swagger documentation to specify `functionType` requirement on creation/New Walkin status, and returned in lookup. |
 | `frontend/src/pages/Walkin/WalkinList.jsx` | Updated query parameters to request sorted by `createdAt` and filter by creation range; added Function Type to New Walkin flow; removed from Loss flow; updated validation. |
 | `frontend/src/pages/Walkin/WalkinReport.jsx` | Updated query parameters to request sorted by `updatedAt` and filter by update range; fixed table format scope crash. |
+
+---
+
+## External Project Integration APIs (October 2026)
+
+Two comprehensive data aggregator endpoints have been created under `/api/external` to allow external companion projects and services to easily query all LMS, operational, training, task, and performance data on an **Employee** basis and a **Store / Branch** basis.
+
+Both endpoints require `Authorization: Bearer <token>` (supports admin JWT tokens as well as the system static API token).
+
+### 1. Employee Overview API: `GET /api/external/employee-overview`
+
+Fetches every piece of data associated with an employee across all collections in the database.
+
+- **Query Parameters (at least one required):**
+  - `empId` (string, e.g. `emp8899`, `emp257`, `EMP101`): Searches across User `empID`, Admin `EmpId`/`employeeId`, and Employee record `employeeId`.
+  - `userId` (ObjectId string): Direct lookup by MongoDB `_id` of User or Admin.
+  - `email` (string): Lookup by employee email.
+
+- **Data Aggregated & Returned in Response:**
+  - **Summary**: Canonical employee identification, display name, designations, store name, location code, registration status, source.
+  - **Profile (`profile`)**: Merged clean representations from `User` (LMS learner), `Admin` (role/permissions), and `Employee` (`employeedata` ERP sync record). Passwords hashes are stripped.
+  - **Branches (`branches`)**: Detailed working branch documents with address, manager name, cluster, and location code.
+  - **Learning & LMS (`learning`)**:
+    - Assigned modules, assigned assessments, and assigned trainings.
+    - Deep watch progress from `TrainingProgress` (watch times, percentage, pass/fail status, video timestamps).
+    - Assessment attempts from `AssessmentProcess` (scores, question answers, pass/fail).
+  - **Tasks (`tasks`)**: Tasks directly assigned to the employee or assigned via workflow mapping, plus tasks created by the employee.
+  - **Operations & Walk-ins (`operations`)**:
+    - Walk-in customer leads managed/closed by this staff member.
+    - Staff performance evaluations and manager ratings across all 10 standard evaluation criteria.
+    - Active escalations.
+  - **Sales Attributions & Goals (`salesAttributions`)**:
+    - Monthly & weekly targets configured for this staff member (`StoreTarget`).
+    - Dappr sales attributions (`DapprAttribution`).
+    - Custom tailoring attributions (`CustomizationAttribution`).
+  - **Security & Device History (`securityAndSessions`)**:
+    - Recent login sessions (`UserLoginSession`) detailing device type, OS, browser, IP address, and login timestamps.
+
+### 2. Store / Branch Overview API: `GET /api/external/store-overview`
+
+Fetches every piece of data associated with a store/branch across all collections in the database.
+
+- **Query Parameters (at least one required):**
+  - `locCode` (string, e.g. `"3"`, `"102"`, `"13"`): Branch location code.
+  - `storeName` (string, e.g. `"Suitor Guy Edappally"`, `"Z-Edappally1"`, `"G-Edappally"`): Store / working branch name.
+  - `branchId` (ObjectId string): Direct lookup by MongoDB `_id` of Branch document.
+
+- **Data Aggregated & Returned in Response:**
+  - **Summary**: Resolved Branch ID, location code, working branch name, city/address, manager, cluster, active status, staff count, and total walk-in count.
+  - **Branch (`branch`)**: Full `Branch` document with cluster relationship.
+  - **Staff (`staff`)**:
+    - `users`: All app registered users / learners assigned to this store.
+    - `admins`: Store admins, managers, and cluster admins linked to this branch.
+    - `employees`: Records from the `employeedata` collection linked to this branch.
+  - **Store Targets (`targets`)**: Monthly, weekly, and daily target breakups along with individual staff weekly quotas (`StoreTarget`).
+  - **Attributions (`attributions`)**:
+    - `dappr`: Recent Dappr attributions logged for this store.
+    - `customization`: Customization sales attributions logged for this store.
+  - **Operations (`operations`)**:
+    - `recentWalkins` & `totalWalkinsCount`: Walk-in customer leads captured at this store.
+    - `cameraAudits`: Daily camera footfall audits (`WalkinCameraCheck`).
+    - `walkinCounts`: Footfall reconciliation records (`WalkinCount`).
+    - `branchAudits`: Physical store inspection audit records (`BranchAudit`).
+    - `storeTasks`: Operational tasks assigned to this store code or name.
+    - `googleReviews`: Google Review audit and ratings entries for this branch.
+
+### Swagger Documentation
+Both endpoints are documented under the **External Integration** tag in Swagger UI:
+- `/api-docs` (Interactive UI)
+- `/api-docs.json` (OpenAPI specification)
+

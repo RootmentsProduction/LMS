@@ -97,6 +97,10 @@ const options = {
             {
                 name: "Walk-In Sync",
                 description: "Cron job history for the Walk-In Auto Status Sync. The cron fetches 6 external APIs (GetBookingList, GetRentoutList, GetReturnList, GetDeleteList, GetBilledList, GetBillReturnedList) per branch every run and updates walk-in statuses independently for Rental flow and Shoe Sales flow. Use GET /api/walkin/cron-logs to view run history."
+            },
+            {
+                name: "External Integration",
+                description: "Comprehensive data exchange APIs for external companion projects and systems. Exposes deep 360-degree aggregated records on an employee basis (/api/external/employee-overview) and store/branch basis (/api/external/store-overview)."
             }
         ]
     },
