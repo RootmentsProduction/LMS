@@ -1749,7 +1749,8 @@ const StoreInsights = () => {
     if (empNameToCodeMap) {
       const codeA = empNameToCodeMap.get(canonA.toLowerCase()) || empNameToCodeMap.get(normA);
       const codeB = empNameToCodeMap.get(canonB.toLowerCase()) || empNameToCodeMap.get(normB);
-      if (codeA && codeB && /^EMP\d+$/.test(codeA) && /^EMP\d+$/.test(codeB) && codeA !== codeB) {
+      if (codeA && codeB && /^EMP\d+$/.test(codeA) && /^EMP\d+$/.test(codeB)) {
+        if (codeA === codeB) return true;
         return false;
       }
     }
@@ -2596,6 +2597,34 @@ const StoreInsights = () => {
           }
         }
       });
+    });
+
+    // Safely map unique non-title tokens (e.g. single name like "niyas" -> EMP93)
+    const COMMON_TITLES = new Set(["muhammed", "mohammad", "mohammed", "md", "m", "mr", "mrs", "dr"]);
+    const tokenEmpMap = new Map();
+    systemEmployees.forEach(emp => {
+      const code = emp.EmpId || emp.empID || emp.employeeId || emp.emp_code;
+      const normCode = normalizeEmpCode(code);
+      if (!normCode) return;
+
+      [emp.username, emp.name, emp.staffName].filter(Boolean).forEach(rawName => {
+        const tokens = rawName.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(Boolean);
+        tokens.forEach(t => {
+          if (t.length >= 3 && !COMMON_TITLES.has(t)) {
+            if (!tokenEmpMap.has(t)) tokenEmpMap.set(t, new Set());
+            tokenEmpMap.get(t).add(normCode);
+          }
+        });
+      });
+    });
+
+    tokenEmpMap.forEach((codes, token) => {
+      if (codes.size === 1) {
+        const uniqueCode = Array.from(codes)[0];
+        if (!nameToCodeMap.has(token)) {
+          nameToCodeMap.set(token, uniqueCode);
+        }
+      }
     });
 
     return { systemEmpNameToCodeMap: nameToCodeMap, systemEmpCodeToNameMap: codeToNameMap };
@@ -4671,7 +4700,19 @@ const StoreInsights = () => {
       sortedStaffNames.forEach(rawName => {
         const canonName = getCanonicalStaffName(rawName);
         const normReal = normalizeForMatch(canonName);
-        const empCode = systemEmpNameToCodeMap?.get(canonName.toLowerCase()) || systemEmpNameToCodeMap?.get(normReal);
+        let empCode = systemEmpNameToCodeMap?.get(canonName.toLowerCase()) || systemEmpNameToCodeMap?.get(normReal);
+
+        // Fallback: check if any transaction in locPeriodList has this bookingBy and a valid empCode
+        if (!empCode) {
+          const matchTx = locPeriodList.find(x => x && (x.empCode || x.empID) && (
+            (x.bookingBy && x.bookingBy.toLowerCase() === rawName.toLowerCase()) ||
+            (x.bookingBy && x.bookingBy.toLowerCase() === canonName.toLowerCase()) ||
+            isStaffNameMatch(x.bookingBy, rawName)
+          ));
+          if (matchTx) {
+            empCode = normalizeEmpCode(matchTx.empCode || matchTx.empID);
+          }
+        }
 
         let entry = null;
         if (empCode) {
@@ -4684,6 +4725,12 @@ const StoreInsights = () => {
         if (entry) {
           if (empCode && !entry.empCodes.includes(empCode)) entry.empCodes.push(empCode);
           if (!entry.rawNames.includes(rawName)) entry.rawNames.push(rawName);
+          if (empCode && systemEmpCodeToNameMap?.get(empCode)) {
+            const official = systemEmpCodeToNameMap.get(empCode);
+            if (official && official.length > entry.displayName.length) {
+              entry.displayName = official;
+            }
+          }
         } else {
           const officialName = (empCode && systemEmpCodeToNameMap?.get(empCode)) ? systemEmpCodeToNameMap.get(empCode) : canonName;
           staffEntries.push({
