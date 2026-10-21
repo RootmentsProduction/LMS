@@ -15,6 +15,17 @@ export const VerifyToken = async (req, res) => {
         
         try {
             const adminUser = await Admin.findById(decoded.userId).populate('branches');
+
+            // Invalidate token if password was changed after this token was issued
+            if (adminUser && adminUser.passwordChangedAt) {
+                const changedTimestamp = Math.floor(adminUser.passwordChangedAt.getTime() / 1000);
+                if (decoded.iat && decoded.iat < (changedTimestamp - 1)) {
+                    return res.status(401).json({
+                        message: 'Password was recently changed. Please log in again.',
+                        code: 'PASSWORD_CHANGED'
+                    });
+                }
+            }
             
             res.json({ 
                 message: 'Token is valid', 

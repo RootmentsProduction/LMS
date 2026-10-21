@@ -47,6 +47,7 @@ const userSchema = new mongoose.Schema({
         index: true,
     },
     fcmToken: { type: String, default: '' },
+    passwordChangedAt: { type: Date, default: null },
     assignedModules: [assignedModuleSchema], // Array of assigned modules
     assignedAssessments: [assignedAssessmentSchema],
     training: [trainingSchema],// Array of assigned assessments

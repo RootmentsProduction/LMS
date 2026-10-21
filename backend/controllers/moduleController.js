@@ -10,6 +10,7 @@ import jwt from 'jsonwebtoken'
 import bcrypt from 'bcrypt'
 import Subrole from '../model/Subrole.js';
 import EscalationLevel from '../model/EscalationLevel.js';
+import UserLoginSession from '../model/UserLoginSession.js';
 
 export const createModule = async (req, res) => {
     try {
@@ -700,15 +701,38 @@ export const changeAdminPassword = async (req, res) => {
         }
 
         const hashedPassword = await bcrypt.hash(trimmedNew, 10);
+        const now = new Date();
         admin.password = hashedPassword;
+        admin.passwordChangedAt = now;
         await admin.save();
 
         // Also sync corresponding User document if present
         if (admin.EmpId || admin.email) {
             await User.updateMany(
                 { $or: [{ empID: admin.EmpId }, { email: admin.email }] },
-                { password: hashedPassword }
+                { password: hashedPassword, passwordChangedAt: now }
             );
+        }
+
+        // Invalidate active login sessions for this account across devices
+        try {
+            await UserLoginSession.updateMany(
+                {
+                    $or: [
+                        { userId: admin._id },
+                        { email: admin.email }
+                    ],
+                    isActive: true
+                },
+                {
+                    $set: {
+                        isActive: false,
+                        logoutTime: now
+                    }
+                }
+            );
+        } catch (sessionErr) {
+            console.error('Error invalidating active login sessions:', sessionErr);
         }
 
         return res.status(200).json({

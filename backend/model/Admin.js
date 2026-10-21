@@ -28,6 +28,7 @@ const adminSchema = new mongoose.Schema({
         index: true,
     },
     fcmToken: { type: String, default: '' },
+    passwordChangedAt: { type: Date, default: null },
 }, { timestamps: true });
 
 // Queried by role to find super_admins and filter by admin type

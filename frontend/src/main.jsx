@@ -8,8 +8,10 @@ import App from './App.jsx'
 import { BrowserRouter } from 'react-router-dom'
 import { store, persistor } from './store/store.js';
 import { registerChunkLoadRecovery } from './chunkLoadRecovery.js';
+import { setupAuthInterceptor } from './utils/authInterceptor.js';
 
 registerChunkLoadRecovery();
+setupAuthInterceptor(store.dispatch);
 
 // Initialize theme dynamically to avoid flash of light theme
 if (localStorage.getItem('theme') === 'dark') {

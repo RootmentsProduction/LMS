@@ -33,9 +33,23 @@ export const MiddilWare = async (req, res, next) => {
 
     try {
         const decoded = jwt.verify(token, process.env.JWT_SECRET); // Verify token
-        req.admin = decoded; // Attach user info to the request object
-        // console.log(token);
 
+        // Check if password was changed after token was issued (iat is in seconds)
+        if (decoded.userId) {
+            const admin = await Admin.findById(decoded.userId).select('passwordChangedAt');
+            if (admin && admin.passwordChangedAt) {
+                const changedTimestamp = Math.floor(admin.passwordChangedAt.getTime() / 1000);
+                // Allow a 1-second margin of clock variance
+                if (decoded.iat && decoded.iat < (changedTimestamp - 1)) {
+                    return res.status(401).json({
+                        message: 'Password was recently changed. Please log in again.',
+                        code: 'PASSWORD_CHANGED'
+                    });
+                }
+            }
+        }
+
+        req.admin = decoded; // Attach user info to the request object
         next(); // Pass control to the next middleware/handler
     } catch (err) {
         console.error(err);
