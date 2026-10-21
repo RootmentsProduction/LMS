@@ -29,10 +29,25 @@ export const createUser = async (req, res) => {
       phoneNumber,
     } = req.body;
 
-    // Check if the username or email already exists
-    const existingUser = await User.findOne({ $or: [{ email }] });
+    // Check if the username, email, or empID already exists
+    const normalizedEmail = (email || '').toLowerCase().trim();
+    const normalizedEmpID = (empID || '').toUpperCase().trim();
+    const normalizedUsername = (username || '').trim();
+
+    const existingUser = await User.findOne({
+      $or: [
+        { email: normalizedEmail },
+        { empID: normalizedEmpID },
+        { username: normalizedUsername }
+      ]
+    });
+
     if (existingUser) {
-      return res.status(400).json({ message: 'Username or email already exists.' });
+      let duplicateField = 'user';
+      if (existingUser.empID === normalizedEmpID) duplicateField = `Employee ID (${normalizedEmpID})`;
+      else if (existingUser.email === normalizedEmail) duplicateField = `Email (${normalizedEmail})`;
+      else if (existingUser.username === normalizedUsername) duplicateField = `Username (${normalizedUsername})`;
+      return res.status(400).json({ message: `${duplicateField} already exists.` });
     }
 
     let processedLocCode = locCode;
@@ -44,9 +59,9 @@ export const createUser = async (req, res) => {
 
     // Create a new user
     const newUser = new User({
-      username,
-      email,
-      empID,
+      username: normalizedUsername,
+      email: normalizedEmail,
+      empID: normalizedEmpID,
       password: password ? await bcrypt.hash(String(password).trim(), 10) : "",
       location,
       locCode: processedLocCode,
@@ -56,80 +71,46 @@ export const createUser = async (req, res) => {
       source: 'app',
     });
 
+    // Save user first so newUser._id is persisted
+    await newUser.save();
 
     // Fetch all mandatory training based on the user role (designation)
-    // const mandatoryTraining = await Training.find({
-    //   Trainingtype: 'Mandatory',
-    //  Assignedfor: { $elemMatch: { $regex: `^${designation}$`, $options: 'i' } }, // Match the role in the `Assignedfor` array ABHI
-    // }).populate('modules');
-    // console.log(mandatoryTraining);
-
-    // ABHORAM CHNAG 
-
-    // Function to flatten a string (remove spaces and lowercase)
-    const flatten = (str) => str.toLowerCase().replace(/\s+/g, '');
-
-    // Flatten input designation
+    const flatten = (str) => String(str || '').toLowerCase().replace(/\s+/g, '');
     const flatDesignation = flatten(designation);
 
-    // Step 1: Fetch all mandatory trainings
     const allTrainings = await Training.find({
       Trainingtype: 'Mandatory'
     }).populate('modules');
 
-    // Step 2: Filter in JS using flattened comparison
     const mandatoryTraining = allTrainings.filter(training =>
-      training.Assignedfor.some(role => flatten(role) === flatDesignation)
+      Array.isArray(training.Assignedfor) && training.Assignedfor.some(role => flatten(role) === flatDesignation)
     );
 
-    console.log(mandatoryTraining);
+    const deadlineDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
-
-
-
-
-
-
-    // if (!mandatoryTraining || mandatoryTraining.length === 0) {
-    //   return res.status(400).json({ message: 'No mandatory training found for the user role.' });
-    // }
-
-    const deadlineDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // Default 30-day deadline
-
-    // For mandatory trainings, only create progress records, don't add to user.training array
-    // This prevents mandatory trainings from appearing in both "assigned" and "mandatory" sections
     const trainingAssignments = mandatoryTraining.map(async (training) => {
       try {
-        // DON'T add mandatory training to user.training array
-        // newUser.training.push({
-        //   trainingId: training._id,
-        //   deadline: deadlineDate,
-        //   pass: false,
-        //   status: 'Pending',
-        // });
-
-        // Check if this training is already assigned to avoid duplicates
         const existingProgress = await TrainingProgress.findOne({
           userId: newUser._id,
           trainingId: training._id
         });
 
         if (existingProgress) {
-          console.log(`Training "${training.trainingName}" already assigned to ${newUser.empID} - skipping`);
           return;
         }
 
-        // Create TrainingProgress for the user
+        const validModules = (training.modules || []).filter(Boolean);
+
         const trainingProgress = new TrainingProgress({
           userId: newUser._id,
           trainingId: training._id,
           trainingName: training.trainingName,
           deadline: deadlineDate,
           pass: false,
-          modules: training.modules.map(module => ({
+          modules: validModules.map(module => ({
             moduleId: module._id,
             pass: false,
-            videos: module.videos.map(video => ({
+            videos: (module.videos || []).map(video => ({
               videoId: video._id,
               pass: false,
             })),
@@ -137,28 +118,29 @@ export const createUser = async (req, res) => {
         });
 
         await trainingProgress.save();
-        console.log(`✅ Assigned mandatory training "${training.trainingName}" to new user ${newUser.empID}`);
       } catch (error) {
         console.error(`❌ Error assigning training "${training.trainingName}" to ${newUser.empID}:`, error.message);
-        // Continue with other trainings even if one fails
       }
     });
 
-    // Wait for all training assignments to complete
     await Promise.all(trainingAssignments);
 
-    // Save the new LMS user (for Flutter app access)
-    await newUser.save();
-
-    res.status(201).json({
+    return res.status(201).json({
       message: 'User created successfully, and mandatory training progress created.',
       user: newUser,
       note: 'Mandatory trainings are handled separately from assigned trainings'
     });
   } catch (error) {
     console.error('Error creating user:', error);
-    res.status(500).json({
-      message: 'An error occurred while creating the user.',
+    if (error.code === 11000) {
+      const field = Object.keys(error.keyPattern || {})[0] || 'field';
+      return res.status(400).json({
+        message: `An employee with this ${field} already exists.`,
+        error: error.message,
+      });
+    }
+    return res.status(500).json({
+      message: error.message || 'An error occurred while creating the user.',
       error: error.message,
     });
   }

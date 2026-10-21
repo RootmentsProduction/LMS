@@ -502,7 +502,17 @@ export const createTask = async (req, res) => {
       });
     }
 
-    if (targets.length === 0) {
+    // Deduplicate targets by id so no individual receives duplicate tasks
+    const uniqueTargets = [];
+    const seenTargetIds = new Set();
+    for (const t of targets) {
+      if (t.id && !seenTargetIds.has(t.id.toString())) {
+        seenTargetIds.add(t.id.toString());
+        uniqueTargets.push(t);
+      }
+    }
+
+    if (uniqueTargets.length === 0) {
       return res.status(400).json({
         success: false,
         message: 'No employees or admins match this group selection',
@@ -513,8 +523,8 @@ export const createTask = async (req, res) => {
     const baseTaskCode = await nextTaskCode();
     let index = 0;
 
-    for (const target of targets) {
-      const taskCode = targets.length > 1
+    for (const target of uniqueTargets) {
+      const taskCode = uniqueTargets.length > 1
         ? `${baseTaskCode}-${index + 1}`
         : baseTaskCode;
 
@@ -636,7 +646,7 @@ export const createTask = async (req, res) => {
   }
 };
 
-import { buildTaskFilter, resolveAllAssignedIds } from '../lib/permissions.js';
+import { buildTaskFilter, resolveAllAssignedIds, isBranchMatchingDeptOrWorkingBranch } from '../lib/permissions.js';
 
 export const getTasks = async (req, res) => {
   try {
@@ -1036,11 +1046,14 @@ export const getTaskAssignees = async (req, res) => {
         storeName = 'All Store';
       }
 
+      const empCode = (ad.EmpId || ad.employeeId || '').trim();
+
       individualAssignees.push({
         value: ad._id.toString(),
         label: `${ad.name} - ${designation} - ${storeName}`,
         type: 'admin',
         role: ad.role,
+        empCode: empCode,
         isAllStore,
         storeNameNormalized: storeName
       });
@@ -1058,23 +1071,32 @@ export const getTaskAssignees = async (req, res) => {
         storeName = 'All Store';
       }
 
+      const empCode = (user.EmpId || user.employeeId || '').trim();
+
       individualAssignees.push({
         value: user._id.toString(),
         label: `${user.name} - ${designation} - ${storeName}`,
         type: 'admin',
         role: user.role,
+        empCode: empCode,
         isAllStore,
         storeNameNormalized: storeName
       });
     }
 
     // Add Employees from Employee collection
-    const dbEmployees = await Employee.find({ _id: { $in: employeeIds }, storeId: { $in: accessibleStoreIds }, status: 'Active' }).populate('storeId');
+    const dbEmployees = await Employee.find({ _id: { $in: employeeIds }, status: 'Active' }).populate('storeId');
     dbEmployees.forEach(emp => {
-      if (!individualAssignees.some(item => item.value === emp._id.toString())) {
-        const name = emp.firstName ? `${emp.firstName} ${emp.lastName || ''}`.trim() : (emp.username || 'Employee');
+      const name = emp.firstName ? `${emp.firstName} ${emp.lastName || ''}`.trim() : (emp.username || 'Employee');
+      const empCode = (emp.employeeId || '').trim();
+      const alreadyPresent = individualAssignees.some(item => 
+        item.value === emp._id.toString() ||
+        (empCode && item.empCode && item.empCode.toLowerCase() === empCode.toLowerCase()) ||
+        (item.label && item.label.split(' - ')[0].trim().toLowerCase() === name.toLowerCase())
+      );
+      if (!alreadyPresent) {
         const designation = emp.designation || 'Staff';
-        let storeNameVal = (emp.storeId && emp.storeId.workingBranch) || emp.workingBranch || 'Store';
+        let storeNameVal = (emp.storeId && emp.storeId.workingBranch) || emp.workingBranch || emp.department || 'Store';
 
         const isAllStore = isAllStoreEmployee(emp, designation);
         if (isAllStore) {
@@ -1085,6 +1107,7 @@ export const getTaskAssignees = async (req, res) => {
           value: emp._id.toString(),
           label: `${name} - ${designation} - ${storeNameVal}`,
           type: 'employee',
+          empCode: empCode,
           isAllStore,
           storeNameNormalized: storeNameVal
         });
@@ -1092,11 +1115,16 @@ export const getTaskAssignees = async (req, res) => {
     });
 
     // Add Users from User collection
-    const branches = await Branch.find({ _id: { $in: accessibleStoreIds } });
-    const locCodes = branches.map(b => b.locCode);
-    const dbUsers = await User.find({ _id: { $in: employeeIds }, locCode: { $in: locCodes } }).lean();
+    const dbUsers = await User.find({ _id: { $in: employeeIds } }).lean();
     dbUsers.forEach(u => {
-      if (!individualAssignees.some(item => item.value === u._id.toString())) {
+      const uName = (u.username || u.name || 'Employee').trim();
+      const empCode = (u.empID || u.EmpId || '').trim();
+      const alreadyPresent = individualAssignees.some(item => 
+        item.value === u._id.toString() ||
+        (empCode && item.empCode && item.empCode.toLowerCase() === empCode.toLowerCase()) ||
+        (item.label && item.label.split(' - ')[0].trim().toLowerCase() === uName.toLowerCase())
+      );
+      if (!alreadyPresent) {
         const designation = u.designation || 'Staff';
         let storeNameVal = u.workingBranch || 'Store';
 
@@ -1107,8 +1135,9 @@ export const getTaskAssignees = async (req, res) => {
 
         individualAssignees.push({
           value: u._id.toString(),
-          label: `${u.username || 'Employee'} - ${designation} - ${storeNameVal}`,
+          label: `${uName} - ${designation} - ${storeNameVal}`,
           type: 'employee',
+          empCode: empCode,
           isAllStore,
           storeNameNormalized: storeNameVal
         });
@@ -1138,33 +1167,32 @@ export const getTaskAssignees = async (req, res) => {
     let filteredAssignees = individualAssignees;
 
     if (role === 'user' || role === 'store_admin') {
-      // Build a list of allowed store names for the logged-in user or store admin
+      const allowedBranches = role === 'store_admin' ? (user.branches || []) : [];
       let allowedStoreNames = [];
-      if (role === 'user') {
-        if (user.workingBranch) {
-          allowedStoreNames.push(user.workingBranch.trim().toLowerCase());
-        }
-      } else if (role === 'store_admin') {
-        if (user.branches && user.branches.length > 0) {
-          user.branches.forEach(b => {
-            if (b.workingBranch) {
-              allowedStoreNames.push(b.workingBranch.trim().toLowerCase());
-            }
-          });
-        }
+      if (role === 'user' && user.workingBranch) {
+        allowedStoreNames.push(user.workingBranch.trim().toLowerCase());
+      } else if (role === 'store_admin' && user.branches) {
+        user.branches.forEach(b => {
+          if (b.workingBranch) allowedStoreNames.push(b.workingBranch.trim().toLowerCase());
+        });
       }
 
       filteredAssignees = individualAssignees.filter(assignee => {
         if (assignee.isAllStore) return false;
         const assigneeStore = String(assignee.storeNameNormalized || '').trim().toLowerCase();
-        return allowedStoreNames.includes(assigneeStore);
+        if (allowedStoreNames.includes(assigneeStore)) return true;
+        // Also check fuzzy branch matching
+        if (allowedBranches.length > 0) {
+          return allowedBranches.some(b => isBranchMatchingDeptOrWorkingBranch(b, assigneeStore));
+        }
+        return false;
       });
     } else if (targetBranchName) {
       // If a specific store is requested via locCode/storeId parameter, filter to just that store
       const normalizedTarget = String(targetBranchName).trim().toLowerCase();
       filteredAssignees = individualAssignees.filter(assignee => {
         const assigneeStore = String(assignee.storeNameNormalized || '').trim().toLowerCase();
-        return assigneeStore === normalizedTarget;
+        return assigneeStore === normalizedTarget || (targetBranchId && isBranchMatchingDeptOrWorkingBranch({ workingBranch: targetBranchName }, assigneeStore));
       });
     }
 

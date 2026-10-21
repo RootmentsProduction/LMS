@@ -713,7 +713,24 @@ const CreateTask = () => {
       const currentStart = getCurrentDate();
       const currentStartT = getCurrentTime();
 
-      for (const assignee of selectedAssignees) {
+      // If both group (e.g. "all_process_control_managers") and individuals are selected,
+      // exclude the group option to prevent double task creation.
+      const hasAnyIndividual = selectedAssignees.some(a => a.type !== 'group');
+      const assigneesToSubmit = hasAnyIndividual
+        ? selectedAssignees.filter(a => a.type !== 'group')
+        : selectedAssignees;
+
+      // Ensure no duplicate assignees
+      const uniqueAssignees = [];
+      const seenValues = new Set();
+      for (const a of assigneesToSubmit) {
+        if (!seenValues.has(a.value)) {
+          seenValues.add(a.value);
+          uniqueAssignees.push(a);
+        }
+      }
+
+      for (const assignee of uniqueAssignees) {
         for (const subCat of selectedSubCategories) {
           await createTask({
             mode: mode,
