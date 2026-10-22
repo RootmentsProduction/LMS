@@ -1837,6 +1837,14 @@ const StoreInsights = () => {
       }
     }
 
+    // 4. One name is single given name (e.g. "SUVINESH" vs "Suvinesh Chandra Bos P K")
+    if (tokensA.length === 1 && tokensB.length > 1 && tokensA[0] === tokensB[0] && tokensA[0].length >= 4) {
+      if (initA.length === 0 || initB.length === 0 || initA === initB) return true;
+    }
+    if (tokensB.length === 1 && tokensA.length > 1 && tokensB[0] === tokensA[0] && tokensB[0].length >= 4) {
+      if (initA.length === 0 || initB.length === 0 || initA === initB) return true;
+    }
+
     return false;
   }
 

@@ -799,11 +799,12 @@ function isStaffNameMatch(strA, strB, empNameToCodeMap = null) {
   if (!normA || !normB) return false;
   if (normA === normB) return true;
 
-  // Check if system employee codes differ
+  // Check if system employee codes differ or match
   if (empNameToCodeMap) {
     const codeA = empNameToCodeMap.get(canonA.toLowerCase()) || empNameToCodeMap.get(normA);
     const codeB = empNameToCodeMap.get(canonB.toLowerCase()) || empNameToCodeMap.get(normB);
-    if (codeA && codeB && /^EMP\d+$/.test(codeA) && /^EMP\d+$/.test(codeB) && codeA !== codeB) {
+    if (codeA && codeB && /^EMP\d+$/.test(codeA) && /^EMP\d+$/.test(codeB)) {
+      if (codeA === codeB) return true;
       return false;
     }
   }
@@ -886,6 +887,14 @@ function isStaffNameMatch(strA, strB, empNameToCodeMap = null) {
     if (unsharedA.every(isInitialsOrSuffix) && unsharedB.every(isInitialsOrSuffix)) {
       return true;
     }
+  }
+
+  // 4. One name is single given name (e.g. "SUVINESH" vs "Suvinesh Chandra Bos P K")
+  if (tokensA.length === 1 && tokensB.length > 1 && tokensA[0] === tokensB[0] && tokensA[0].length >= 4) {
+    if (initA.length === 0 || initB.length === 0 || initA === initB) return true;
+  }
+  if (tokensB.length === 1 && tokensA.length > 1 && tokensB[0] === tokensA[0] && tokensB[0].length >= 4) {
+    if (initA.length === 0 || initB.length === 0 || initA === initB) return true;
   }
 
   return false;
@@ -2660,6 +2669,35 @@ const DSRReport = () => {
       });
     });
 
+    // Safely map unique non-title tokens (e.g. single name like "suvinesh" -> EMP1045)
+    const COMMON_TITLES = new Set(["muhammed", "mohammad", "mohammed", "md", "m", "mr", "mrs", "dr"]);
+    const tokenEmpMap = new Map();
+    systemEmployees.forEach(emp => {
+      const code = emp.EmpId || emp.empID || emp.employeeId || emp.emp_code;
+      const normCode = normalizeEmpCode(code);
+      if (!normCode) return;
+
+      const fullCombined = emp.firstName && emp.lastName ? `${emp.firstName} ${emp.lastName}` : '';
+      [emp.username, emp.name, emp.staffName, fullCombined].filter(Boolean).forEach(rawName => {
+        const tokens = rawName.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(Boolean);
+        tokens.forEach(t => {
+          if (t.length >= 3 && !COMMON_TITLES.has(t)) {
+            if (!tokenEmpMap.has(t)) tokenEmpMap.set(t, new Set());
+            tokenEmpMap.get(t).add(normCode);
+          }
+        });
+      });
+    });
+
+    tokenEmpMap.forEach((codes, token) => {
+      if (codes.size === 1) {
+        const uniqueCode = Array.from(codes)[0];
+        if (!nameToCodeMap.has(token)) {
+          nameToCodeMap.set(token, uniqueCode);
+        }
+      }
+    });
+
     return { systemEmpNameToCodeMap: nameToCodeMap, systemEmpCodeToNameMap: codeToNameMap };
   }, [systemEmployees]);
 
@@ -3451,9 +3489,15 @@ const DSRReport = () => {
       const staffMap = new Map();
 
       const getOrCreateStaffEntry = (empCode, rawName) => {
-        const normCode = normalizeEmpCode(empCode);
+        let normCode = normalizeEmpCode(empCode);
         const rentalName = rawName ? String(rawName).trim() : "";
         const canonName = rentalName ? getCanonicalStaffName(rentalName) : "";
+
+        if (!normCode && (canonName || rentalName)) {
+          normCode = systemEmpNameToCodeMap.get(canonName.toLowerCase()) || 
+                     systemEmpNameToCodeMap.get(normalizeForMatch(rentalName)) || 
+                     systemEmpNameToCodeMap.get(rentalName.toLowerCase()) || "";
+        }
 
         let entry = null;
 
@@ -3478,10 +3522,14 @@ const DSRReport = () => {
           }
         }
 
+        const officialName = (normCode && systemEmpCodeToNameMap.get(normCode)) 
+          ? systemEmpCodeToNameMap.get(normCode) 
+          : (rentalName || canonName || "Unassigned");
+
         if (!entry) {
           entry = {
             empCodes: normCode ? [normCode] : [],
-            displayName: rentalName || canonName || "Unassigned",
+            displayName: officialName,
             rentalNames: rentalName ? [rentalName] : [],
             siteNames: []
           };
@@ -3497,11 +3545,11 @@ const DSRReport = () => {
               }
             }
           }
-          if (rentalName && !entry.rentalNames.includes(rentalName) && (isStaffNameMatch(entry.displayName, rentalName, systemEmpNameToCodeMap) || entry.displayName === "Unassigned")) {
-            entry.rentalNames.push(rentalName);
+          if (officialName && officialName.length > entry.displayName.length) {
+            entry.displayName = officialName;
           }
-          if (rentalName && rentalName.length > entry.displayName.length && isStaffNameMatch(entry.displayName, rentalName, systemEmpNameToCodeMap)) {
-            entry.displayName = rentalName;
+          if (rentalName && !entry.rentalNames.includes(rentalName)) {
+            entry.rentalNames.push(rentalName);
           }
         }
 
@@ -3561,9 +3609,24 @@ const DSRReport = () => {
         let entry = null;
         if (wCodes.length > 0) {
           for (const e of staffMap.values()) {
-            if (e.empCodes.some(c => wCodes.includes(c))) {
+            if (e.empCodes.some(c => wCodes.includes(c)) || wCodes.some(c => isCodeMatch(c, e.empCodes))) {
               entry = e;
               break;
+            }
+          }
+        }
+
+        if (!entry && wStaff) {
+          const directCode = systemEmpNameToCodeMap.get(getCanonicalStaffName(wStaff).toLowerCase()) || 
+                             systemEmpNameToCodeMap.get(normalizeForMatch(wStaff)) || 
+                             systemEmpNameToCodeMap.get(wStaff.toLowerCase());
+          if (directCode) {
+            for (const e of staffMap.values()) {
+              if (e.empCodes.includes(directCode) || isCodeMatch(directCode, e.empCodes)) {
+                entry = e;
+                if (!wCodes.includes(directCode)) wCodes.push(directCode);
+                break;
+              }
             }
           }
         }
@@ -3583,13 +3646,17 @@ const DSRReport = () => {
 
         if (!entry) {
           const canonW = wStaff ? getCanonicalStaffName(wStaff) : "Unassigned";
+          const resolvedCode = wCodes[0] || 
+                               systemEmpNameToCodeMap.get(canonW.toLowerCase()) || 
+                               systemEmpNameToCodeMap.get(normalizeForMatch(wStaff || "")) || "";
+          const official = (resolvedCode && systemEmpCodeToNameMap.get(resolvedCode)) ? systemEmpCodeToNameMap.get(resolvedCode) : (wStaff || canonW);
           entry = {
-            empCodes: wCodes,
-            displayName: wStaff || canonW,
+            empCodes: resolvedCode ? [resolvedCode] : wCodes,
+            displayName: official,
             rentalNames: [],
             siteNames: wStaff ? [wStaff] : []
           };
-          const key = wCodes[0] || canonW.toLowerCase();
+          const key = resolvedCode || canonW.toLowerCase();
           staffMap.set(key, entry);
         } else {
           wCodes.forEach(c => {

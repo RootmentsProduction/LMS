@@ -1,4 +1,4 @@
-import { logout } from './features/auth/authSlice.js';
+import { logout } from '../features/auth/authSlice.js';
 import { toast } from 'react-toastify';
 
 let isHandlingAuthError = false;
